@@ -193,7 +193,11 @@ nav button[aria-current="page"]{background:var(--accent-soft);color:var(--accent
   .wrap:has(#nav:not([hidden])) nav button:focus-visible,.wrap:has(#nav:not([hidden])) #logout:focus-visible{outline:2px solid #fff;outline-offset:1px}
   .wrap:has(#nav:not([hidden])) #save{margin:auto 0 0;padding-inline:12px;color:#c9d6e8}
   .wrap:has(#nav:not([hidden])) #save.err{color:#ffb4b4}
-  .wrap:has(#nav:not([hidden])) #logout{align-self:flex-start;margin-left:12px;background:transparent;color:#fff;border-color:rgba(255,255,255,.45)}
+  .wrap:has(#nav:not([hidden])) #open-settings{background:none;border:0;border-radius:var(--r);text-align:left;padding:9px 12px;margin-top:6px;font:inherit;color:#c9d6e8;cursor:pointer}
+  .wrap:has(#nav:not([hidden])) #open-settings:hover{background:rgba(255,255,255,.08);color:#fff}
+  .wrap:has(#nav:not([hidden])) #open-settings[aria-current="page"]{background:rgba(255,255,255,.16);color:#fff;font-weight:700}
+  .wrap:has(#nav:not([hidden])) #open-settings:focus-visible{outline:2px solid #fff;outline-offset:1px}
+  .wrap:has(#nav:not([hidden])) #logout{align-self:flex-start;margin-left:12px;margin-top:6px;background:transparent;color:#fff;border-color:rgba(255,255,255,.45)}
   .wrap:has(#nav:not([hidden])) #logout:hover{background:rgba(255,255,255,.12)}
   .wrap:has(#nav:not([hidden])) main{padding-top:20px;min-width:0;max-width:1500px}
 }
@@ -204,6 +208,7 @@ nav button[aria-current="page"]{background:var(--accent-soft);color:var(--accent
 .login{max-width:420px;margin:48px auto 0;width:100%}
 #save{margin-left:auto;font-size:12px;color:var(--muted)}
 #save.err{color:var(--bad);font-weight:700}
+#open-settings[aria-current="page"]{border-color:var(--accent);color:var(--accent);font-weight:700}
 h2{font-family:var(--display);font-size:20px;margin:0;text-wrap:balance}
 h3{font-family:var(--display);font-size:15px;margin:0}
 .muted{color:var(--muted)} .small{font-size:12px}
@@ -334,11 +339,11 @@ table.prev select{font-size:12px;padding:2px 4px;min-width:96px}
     <nav id="nav" hidden>
       <button type="button" data-v="list">案件</button>
       <button type="button" data-v="stores">店舗マスタ</button>
-      <button type="button" data-v="settings">共通設定</button>
       <button type="button" data-v="courses">コース成分表</button>
       <button type="button" data-v="spec">特定原材料</button>
     </nav>
     <span id="save"></span>
+    <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
@@ -836,11 +841,19 @@ async function go(v) {
   render(); window.scrollTo(0, 0);
 }
 $("#nav").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) go({ name: b.dataset.v }); });
+/* 共通設定は上長承認のパスワードを入れた人だけが開ける（パスワードが未設定の間と、共有データに未接続のときは誰でも開ける）。 */
+$("#open-settings").addEventListener("click", async () => {
+  if (authState !== "open" || view.name === "settings") return;
+  const a = localOnly || !db ? null : await getApproval();
+  if (!a || !a.hash) return go({ name: "settings" });
+  approvalDialog("共通設定を開く", "共通設定の閲覧・変更には、上長承認のパスワードが必要です。", () => go({ name: "settings" }));
+});
 function render() {
   const cur = view.name === "case" ? "list" : view.name;
   for (const b of $("#nav").children) { if (b.dataset.v === cur) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); }
   const app = $("#app");
   $("#nav").hidden = authState !== "open"; $("#logout").hidden = authState !== "open" || !dataKey;
+  const os = $("#open-settings"); os.hidden = authState !== "open"; if (cur === "settings") os.setAttribute("aria-current", "page"); else os.removeAttribute("aria-current");
   if (authState !== "open") { app.replaceChildren(...viewAuth()); return; }
   if (!S.got.cases || !S.got.stores || !S.got.settings || !S.got.courses) { app.replaceChildren(h("div", { class: "empty", text: "読み込み中…" })); return; }
   const top = localOnly ? [h("div", { class: "banner warn", text: "共有データに接続できていません。この画面で入力した内容は、閉じると消えます。" })]
@@ -1604,7 +1617,7 @@ async function syncAllCourses() {
   if (lifted.length) toast(`品目の追加により、上長承認を外しました：${lifted.join("、")}`);
 }
 let courseEdit = false;
-/** 上長承認のパスワードは settings/approval にハッシュで保存する（変更は管理者が行う）。 */
+/** 上長承認のパスワードは settings/approval にハッシュで保存する（変更は共通設定の「上長パスワードの変更」で行う）。 */
 async function apHash(salt, pw) { const d = await crypto.subtle.digest("SHA-256", te.encode(salt + ":" + pw)); return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, "0")).join(""); }
 async function getApproval() { try { const a = await db.doc("settings/approval").get(); return a.exists ? a.data() : null; } catch (_) { return null; } }
 function approvalDialog(title, note, onOk, extra) {
@@ -1928,6 +1941,7 @@ function viewSettings() {
       field("成分表にない食材に添える一文（任意。空欄なら「現物は使用しておりません」の案内だけになります）", inp("tplExt"))),
     dataKey ? backupPanelNote(backupPanel()) : null,
     dataKey ? pwPanel() : null,
+    db && !localOnly && !readOnly ? apPwPanel() : null,
   ].filter(Boolean);
 }
 
@@ -1987,6 +2001,27 @@ function backupPanel() {
     step2, msg);
 }
 function backupPanelNote(el) { if (bkNote) { const m = el.querySelector("#bk-msg"); m.textContent = bkNote[0]; m.style.color = bkNote[1] ? "var(--ok)" : "var(--bad)"; } return el; }
+/** 上長承認のパスワードの変更。現在のパスワードを確かめてから、新しいハッシュに置き換える（承認者の名前はそのまま）。 */
+function apPwPanel() {
+  const cur = pwInput("ap-cur", "off"), n1 = pwInput("ap-n1", "off"), n2 = pwInput("ap-n2", "off");
+  const msg = h("span", { class: "small" });
+  const say = (t, ok) => { msg.textContent = t; msg.style.color = ok ? "var(--ok)" : "var(--bad)"; };
+  return h("form", { class: "panel stack", id: "ap-panel", onsubmit: async (e) => {
+    e.preventDefault();
+    if (n1.value.length < 4) return say("新しいパスワードは4文字以上にしてください。");
+    if (n1.value !== n2.value) return say("確認用のパスワードが一致しません。");
+    try {
+      const a = await getApproval();
+      if (a && a.hash && (await apHash(a.salt || "", cur.value)) !== a.hash) return say("現在の上長パスワードが違います。");
+      const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
+      await db.doc("settings/approval").set({ ...(a ? clone(a) : { stamps: ["小池", "竹坂"] }), salt, hash: await apHash(salt, n1.value) });
+      cur.value = n1.value = n2.value = ""; say("", true); toast("上長パスワードを変更しました");
+    } catch (_) { say("変更できませんでした。時間をおいてもう一度お試しください。"); }
+  } }, h("h3", { text: "上長パスワードの変更" }),
+    h("div", { class: "muted small", text: "案件・コース成分表の承認と、この共通設定を開くときに使うパスワードです。承認者（小池・竹坂）共通で、変更したら承認者に新しいパスワードを伝えてください。" }),
+    h("div", { class: "fields" }, field("現在の上長パスワード", withEye(cur)), field("新しい上長パスワード（4文字以上）", withEye(n1)), field("もう一度入力", withEye(n2))),
+    h("div", { class: "row" }, h("button", { type: "submit", class: "btn", text: "変更する" }), msg));
+}
 function pwPanel() {
   const cur = pwInput("pw-cur", "current-password"), n1 = pwInput("pw-n1", "new-password"), n2 = pwInput("pw-n2", "new-password");
   const msg = h("span", { class: "small" });
@@ -2015,7 +2050,7 @@ window.addEventListener("drop", (e) => e.preventDefault());
 (function init() {
   const hsh = (location.hash || "").slice(1);
   if (hsh.startsWith("case-")) view = { name: "case", id: hsh.slice(5) };
-  else if (["stores", "settings", "courses", "spec"].includes(hsh)) view = { name: hsh };
+  else if (["stores", "courses", "spec"].includes(hsh)) view = { name: hsh };
   boot();
 })();
 </script>
