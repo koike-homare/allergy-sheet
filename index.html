@@ -195,7 +195,7 @@ nav button[aria-current="page"]{background:var(--accent-soft);color:var(--accent
   .wrap:has(#nav:not([hidden])) header.top{position:sticky;top:0;height:100vh;box-sizing:border-box;flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:6px;padding:22px 12px 20px;margin:0;border:0;overflow-y:auto;background:#16335a;color:#fff}
   .wrap:has(#nav:not([hidden])) header.top h1{margin:0 0 16px;padding-inline:12px;color:#fff}
   .wrap:has(#nav:not([hidden])) #bell{margin:0 0 12px;border-radius:var(--r);padding:8px 12px;justify-content:flex-start}
-  .wrap:has(#nav:not([hidden])) #bell:not(.on){color:#c9d6e8;border-color:rgba(255,255,255,.25)}
+  .wrap:has(#nav:not([hidden])) #bell:not(.on){color:#c9d6e8;border-color:transparent}
   .wrap:has(#nav:not([hidden])) #bell:not(.on):hover{background:rgba(255,255,255,.08);color:#fff}
   .wrap:has(#nav:not([hidden])) #bell b{margin-left:auto}
   .wrap:has(#nav:not([hidden])) #bell:focus-visible{outline-color:#fff}
@@ -903,12 +903,17 @@ function watchDialog() {
         it.type === "added" && it.aliases ? h("div", { class: "small muted", text: "別の呼び方：" + it.aliases }) : null,
         src.length ? h("div", { class: "small" }, "出典：", ...src.flatMap((x, i) => [i ? "、" : "", h("a", { href: x.url, target: "_blank", rel: "noopener noreferrer", text: x.title || x.url })])) : null,
         readOnly || it.status === "done" ? null : h("div", { class: "row" }, h("span", { style: "margin-left:auto" }),
-          it.status === "new" ? h("button", { type: "button", class: "btn sm", text: "確認済みにする", onclick: (e) => act(() => saveWatch((d) => { const t = d.items.find((x) => x.id === it.id); if (t) t.status = "ack"; }), e.target) }) : null,
-          it.type !== "upcoming" ? h("button", { type: "button", class: "btn sm primary", "data-imp": it.id, text: "取込", onclick: (e) => act(() => importWatch(it), e.target) }) : null));
+          it.status === "new" ? h("button", { type: "button", class: "btn sm", "data-ack": it.id, text: "確認済", onclick: (e) => act(() => saveWatch((d) => { const t = d.items.find((x) => x.id === it.id); if (t) t.status = "ack"; }), e.target) }) : null,
+          it.type !== "upcoming" ? h("button", { type: "button", class: "btn sm primary", "data-imp": it.id, text: "取込", onclick: async () => {
+            // 取込は登録内容を変えるので、上長承認のパスワードを入れた人だけが行える（パスワード未設定の間は誰でも可）
+            const run = async () => { try { await importWatch(it); } catch (_) { toast("保存できませんでした"); } watchDialog(); };
+            const a = await getApproval(); if (!a || !a.hash) return run();
+            approvalDialog("お知らせの取込", `「${it.name}」を特定原材料の一覧に反映します。取込には上長承認のパスワードが必要です。`, run);
+          } }) : null));
     };
     dlg.replaceChildren(h("div", { class: "dlg stack", id: "watch-dlg" },
       h("h3", { text: "特定原材料のお知らせ" }),
-      h("div", { class: "muted small", text: "毎月1日と15日に、AIが消費者庁の公式情報を調べた結果です。出典で内容を確かめてから「取込」を押してください。取込むと「特定原材料」の一覧に反映され、コース成分表には未確認の行として入ります（上長承認済みの成分表は承認が外れます）。" }),
+      h("div", { class: "muted small", text: "毎月1日と15日に、AIが消費者庁の公式情報を調べた結果です。出典で内容を確かめてから、「取込」（上長承認のパスワードが必要）または「確認済」を押してください。どちらかを押すまでは新着として残ります。取込むと「特定原材料」の一覧に反映され、コース成分表には未確認の行として入ります（上長承認済みの成分表は承認が外れます）。" }),
       h("div", { class: "small", text: w.checkedAt ? `最終確認：${jpDay(w.checkedAt)}${w.summary ? "　" + w.summary : ""}` : "まだ自動確認の結果がありません。" }),
       items.length ? h("div", { class: "stack", style: "gap:10px;max-height:56vh;overflow-y:auto" }, ...items.map(card)) : h("div", { class: "empty", text: "お知らせはありません。登録内容は公式情報と一致しています。" }),
       h("div", { class: "row" }, h("button", { type: "button", class: "btn", text: "特定原材料を開く", onclick: () => { dlg.close(); go({ name: "spec" }); } }), h("span", { style: "margin-left:auto" }), h("button", { type: "button", class: "btn", text: "閉じる", onclick: () => dlg.close() }))));
