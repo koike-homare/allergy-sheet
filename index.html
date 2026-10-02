@@ -147,6 +147,14 @@ window.APP_CONFIG = {
         } catch (_) { return "error"; }
       },
       changePassword: async (pw) => { try { const { error } = await sb.auth.updateUser({ password: pw }); return !error; } catch (_) { return false; } },
+/** 特定原材料の自動確認を今すぐ始める（結果は settings/specwatch に書かれ、画面に届く）。 */
+      checkSpec: async () => {
+        try {
+          const { data: se } = await sb.auth.getSession(); if (!se || !se.session) return false;
+          const r = await fetch(CFG.url + "/functions/v1/spec-watch", { method: "POST", headers: { "Content-Type": "application/json", apikey: CFG.key, Authorization: "Bearer " + se.session.access_token }, body: "{}" });
+          return r.ok;
+        } catch (_) { return false; }
+      },
       signOut: async () => { stopRealtime(); cache.clear(); loaded.clear(); try { await sb.auth.signOut(); } catch (_) {} },
     },
   };
@@ -186,6 +194,9 @@ nav button[aria-current="page"]{background:var(--accent-soft);color:var(--accent
   .wrap:has(#nav:not([hidden])){max-width:none;padding-inline:0 24px;display:grid;grid-template-columns:212px minmax(0,1fr);gap:0 28px;align-items:start}
   .wrap:has(#nav:not([hidden])) header.top{position:sticky;top:0;height:100vh;box-sizing:border-box;flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:6px;padding:22px 12px 20px;margin:0;border:0;overflow-y:auto;background:#16335a;color:#fff}
   .wrap:has(#nav:not([hidden])) header.top h1{margin:0 0 16px;padding-inline:12px;color:#fff}
+  .wrap:has(#nav:not([hidden])) #bell{margin:0 0 12px;border-radius:var(--r);padding:8px 12px;justify-content:flex-start}
+  .wrap:has(#nav:not([hidden])) #bell b{margin-left:auto}
+  .wrap:has(#nav:not([hidden])) #bell:focus-visible{outline-color:#fff}
   .wrap:has(#nav:not([hidden])) nav{flex-direction:column;flex-wrap:nowrap;gap:2px}
   .wrap:has(#nav:not([hidden])) nav button{text-align:left;padding:9px 12px;width:100%;color:#c9d6e8}
   .wrap:has(#nav:not([hidden])) nav button:hover{background:rgba(255,255,255,.08);color:#fff}
@@ -208,6 +219,10 @@ nav button[aria-current="page"]{background:var(--accent-soft);color:var(--accent
 .login{max-width:420px;margin:48px auto 0;width:100%}
 #save{margin-left:auto;font-size:12px;color:var(--muted)}
 #save.err{color:var(--bad);font-weight:700}
+#bell{display:inline-flex;align-items:center;gap:6px;border:1px solid #e0a100;background:#fff4d1;color:#6b4a00;border-radius:999px;padding:5px 12px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+#bell b{background:#c62828;color:#fff;border-radius:999px;min-width:18px;padding:0 5px;font-size:12px;line-height:18px;text-align:center}
+#bell:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wlist{margin:0;padding-left:1.2em}.wlist li{margin-block:4px}
 #open-settings[aria-current="page"]{border-color:var(--accent);color:var(--accent);font-weight:700}
 h2{font-family:var(--display);font-size:20px;margin:0;text-wrap:balance}
 h3{font-family:var(--display);font-size:15px;margin:0}
@@ -336,6 +351,7 @@ table.prev select{font-size:12px;padding:2px 4px;min-width:96px}
 <div class="wrap">
   <header class="top">
     <h1>食事制限ポータル</h1>
+    <button type="button" id="bell" title="特定原材料のお知らせ" hidden><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span>お知らせ</span><b id="bell-n"></b></button>
     <nav id="nav" hidden>
       <button type="button" data-v="list">案件</button>
       <button type="button" data-v="stores">店舗マスタ</button>
@@ -618,7 +634,7 @@ function regen(row, store) {
 
 /* ---------- データ ---------- */
 const clientId = uid("u");
-const S = { cases: new Map(), stores: new Map(), courses: new Map(), settings: {}, got: { cases: false, stores: false, settings: false, courses: false } };
+const S = { cases: new Map(), stores: new Map(), courses: new Map(), settings: {}, watch: null, got: { cases: false, stores: false, settings: false, courses: false } };
 let db = null, dl = null, sample = null, canImages = 0, localOnly = false, readOnly = false;
 let view = { name: "list" };
 let draft = null, storeDraft = null, setDraft = null, courseDraft = null;
@@ -829,6 +845,61 @@ function startData() {
     else if (view.name === "settings" || view.name === "spec") { if (!setSaver.busy && S.settings.editedBy !== clientId) { setDraft = null; render(); } }
     else if (S.settings.editedBy !== clientId && !caseSaver.busy && !$("#dlg").open) render();
   }, () => {}));
+  // 特定原材料の自動確認（単独アプリのサーバーが月2回書き込む）の結果。新しい情報があればベルを出す。
+  unsubs.push(db.doc("settings/specwatch").onSnapshot((snap) => {
+    S.watch = snap.exists ? clone(snap.data()) : null; drawBell();
+    const el = $("#watch-line"); if (el) el.replaceWith(watchLine());
+  }, () => {}));
+}
+/* ---------- 特定原材料の自動確認とお知らせ ---------- */
+const watchNews = () => { const w = S.watch; return w && w.hasNews && w.sig !== w.ackSig ? w : null; };
+const watchCount = (w) => ["added", "changed", "removed", "upcoming"].reduce((n, k) => n + (Array.isArray(w[k]) ? w[k].length : 0), 0);
+const jpDay = (iso) => { const d = new Date(iso || ""); return isNaN(d) ? "" : `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`; };
+function drawBell() {
+  const b = $("#bell"), w = authState === "open" ? watchNews() : null;
+  b.hidden = !w; if (w) $("#bell-n").textContent = watchCount(w);
+}
+function watchDialog() {
+  const w = S.watch; if (!w) return;
+  const dlg = $("#dlg"), sec = (title, items, fmt) => (Array.isArray(items) && items.length ? h("div", {}, h("strong", { text: title }), h("ul", { class: "wlist" }, ...items.map((x) => h("li", { text: fmt(x) })))) : null);
+  const note = (x) => (x.note ? "　" + x.note : "");
+  const src = (Array.isArray(w.sources) ? w.sources : []).filter((x) => /^https:\/\//.test(x.url || ""));
+  dlg.replaceChildren(h("div", { class: "dlg stack", id: "watch-dlg", style: "max-width:640px" },
+    h("h3", { text: "特定原材料のお知らせ" }),
+    h("div", { class: "muted small", text: `${jpDay(w.checkedAt)}の自動確認で、登録内容との違いが見つかりました。AIがウェブ上の公式情報を調べた結果です。出典で内容を確かめてから、「特定原材料」の登録を直してください。` }),
+    w.summary ? h("div", { text: w.summary }) : null,
+    sec("追加された品目（未登録）", w.added, (x) => `${x.name}（${x.kind || "区分不明"}）${note(x)}`),
+    sec("区分が変わった品目", w.changed, (x) => `${x.name}：${x.from || "?"} → ${x.to || "?"}${note(x)}`),
+    sec("対象から外れた品目", w.removed, (x) => `${x.name}${note(x)}`),
+    sec("今後の変更予定（公表済み）", w.upcoming, (x) => `${x.name}${note(x)}`),
+    src.length ? h("div", { class: "small" }, h("strong", { text: "出典" }), h("ul", { class: "wlist" }, ...src.map((x) => h("li", {}, h("a", { href: x.url, target: "_blank", rel: "noopener noreferrer", text: x.title || x.url }))))) : null,
+    h("div", { class: "row" },
+      h("button", { type: "button", class: "btn", text: "特定原材料を開く", onclick: () => { dlg.close(); go({ name: "spec" }); } }),
+      h("span", { style: "margin-left:auto" }),
+      h("button", { type: "button", class: "btn", text: "閉じる", onclick: () => dlg.close() }),
+      watchNews() && !readOnly ? h("button", { type: "button", class: "btn primary", id: "watch-ack", text: "確認済みにする", onclick: async () => {
+        try { await db.doc("settings/specwatch").set({ ...clone(S.watch), ackSig: S.watch.sig, ackAt: new Date().toISOString() }); dlg.close(); toast("お知らせを確認済みにしました"); }
+        catch (_) { toast("保存できませんでした"); }
+      } }) : null)));
+  if (!dlg.open) dlg.showModal();
+}
+$("#bell").addEventListener("click", watchDialog);
+function watchLine() {
+  const w = S.watch, host = window.claude && window.claude.host, box = h("div", { class: "panel stack", id: "watch-line" });
+  if (!host && !w) { box.hidden = true; return box; }
+  const busy = w && w.running && Date.now() - Date.parse(w.startedAt || "") < 5 * 60 * 1000;
+  const state = !w || !w.checkedAt ? "まだ確認していません。" : `最終確認：${jpDay(w.checkedAt)}（${w.hasNews ? (w.sig === w.ackSig ? "登録内容との違いあり・確認済み" : "登録内容との違いあり") : "登録内容との違いなし"}）`;
+  box.append(...[h("div", { class: "row" }, h("h3", { text: "公式情報の自動確認" }),
+    w && w.hasNews ? h("button", { type: "button", class: "linkbtn", text: "内容を見る", onclick: watchDialog }) : null,
+    h("span", { style: "margin-left:auto" }),
+    host && host.checkSpec && !readOnly ? h("button", { type: "button", class: "btn sm", id: "watch-run", disabled: !!busy, text: busy ? "確認中…（1〜2分）" : "今すぐ確認する", onclick: async (e) => {
+      e.target.disabled = true; e.target.textContent = "確認中…（1〜2分）";
+      if (!(await host.checkSpec())) { e.target.disabled = false; e.target.textContent = "今すぐ確認する"; toast("確認を始められませんでした"); }
+    } }) : null),
+    h("div", { class: "small muted", text: "毎月1日と15日に、消費者庁の公式情報をAIが調べ、この一覧と違いがあれば画面にベルでお知らせします。登録は自動では変わりません。" }),
+    h("div", { class: "small", text: state }),
+    w && w.error ? h("div", { class: "small", style: "color:var(--bad)", text: "直近の確認は完了できませんでした。次回の自動確認で再度調べます。" }) : null].filter(Boolean));
+  return box;
 }
 
 /* ---------- 画面切替 ---------- */
@@ -853,6 +924,7 @@ function render() {
   for (const b of $("#nav").children) { if (b.dataset.v === cur) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); }
   const app = $("#app");
   $("#nav").hidden = authState !== "open"; $("#logout").hidden = authState !== "open" || !dataKey;
+  drawBell();
   const os = $("#open-settings"); os.hidden = authState !== "open"; if (cur === "settings") os.setAttribute("aria-current", "page"); else os.removeAttribute("aria-current");
   if (authState !== "open") { app.replaceChildren(...viewAuth()); return; }
   if (!S.got.cases || !S.got.stores || !S.got.settings || !S.got.courses) { app.replaceChildren(h("div", { class: "empty", text: "読み込み中…" })); return; }
@@ -1902,6 +1974,7 @@ function viewSpec() {
   return [
     h("h2", { text: "特定原材料" }),
     h("div", { class: "muted", style: "max-width:70ch", text: "食物アレルギー表示の対象29品目です。コースの成分表の行はこの一覧にそろえられ、「別の呼び方」は申告内容の照合に使われます。出典：消費者庁「加工食品の食物アレルギー表示ハンドブック」（令和8年4月）。品目は見直されることがあるため、改正時はここを更新してください。" }),
+    watchLine(),
     group("duty", "特定原材料（表示義務）", "重篤度・症例数の多い品目で、表示が義務付けられています。"),
     group("rec", "特定原材料に準ずるもの（表示推奨）", "通知により表示が推奨されている品目です。"),
     h("div", { class: "panel stack" }, h("h3", { text: "コースの成分表との照合" }),
