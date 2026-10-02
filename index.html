@@ -181,6 +181,22 @@ header.top h1{font-family:var(--display);font-size:18px;font-weight:700;margin:0
 nav{display:flex;gap:4px;flex-wrap:wrap}
 nav button{background:none;border:0;border-radius:var(--r);padding:6px 12px;font:inherit;color:var(--muted);cursor:pointer}
 nav button[aria-current="page"]{background:var(--accent-soft);color:var(--accent);font-weight:700}
+/* 広い画面ではメニューを左の濃色サイドバーに置く（ログイン前と狭い画面は上のまま） */
+@media (min-width:900px){
+  .wrap:has(#nav:not([hidden])){max-width:none;padding-inline:0 24px;display:grid;grid-template-columns:212px minmax(0,1fr);gap:0 28px;align-items:start}
+  .wrap:has(#nav:not([hidden])) header.top{position:sticky;top:0;height:100vh;box-sizing:border-box;flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:6px;padding:22px 12px 20px;margin:0;border:0;overflow-y:auto;background:#16335a;color:#fff}
+  .wrap:has(#nav:not([hidden])) header.top h1{margin:0 0 16px;padding-inline:12px;color:#fff}
+  .wrap:has(#nav:not([hidden])) nav{flex-direction:column;flex-wrap:nowrap;gap:2px}
+  .wrap:has(#nav:not([hidden])) nav button{text-align:left;padding:9px 12px;width:100%;color:#c9d6e8}
+  .wrap:has(#nav:not([hidden])) nav button:hover{background:rgba(255,255,255,.08);color:#fff}
+  .wrap:has(#nav:not([hidden])) nav button[aria-current="page"]{background:rgba(255,255,255,.16);color:#fff}
+  .wrap:has(#nav:not([hidden])) nav button:focus-visible,.wrap:has(#nav:not([hidden])) #logout:focus-visible{outline:2px solid #fff;outline-offset:1px}
+  .wrap:has(#nav:not([hidden])) #save{margin:auto 0 0;padding-inline:12px;color:#c9d6e8}
+  .wrap:has(#nav:not([hidden])) #save.err{color:#ffb4b4}
+  .wrap:has(#nav:not([hidden])) #logout{align-self:flex-start;margin-left:12px;background:transparent;color:#fff;border-color:rgba(255,255,255,.45)}
+  .wrap:has(#nav:not([hidden])) #logout:hover{background:rgba(255,255,255,.12)}
+  .wrap:has(#nav:not([hidden])) main{padding-top:20px;min-width:0;max-width:1500px}
+}
 .pwwrap{position:relative;display:block}
 .pwwrap input{padding-right:40px}
 .eye{position:absolute;right:4px;top:50%;transform:translateY(-50%);display:grid;place-items:center;width:32px;height:32px;border:0;border-radius:4px;background:none;color:var(--muted);cursor:pointer}
