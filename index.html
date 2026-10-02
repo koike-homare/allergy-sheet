@@ -1296,7 +1296,8 @@ function viewCase() {
       field("団体名", h("input", { id: "c-group", value: c.groupName, placeholder: "例：○○高等学校", oninput: (e) => { c.groupName = e.target.value; ch(); } })),
       field("ご利用日", h("input", { id: "c-visit", type: "date", value: c.visitDate, oninput: (e) => { c.visitDate = e.target.value; ch(); } })),
       storeField(),
-      field("コース", sel([["", "指定なし（共通設定の内容で作成）"], ...[...S.courses.values()].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja")).map((x) => [x.id, (x.name || "（名称未入力）") + (x.approved ? "【上長承認済】" : "")])], S.courses.has(c.courseId) ? c.courseId : "", (v) => { c.courseId = v; const m = M(v); c.rows.forEach((r) => regen(r, m)); ch(); render(); }, { id: "c-course" })),
+      field("コース", h("div", {}, sel([["", "指定なし（共通設定の内容で作成）"], ...[...S.courses.values()].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja")).map((x) => [x.id, (x.name || "（名称未入力）") + (x.approved ? "【上長承認済】" : "")])], S.courses.has(c.courseId) ? c.courseId : "", (v) => { c.courseId = v; const m = M(v); c.rows.forEach((r) => regen(r, m)); ch(); render(); }, { id: "c-course" }),
+        !S.courses.has(c.courseId) && S.courses.size && c.rows.length ? h("div", { class: "small", id: "c-course-hint", style: "color:var(--warn);margin-top:4px", text: "コースが未選択です。選ぶと、そのコースの成分表で注意文と対応を作り直します。" }) : null)),
       field("作成日", h("input", { id: "c-created", type: "date", value: c.createdDate, oninput: (e) => { c.createdDate = e.target.value; ch(); } }))),
     stale ? h("div", { class: "banner warn" }, `コース成分表または共通設定が変更されています。${stale}名分の文章が現在の内容と異なります。`,
       h("button", { type: "button", class: "btn sm", text: "現在の内容で更新する", onclick: () => { c.rows.forEach((r) => regen(r, store)); ch(); render(); } })) : null,
@@ -1480,19 +1481,27 @@ async function runAi(textData, images, add, msgEl, maxImg) {
 function reviewDialog(people, add, groupName, warn) {
   const dlg = $("#dlg"); const on = people.map(() => true);
   // 案件の店舗・ご利用日・コースも、この画面で決められるようにする（取り込むときに案件へ反映）
-  const hd = { store: (draft && draft.storeName) || "", visit: (draft && draft.visitDate) || "", course: draft && S.courses.has(draft.courseId) ? draft.courseId : "" };
+  const hd = { store: (draft && draft.storeName) || "", visit: (draft && draft.visitDate) || "", course: draft && S.courses.has(draft.courseId) ? draft.courseId : S.courses.size ? "__" : "" }; // "__" = まだ選んでいない
   const stores = [...S.stores.values()].filter((x) => x.name).sort((a, b) => a.name.localeCompare(b.name, "ja"));
   const head = people.length && draft ? h("div", { class: "fields", id: "rv-head" },
     field("店舗", h("div", {}, h("input", { id: "rv-store", list: "rv-stores", value: hd.store, placeholder: "店舗名を入力、または候補から選択", autocomplete: "off", oninput: (e) => { hd.store = e.target.value; } }),
       h("datalist", { id: "rv-stores" }, ...stores.map((x) => h("option", { value: x.name }))))),
     field("ご利用日", h("input", { id: "rv-visit", type: "date", value: hd.visit, oninput: (e) => { hd.visit = e.target.value; } })),
-    field("コース", sel([["", "指定なし（共通設定の内容で作成）"], ...[...S.courses.values()].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja")).map((x) => [x.id, (x.name || "（名称未入力）") + (x.approved ? "【上長承認済】" : "")])], hd.course, (v) => { hd.course = v; }, { id: "rv-course" }))) : null;
+    field("コース（必須）", h("div", {}, sel([...(hd.course === "__" ? [["__", "コースを選択してください"]] : []), ...[...S.courses.values()].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja")).map((x) => [x.id, (x.name || "（名称未入力）") + (x.approved ? "【上長承認済】" : "")]), ["", "指定なし（共通設定の内容で作成）"]], hd.course, (v) => { hd.course = v; courseHint(); }, { id: "rv-course" }),
+      h("div", { class: "small", id: "rv-course-hint", style: "margin-top:4px" })))) : null;
+  // コースを選ぶと、そのコースの成分表で注意文と対応を作る。未選択のままだと【要確認】が多くなるので、取り込む前に必ず選んでもらう。
+  const courseHint = () => {
+    const el = $("#rv-course-hint"), ok = $("#rv-ok"); if (!el) return;
+    el.style.color = hd.course ? "var(--muted)" : "var(--warn)";
+    el.textContent = hd.course === "__" ? "コースを選ぶと、そのコースの成分表で注意文と対応を作成します。" : hd.course ? "このコースの成分表で注意文と対応を作成します。" : "コースの成分表を使わないため、成分表にない食材は【要確認】になります。";
+    if (ok) ok.disabled = !people.length || hd.course === "__";
+  };
   const applyHead = () => {
     if (!head || !draft) return;
     const name = hd.store.trim(), hit = stores.find((x) => norm(x.name) === norm(name));
     draft.storeName = hit ? hit.name : name; draft.storeId = hit ? hit.id : "";
     draft.visitDate = hd.visit;
-    draft.courseId = hd.course; const m = M(hd.course); draft.rows.forEach((r) => regen(r, m));
+    draft.courseId = hd.course === "__" ? "" : hd.course; const m = M(draft.courseId); draft.rows.forEach((r) => regen(r, m));
   };
   const count = h("strong", {});
   const upd = () => { count.textContent = `${on.filter(Boolean).length}名を取り込みます`; };
@@ -1527,7 +1536,7 @@ function reviewDialog(people, add, groupName, warn) {
   });
   dlg.firstElementChild.append(grip); dlg.firstElementChild.style.position = "relative";
   dlg.style.width = clampW(rvWidth || 1500) + "px"; dlg.addEventListener("close", () => (dlg.style.width = ""), { once: true });
-  upd(); if (!dlg.open) dlg.showModal(); fitAll(dlg);
+  upd(); if (!dlg.open) dlg.showModal(); fitAll(dlg); courseHint();
 }
 let rvWidth = 0;
 const isTable = (f) => /\.(xlsx|xls|csv|tsv|txt)$/i.test(f.name), isPdf = (f) => /pdf$/i.test(f.type) || /\.pdf$/i.test(f.name);
