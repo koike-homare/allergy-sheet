@@ -329,6 +329,23 @@ div.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute
 .nlist{max-height:60vh;overflow-y:auto;border:1px solid var(--line);border-radius:4px}
 .nrow{display:flex;gap:6px;align-items:center;padding:3px 6px;border-bottom:1px solid var(--line)}
 .nrow:last-child{border-bottom:0}
+.nrow .btn.sm{white-space:nowrap}
+/* 座席レイアウトの編集 */
+.lay-tabs{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.lay-tab{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:var(--r) var(--r) 0 0;padding:6px 14px;font:inherit;cursor:pointer}
+.lay-tab.on{border-color:var(--accent);border-bottom-width:3px;padding:2px 4px}
+.lay-tab.on input{border:0;font-weight:700;width:120px;padding:4px 6px}
+.lay-bar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+.lay-bar .grp{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding-right:12px;border-right:1px solid var(--line)}
+.lay-bar .grp:last-child{border-right:0}
+.lay-sw{width:22px;height:22px;border:1px solid #8a93a3;border-radius:3px;padding:0;cursor:pointer}
+.lay-wrap{overflow:auto;max-height:68vh;border:1px solid var(--line);border-radius:4px;background:#fff;outline:none}
+.lay-wrap:focus-visible{border-color:var(--accent)}
+.lay-wrap table{border-collapse:collapse;table-layout:fixed;background:#fff;color:#000;user-select:none;margin:10px;cursor:cell}
+.lay-wrap td{padding:0;overflow:hidden;position:relative}
+.lay-wrap td>div{overflow:hidden;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.15;white-space:pre-wrap;word-break:break-all}
+.lay-wrap td.sel::after{content:"";position:absolute;inset:0;background:rgba(31,78,140,.2);pointer-events:none}
+.lay-wrap td.act::after{content:"";position:absolute;inset:0;background:rgba(31,78,140,.1);outline:2px solid #1f4e8c;outline-offset:-2px;pointer-events:none}
 .nrow input{border-color:transparent;background:transparent}
 .nrow input:hover{border-color:var(--line)}
 .slist{display:flex;flex-direction:column;gap:2px}
@@ -648,7 +665,7 @@ function regen(row, store) {
 
 /* ---------- データ ---------- */
 const clientId = uid("u");
-const S = { cases: new Map(), stores: new Map(), courses: new Map(), settings: {}, watch: null, got: { cases: false, stores: false, settings: false, courses: false } };
+const S = { cases: new Map(), stores: new Map(), courses: new Map(), settings: {}, watch: null, layouts: new Map(), got: { cases: false, stores: false, settings: false, courses: false } };
 let db = null, dl = null, sample = null, canImages = 0, localOnly = false, readOnly = false;
 let view = { name: "list" };
 let draft = null, storeDraft = null, setDraft = null, courseDraft = null;
@@ -739,7 +756,7 @@ function viewAuth() {
 }
 function enter() { authState = "open"; startData(); render(); }
 async function logout() {
-  await Promise.all([caseSaver.flush(), storeSaver.flush(), setSaver.flush(), courseSaver.flush()]);
+  await Promise.all([caseSaver.flush(), storeSaver.flush(), setSaver.flush(), courseSaver.flush(), laySaver.flush()]);
   unsubs.forEach((u) => u()); unsubs = []; dataKey = rawKey = null; opened.clear();
   if (window.claude && window.claude.host) { authDoc = null; try { await window.claude.host.signOut(); } catch (_) {} }
   S.cases = new Map(); S.stores = new Map(); S.courses = new Map(); S.settings = {}; S.got = { cases: false, stores: false, settings: false, courses: false };
@@ -841,6 +858,12 @@ function startData() {
     if (view.name === "stores") { if (!$("#slist") || !$("#slist").contains(document.activeElement)) render(); }
     else if (!(view.name === "case" && caseSaver.busy) && !$("#dlg").open) render();
   }, dead));
+  // 店舗ごとの座席レイアウト（編集中の店舗は、他の人の変更だけを取り込む）
+  unsubs.push(db.collection("layouts").onSnapshot((snap) => {
+    S.layouts = new Map(snap.docs.map((d) => [d.id, { ...clone(d.data()), id: d.id }]));
+    if (view.name === "stores") renderStoreList();
+    else if (view.name === "layout" && layDraft && !laySaver.busy) { const cur = S.layouts.get(layDraft.storeId); if (cur && cur.editedBy !== clientId) { layDraft = null; render(); toast("他の方の変更を反映しました"); } }
+  }, () => {}));
   unsubs.push(db.collection("courses").onSnapshot((snap) => {
     const first = !S.got.courses;
     S.courses = new Map(snap.docs.map((d) => [d.id, { ...clone(d.data()), id: d.id }]));
@@ -879,7 +902,7 @@ function drawBell() {
 async function saveWatch(mut) { const w = clone(S.watch || {}); w.items = Array.isArray(w.items) ? w.items : []; mut(w); S.watch = w; await db.doc("settings/specwatch").set(w); drawBell(); }
 /** お知らせの内容を「特定原材料」の一覧に反映する。追加は別の呼び方も一緒に入れ、コース成分表へも未確認の行として反映する。 */
 async function importWatch(it) {
-  await Promise.all([setSaver.flush(), courseSaver.flush()]);
+  await Promise.all([setSaver.flush(), courseSaver.flush(), laySaver.flush()]);
   const set = { ...SET_DEFAULTS(), ...clone(S.settings) };
   if (!Array.isArray(set.spec) || !set.spec.length) set.spec = clone(SPEC_DEFAULT);
   const kindOf = (t) => (/義務/.test(t || "") ? "duty" : "rec"), key = norm(it.name);
@@ -954,9 +977,9 @@ function watchLine() {
 /* ---------- 画面切替 ---------- */
 async function go(v) {
   if (authState !== "open") return;
-  await Promise.all([caseSaver.flush(), storeSaver.flush(), setSaver.flush(), courseSaver.flush()]);
+  await Promise.all([caseSaver.flush(), storeSaver.flush(), setSaver.flush(), courseSaver.flush(), laySaver.flush()]);
   if (view.name === "spec") await syncAllCourses(); // 入力途中の名前を行にしないよう、画面を離れるときにまとめて反映する
-  view = v; draft = null; storeDraft = null; setDraft = null; courseDraft = null;
+  view = v; draft = null; storeDraft = null; setDraft = null; courseDraft = null; layDraft = null;
   try { location.hash = v.name === "case" ? "case-" + v.id : v.name; } catch (_) {}
   render(); window.scrollTo(0, 0);
 }
@@ -969,7 +992,7 @@ $("#open-settings").addEventListener("click", async () => {
   approvalDialog("共通設定を開く", "共通設定の閲覧・変更には、上長承認のパスワードが必要です。", () => go({ name: "settings" }));
 });
 function render() {
-  const cur = view.name === "case" ? "list" : view.name;
+  const cur = view.name === "case" ? "list" : view.name === "layout" ? "stores" : view.name;
   for (const b of $("#nav").children) { if (b.dataset.v === cur) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); }
   const app = $("#app");
   $("#nav").hidden = authState !== "open"; $("#logout").hidden = authState !== "open" || !dataKey;
@@ -984,6 +1007,7 @@ function render() {
   else if (view.name === "stores") app.replaceChildren(...top, ...viewStores());
   else if (view.name === "courses") app.replaceChildren(...top, ...viewCourses());
   else if (view.name === "spec") app.replaceChildren(...top, ...viewSpec());
+  else if (view.name === "layout") { if (!($("#lay") && layDraft && layDraft.storeId === view.id)) app.replaceChildren(...top, ...viewLayout()); } // 編集中は描き直さない（選択や取り消しの履歴を保つ）
   else app.replaceChildren(...top, ...viewSettings());
   if (view.name === "list") renderListBody();
   fitAll();
@@ -1656,7 +1680,8 @@ function renderStoreList() {
   const list = [...S.stores.values()].filter((x) => !sq || norm(x.name).includes(sq)).sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja"));
   box.replaceChildren(...list.map((x) => h("div", { class: "nrow" },
     h("input", { id: "sn-" + x.id, value: x.name || "", "aria-label": "店舗名", placeholder: "店舗名", onchange: (e) => { const v = e.target.value.trim(); if (v !== (x.name || "")) saveStore({ id: x.id, name: v }); } }),
-    confirmBtn("×", "削除", async () => { S.stores.delete(x.id); try { if (db) await db.doc("stores/" + x.id).delete(); } catch (_) { toast("削除できませんでした"); } render(); }, "x"))));
+    h("button", { type: "button", class: "btn sm", "data-lay": x.id, text: (S.layouts.get(x.id)?.floors || []).length ? "レイアウト ✓" : "レイアウト", title: "この店舗の座席レイアウトを作成・編集", onclick: () => go({ name: "layout", id: x.id }) }),
+    confirmBtn("×", "削除", async () => { S.stores.delete(x.id); try { if (db) { await db.doc("stores/" + x.id).delete(); if (S.layouts.has(x.id)) await db.doc("layouts/" + x.id).delete(); } } catch (_) { toast("削除できませんでした"); } render(); }, "x"))));
   if (!list.length) box.append(h("div", { class: "empty", text: S.stores.size ? "該当する店舗がありません。" : "店舗がまだありません。下の欄から追加してください。" }));
   const cnt = $("#s-count"); if (cnt) cnt.textContent = sq ? `${list.length}店舗（全${S.stores.size}店舗中）` : `登録 ${S.stores.size}店舗`;
 }
@@ -2113,9 +2138,9 @@ function backupPanel() {
   const doExport = async () => {
     say("書き出し中…", true);
     try {
-      await Promise.all([caseSaver.flush(), storeSaver.flush(), setSaver.flush(), courseSaver.flush()]);
+      await Promise.all([caseSaver.flush(), storeSaver.flush(), setSaver.flush(), courseSaver.flush(), laySaver.flush()]);
       const strip = (m) => [...m.values()].map((x) => clone(x));
-      const payload = { cases: strip(S.cases).filter((c) => !c.locked), stores: strip(S.stores), courses: strip(S.courses), settings: clone(S.settings), approval: db ? await getApproval() : null };
+      const payload = { cases: strip(S.cases).filter((c) => !c.locked), stores: strip(S.stores), courses: strip(S.courses), layouts: strip(S.layouts), settings: clone(S.settings), approval: db ? await getApproval() : null };
       const out = { app: "allergy-sheet", v: 1, exportedAt: new Date().toISOString(), auth: authDoc, counts: { cases: payload.cases.length, stores: payload.stores.length, courses: payload.courses.length }, ...(await sealWith(dataKey, payload)) };
       await dl.save({ filename: `アレルギー対応シート_バックアップ_${today().replace(/-/g, "")}.json`, data: JSON.stringify(out) });
       say(`書き出しました（案件${payload.cases.length}件、店舗${payload.stores.length}件、コース${payload.courses.length}件）。`, true);
@@ -2138,6 +2163,7 @@ function backupPanel() {
       const put = async (path, body) => { const b = clone(body); delete b.id; await db.doc(path).set(b); };
       for (const x of data.stores || []) await put("stores/" + x.id, x);
       for (const x of data.courses || []) await put("courses/" + x.id, x);
+      for (const x of data.layouts || []) await put("layouts/" + x.id, x);
       if (data.settings) await put("settings/common", { ...data.settings, editedBy: "restore" });
       if (data.approval) await put("settings/approval", data.approval);
       if (data.approval && Array.isArray(data.approval.stamps)) S.approvers = data.approval.stamps;
@@ -2196,6 +2222,267 @@ function pwPanel() {
     h("div", { class: "muted small", text: "全員共通のパスワードです。変更したら利用者に新しいパスワードを伝えてください。忘れると保存済みの案件を開けなくなります。" }),
     h("div", { class: "fields" }, field("現在のパスワード", withEye(cur)), field("新しいパスワード（8文字以上）", withEye(n1)), field("もう一度入力", withEye(n2))),
     h("div", { class: "row" }, h("button", { type: "submit", class: "btn", text: "変更する" }), msg));
+}
+
+/* ---------- 座席レイアウト ----------
+   店舗ごとの座席表を、Excel のようなマス目（結合・色・罫線・文字）で作る。階ごとに1枚（floor）。
+   floor = { id, name, rows, cols, cw:[列幅px], rh:[行高px], cells:{ "行,列": { v, bg, fg, bd:"上右下左"(0/1/2), b, fs, al } }, merges:[[r1,c1,r2,c2]] } */
+const LAY = { cw: 26, rh: 20, maxR: 200, maxC: 120 };
+const newFloor = (name, rows = 30, cols = 40) => ({ id: uid("f"), name, rows, cols, cw: Array(cols).fill(LAY.cw), rh: Array(rows).fill(LAY.rh), cells: {}, merges: [] });
+let layDraft = null; // { storeId, doc: { floors: [...] } }
+const laySaver = makeSaver(async (d) => {
+  if (!layDraft) return;
+  const body = { floors: clone(layDraft.doc.floors), updatedAt: new Date().toISOString(), editedBy: clientId };
+  S.layouts.set(layDraft.storeId, { ...clone(body), id: layDraft.storeId });
+  if (d) await d.doc("layouts/" + layDraft.storeId).set(body);
+});
+
+/** Excel ファイルを読み、シートごとに1つの階として取り込む（結合・背景色・罫線・文字・列幅・行の高さ）。図形や画像は対象外。 */
+async function importLayoutXlsx(file) {
+  await loadScript(LIB.exceljs);
+  const wb = new ExcelJS.Workbook(); await wb.xlsx.load(await file.arrayBuffer());
+  const THEME = ["FFFFFF", "000000", "EEECE1", "1F497D", "4F81BD", "C0504D", "9BBB59", "8064A2", "4BACC6", "F79646"];
+  const INDEXED = { 8: "000000", 9: "FFFFFF", 10: "FF0000", 11: "00FF00", 12: "0000FF", 13: "FFFF00", 14: "FF00FF", 15: "00FFFF", 22: "C0C0C0", 23: "808080", 55: "969696" };
+  const tint = (hex, t) => [0, 2, 4].map((i) => { const ch = parseInt(hex.slice(i, i + 2), 16), v = t < 0 ? ch * (1 + t) : ch + (255 - ch) * t; return Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0"); }).join("");
+  const color = (c) => { if (!c) return ""; if (c.argb) return "#" + c.argb.slice(-6).toLowerCase(); if (c.theme != null) return "#" + tint(THEME[c.theme] || "000000", c.tint || 0); if (c.indexed != null && INDEXED[c.indexed]) return "#" + INDEXED[c.indexed].toLowerCase(); return ""; };
+  const thick = { medium: 2, thick: 2, double: 2, mediumDashed: 2, mediumDashDot: 2, mediumDashDotDot: 2 };
+  const colNo = (s) => [...s].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+  const floors = []; let cut = false;
+  wb.eachSheet((ws) => {
+    const cells = {}; let R = 0, C = 0;
+    const merges = (ws.model.merges || []).map((m) => { const p = /^([A-Z]+)(\d+):([A-Z]+)(\d+)$/.exec(m); return p ? [+p[2] - 1, colNo(p[1]) - 1, +p[4] - 1, colNo(p[3]) - 1] : null; }).filter(Boolean);
+    for (let r = 1; r <= ws.rowCount; r++) {
+      const row = ws.findRow(r); if (!row) continue;
+      row.eachCell({ includeEmpty: true }, (cl, c) => {
+        const x = {};
+        let v = cl.isMerged && cl.master && cl.master.address !== cl.address ? null : cl.value;
+        if (v && typeof v === "object") v = v.richText ? v.richText.map((t) => t.text).join("") : v.result != null ? v.result : v.text != null ? v.text : v instanceof Date ? v.toLocaleDateString("ja-JP") : "";
+        if (v !== null && v !== undefined && v !== "") x.v = String(v);
+        const fill = cl.fill; if (fill && fill.type === "pattern" && fill.pattern === "solid") { const bg = color(fill.fgColor); if (bg && bg !== "#ffffff") x.bg = bg; }
+        const b = cl.border || {}, bd = ["top", "right", "bottom", "left"].map((s) => (b[s] && b[s].style ? thick[b[s].style] || 1 : 0)).join(""); if (bd !== "0000") x.bd = bd;
+        if (x.v) {
+          const ft = cl.font || {}; if (ft.bold) x.b = 1;
+          const px = ft.size ? Math.round((ft.size * 4) / 3) : 0; if (px && px !== 12) x.fs = Math.min(40, Math.max(8, px));
+          const fg = color(ft.color); if (fg && fg !== "#000000") x.fg = fg;
+          const al = cl.alignment && cl.alignment.horizontal; if (al === "right") x.al = "r"; else if (al && al !== "center" && al !== "centerContinuous") x.al = "l";
+        }
+        if (Object.keys(x).length) { cells[(r - 1) + "," + (c - 1)] = x; R = Math.max(R, r); C = Math.max(C, c); }
+      });
+    }
+    for (const m of merges) if (cells[m[0] + "," + m[1]]) { R = Math.max(R, m[2] + 1); C = Math.max(C, m[3] + 1); }
+    if (!R || !C) return;
+    if (R > LAY.maxR || C > LAY.maxC) { cut = true; R = Math.min(R, LAY.maxR); C = Math.min(C, LAY.maxC); }
+    const dw = ws.properties.defaultColWidth || 8.43, dh = ws.properties.defaultRowHeight || 15;
+    const cw = [], rh = [];
+    for (let c = 1; c <= C; c++) { const col = ws.getColumn(c); cw.push(Math.max(6, Math.min(400, Math.round((col.hidden ? 0 : col.width || dw) * 7 + 5)))); }
+    for (let r = 1; r <= R; r++) { const row = ws.findRow(r); rh.push(Math.max(6, Math.min(400, Math.round(((row && row.height) || dh) * 4 / 3)))); }
+    for (const k of Object.keys(cells)) { const [r, c] = k.split(",").map(Number); if (r >= R || c >= C) delete cells[k]; }
+    floors.push({ id: uid("f"), name: ws.name || "階" + (floors.length + 1), rows: R, cols: C, cw, rh, cells, merges: merges.filter((m) => m[2] < R && m[3] < C && (m[0] !== m[2] || m[1] !== m[3])) });
+  });
+  return { floors, cut };
+}
+
+/** レイアウトの編集画面。doc.floors を直接書き換え、変更のたびに onChange を呼ぶ。 */
+function layoutEditor(doc, onChange) {
+  let fi = 0, a = { r: 0, c: 0 }, f = { r: 0, c: 0 }, zoom = 1, clip = null, drag = false, tds = new Map();
+  const undo = [];
+  const F = () => doc.floors[fi], K = (r, c) => r + "," + c;
+  const tabs = h("div", { class: "lay-tabs" }), bar = h("div", { class: "lay-bar" }), wrap = h("div", { class: "lay-wrap", tabindex: "0", id: "lay-wrap" });
+  const txt = h("input", { id: "lay-text", placeholder: "選んだマスの文字（ここに入力）", autocomplete: "off" });
+  const pos = h("span", { class: "small muted", id: "lay-pos", style: "min-width:64px" });
+  const wIn = h("input", { id: "lay-cw", type: "number", min: "6", max: "400", style: "width:64px", "aria-label": "列の幅" }), hIn = h("input", { id: "lay-rh", type: "number", min: "6", max: "400", style: "width:64px", "aria-label": "行の高さ" });
+  const file = h("input", { type: "file", id: "lay-file", accept: ".xlsx", hidden: true });
+  wrap.tabIndex = 0;
+  const root = h("div", { class: "lay stack", id: "lay" }, tabs, bar, h("div", { class: "row" }, pos, h("div", { style: "flex:1;min-width:200px" }, txt)), wrap, file);
+
+  const mergeAt = (r, c) => F().merges.find((m) => r >= m[0] && r <= m[2] && c >= m[1] && c <= m[3]);
+  const origin = (p) => { const m = mergeAt(p.r, p.c); return m ? { r: m[0], c: m[1] } : p; };
+  const range = () => {
+    let r1 = Math.min(a.r, f.r), r2 = Math.max(a.r, f.r), c1 = Math.min(a.c, f.c), c2 = Math.max(a.c, f.c), ch = true;
+    while (ch) { ch = false; for (const m of F().merges) if (m[0] <= r2 && m[2] >= r1 && m[1] <= c2 && m[3] >= c1 && (m[0] < r1 || m[2] > r2 || m[1] < c1 || m[3] > c2)) { r1 = Math.min(r1, m[0]); r2 = Math.max(r2, m[2]); c1 = Math.min(c1, m[1]); c2 = Math.max(c2, m[3]); ch = true; } }
+    return { r1, c1, r2, c2 };
+  };
+  const get = (r, c) => F().cells[K(r, c)];
+  const put = (r, c, fn) => { const fl = F(), k = K(r, c), x = fl.cells[k] || {}; fn(x); for (const p of Object.keys(x)) if (x[p] === "" || x[p] == null || x[p] === 0 || x[p] === "0000") delete x[p]; if (Object.keys(x).length) fl.cells[k] = x; else delete fl.cells[k]; };
+  const each = (fn) => { const g = range(); for (let r = g.r1; r <= g.r2; r++) for (let c = g.c1; c <= g.c2; c++) fn(r, c, g); };
+  const mutate = (fn) => { undo.push([fi, JSON.stringify(F())]); if (undo.length > 40) undo.shift(); fn(); clampSel(); onChange(); draw(); };
+  const clampSel = () => { const fl = F(); if (!fl) return; for (const p of [a, f]) { p.r = Math.max(0, Math.min(fl.rows - 1, p.r)); p.c = Math.max(0, Math.min(fl.cols - 1, p.c)); } };
+  const setBd = (r, c, side, w) => { const fl = F(); if (r < 0 || c < 0 || r >= fl.rows || c >= fl.cols) return; put(r, c, (x) => { const d = (x.bd || "0000").split(""); d[side] = String(w); x.bd = d.join(""); }); };
+
+  const BORDER = ["1px dotted #cfd5df", "1px solid #222", "2px solid #111"];
+  function draw() {
+    const fl = F(); drawTabs();
+    if (!fl) { bar.hidden = true; txt.parentNode.parentNode.hidden = true; wrap.replaceChildren(h("div", { class: "empty", text: "この店舗のレイアウトはまだありません。「Excelから読み込む」か「階を追加」から作成してください。" })); return; }
+    bar.hidden = false; txt.parentNode.parentNode.hidden = false;
+    const covered = new Set(), start = new Map();
+    for (const m of fl.merges) { start.set(K(m[0], m[1]), m); for (let r = m[0]; r <= m[2]; r++) for (let c = m[1]; c <= m[3]; c++) if (r !== m[0] || c !== m[1]) covered.add(K(r, c)); }
+    const dg = (r, c, i) => +(((fl.cells[K(r, c)] || {}).bd || "0000")[i]) || 0;
+    const tb = document.createElement("tbody"); tds = new Map();
+    for (let r = 0; r < fl.rows; r++) {
+      const tr = document.createElement("tr"); tr.style.height = fl.rh[r] + "px";
+      for (let c = 0; c < fl.cols; c++) {
+        if (covered.has(K(r, c))) continue;
+        const x = fl.cells[K(r, c)] || {}, m = start.get(K(r, c)), r2 = m ? m[2] : r, c2 = m ? m[3] : c, td = document.createElement("td");
+        td.dataset.r = r; td.dataset.c = c; if (m) { td.rowSpan = r2 - r + 1; td.colSpan = c2 - c + 1; }
+        let s = `border-top:${BORDER[dg(r, c, 0)]};border-right:${BORDER[Math.max(dg(r, c2, 1), dg(r2, c2, 1))]};border-bottom:${BORDER[Math.max(dg(r2, c, 2), dg(r2, c2, 2))]};border-left:${BORDER[dg(r, c, 3)]};`;
+        if (x.bg) s += `background:${x.bg};`;
+        td.style.cssText = s;
+        if (x.v) {
+          let hgt = 0; for (let i = r; i <= r2; i++) hgt += fl.rh[i];
+          const d = document.createElement("div"); d.textContent = x.v;
+          d.style.cssText = `height:${hgt - 1}px;font-size:${x.fs || 12}px;${x.fg ? `color:${x.fg};` : ""}${x.b ? "font-weight:700;" : ""}${x.al === "l" ? "justify-content:flex-start;text-align:left;padding-left:2px;" : x.al === "r" ? "justify-content:flex-end;text-align:right;padding-right:2px;" : ""}`;
+          td.append(d);
+        }
+        tds.set(K(r, c), td); tr.append(td);
+      }
+      tb.append(tr);
+    }
+    const table = h("table", { id: "lay-table" }, h("colgroup", {}, ...fl.cw.map((w) => h("col", { style: `width:${w}px` }))), tb);
+    table.style.width = fl.cw.reduce((n, w) => n + w, 0) + "px"; table.style.zoom = zoom;
+    const top = wrap.scrollTop, left = wrap.scrollLeft; wrap.replaceChildren(table); wrap.scrollTop = top; wrap.scrollLeft = left;
+    paint();
+  }
+  function paint() {
+    const fl = F(); if (!fl) return; const g = range(), o = origin(a);
+    for (const [k, td] of tds) { const [r, c] = k.split(",").map(Number); td.classList.toggle("sel", r >= g.r1 && r <= g.r2 && c >= g.c1 && c <= g.c2); td.classList.toggle("act", r === o.r && c === o.c); }
+    const x = get(o.r, o.c) || {}; if (document.activeElement !== txt) txt.value = x.v || "";
+    const col = (n) => { let s = ""; n++; while (n) { s = String.fromCharCode(65 + ((n - 1) % 26)) + s; n = Math.floor((n - 1) / 26); } return s; };
+    pos.textContent = col(g.c1) + (g.r1 + 1) + (g.r1 !== g.r2 || g.c1 !== g.c2 ? ":" + col(g.c2) + (g.r2 + 1) : "");
+    wIn.value = fl.cw[g.c1]; hIn.value = fl.rh[g.r1];
+  }
+  function drawTabs() {
+    const fl = F();
+    tabs.replaceChildren(...[...doc.floors.map((x, i) => i === fi
+      ? h("span", { class: "lay-tab on" }, h("input", { id: "lay-name", value: x.name || "", "aria-label": "階の名前", placeholder: "階の名前（例：1F）", onchange: (e) => { x.name = e.target.value.trim() || "階" + (i + 1); onChange(); } }))
+      : h("button", { type: "button", class: "lay-tab", text: x.name || "階" + (i + 1), onclick: () => { fi = i; a = { r: 0, c: 0 }; f = { r: 0, c: 0 }; draw(); } })),
+      h("button", { type: "button", class: "btn sm", id: "lay-add", text: "＋ 階を追加", onclick: () => { doc.floors.push(newFloor((doc.floors.length + 1) + "F")); fi = doc.floors.length - 1; a = { r: 0, c: 0 }; f = { r: 0, c: 0 }; onChange(); draw(); } }),
+      h("button", { type: "button", class: "btn sm", id: "lay-xlsx", text: "Excelから読み込む", onclick: () => file.click() }),
+      h("span", { style: "margin-left:auto" }),
+      fl ? confirmBtn("この階を削除", "本当に削除", () => { doc.floors.splice(fi, 1); fi = Math.max(0, fi - 1); undo.length = 0; onChange(); draw(); }, "btn sm danger") : null].filter(Boolean));
+  }
+
+  /* 行・列の挿入と削除（axis: 0=行, 1=列）。マス・結合・寸法をまとめてずらす。 */
+  function insert(axis, at, n) {
+    const fl = F(), cells = {};
+    for (const [k, v] of Object.entries(fl.cells)) { const p = k.split(",").map(Number); if (p[axis] >= at) p[axis] += n; cells[p.join(",")] = v; }
+    fl.cells = cells;
+    for (const m of fl.merges) { if (m[axis] >= at) { m[axis] += n; m[axis + 2] += n; } else if (m[axis + 2] >= at) m[axis + 2] += n; }
+    if (axis) { fl.cw.splice(at, 0, ...Array(n).fill(fl.cw[Math.max(0, at - 1)] || LAY.cw)); fl.cols += n; } else { fl.rh.splice(at, 0, ...Array(n).fill(fl.rh[Math.max(0, at - 1)] || LAY.rh)); fl.rows += n; }
+  }
+  function remove(axis, from, to) {
+    const fl = F(), n = to - from + 1, cells = {};
+    for (const [k, v] of Object.entries(fl.cells)) { const p = k.split(",").map(Number); if (p[axis] >= from && p[axis] <= to) continue; if (p[axis] > to) p[axis] -= n; cells[p.join(",")] = v; }
+    fl.cells = cells;
+    fl.merges = fl.merges.map((m) => { const s = m[axis] > to ? m[axis] - n : Math.min(m[axis], from), e = m[axis + 2] > to ? m[axis + 2] - n : m[axis + 2] >= from ? from - 1 : m[axis + 2]; const o = m.slice(); o[axis] = s; o[axis + 2] = e; return o; }).filter((m) => m[2] >= m[0] && m[3] >= m[1] && (m[0] !== m[2] || m[1] !== m[3]));
+    if (axis) { fl.cw.splice(from, n); fl.cols -= n; } else { fl.rh.splice(from, n); fl.rows -= n; }
+  }
+
+  /* 道具（ツールバー） */
+  const btn = (text, title, fn, id) => h("button", { type: "button", class: "btn sm", text, title, id, onclick: () => { fn(); wrap.focus({ preventScroll: true }); } });
+  const sw = (colr, title, fn) => h("button", { type: "button", class: "lay-sw", title, "aria-label": title, style: colr ? `background:${colr}` : "background:linear-gradient(135deg,#fff 45%,#d64545 45%,#d64545 55%,#fff 55%)", onclick: () => { fn(); wrap.focus({ preventScroll: true }); } });
+  const grp = (label, ...kids) => h("div", { class: "grp" }, h("span", { class: "small muted", text: label }), ...kids);
+  const unmerge = () => { const g = range(), fl = F(); fl.merges = fl.merges.filter((m) => !(m[0] <= g.r2 && m[2] >= g.r1 && m[1] <= g.c2 && m[3] >= g.c1)); };
+  const border = (mode) => mutate(() => {
+    const g = range();
+    each((r, c) => {
+      if (mode === "all") put(r, c, (x) => { x.bd = "1111"; });
+      else if (mode === "none") { put(r, c, (x) => { x.bd = ""; }); if (r === g.r1) setBd(r - 1, c, 2, 0); if (r === g.r2) setBd(r + 1, c, 0, 0); if (c === g.c1) setBd(r, c - 1, 1, 0); if (c === g.c2) setBd(r, c + 1, 3, 0); }
+      else { const w = mode === "thick" ? 2 : 1; if (r === g.r1) setBd(r, c, 0, w); if (r === g.r2) setBd(r, c, 2, w); if (c === g.c1) setBd(r, c, 3, w); if (c === g.c2) setBd(r, c, 1, w); }
+    });
+  });
+  const BG = [["", "色なし"], ["#ffffff", "白"], ["#f2f2f2", "薄い灰色"], ["#bfbfbf", "灰色"], ["#fff2cc", "薄い黄"], ["#ffd966", "黄"], ["#f8cbad", "オレンジ"], ["#f4b6c2", "ピンク"], ["#c6e0b4", "緑"], ["#bdd7ee", "水色"], ["#d9c3e8", "紫"], ["#404040", "濃い灰色"]];
+  const FG = [["#000000", "黒"], ["#c00000", "赤"], ["#1f4e8c", "青"], ["#ffffff", "白"]];
+  const pick = h("input", { type: "color", class: "lay-sw", title: "ほかの色", "aria-label": "ほかの背景色", value: "#ffe699", onchange: (e) => mutate(() => each((r, c) => put(r, c, (x) => { x.bg = e.target.value; }))) });
+  bar.append(
+    grp("結合", btn("結合", "選んだ範囲を1つのマスにする", () => mutate(() => { const g = range(); unmerge(); if (g.r1 !== g.r2 || g.c1 !== g.c2) { each((r, c) => { if (r !== g.r1 || c !== g.c1) put(r, c, (x) => { x.v = ""; }); }); F().merges.push([g.r1, g.c1, g.r2, g.c2]); } }), "lay-merge"), btn("解除", "結合を解除", () => mutate(unmerge), "lay-unmerge")),
+    grp("背景", ...BG.map(([v, t]) => sw(v, t, () => mutate(() => each((r, c) => put(r, c, (x) => { x.bg = v; }))))), pick),
+    grp("文字色", ...FG.map(([v, t]) => sw(v, t, () => mutate(() => each((r, c) => put(r, c, (x) => { x.fg = v === "#000000" ? "" : v; })))))),
+    grp("罫線", btn("外枠", "範囲の外側に線", () => border("out"), "lay-b-out"), btn("太枠", "範囲の外側に太い線", () => border("thick"), "lay-b-thick"), btn("格子", "すべてのマスに線", () => border("all"), "lay-b-all"), btn("なし", "線を消す", () => border("none"), "lay-b-none")),
+    grp("文字", btn("太字", "太字の切り替え", () => mutate(() => { const o = origin(a), on = !(get(o.r, o.c) || {}).b; each((r, c) => put(r, c, (x) => { x.b = on ? 1 : 0; })); })),
+      sel([["10", "小"], ["12", "標準"], ["15", "大"], ["20", "特大"]], "12", (v) => mutate(() => each((r, c) => put(r, c, (x) => { x.fs = +v === 12 ? 0 : +v; }))), { id: "lay-fs", "aria-label": "文字の大きさ", style: "width:76px" }),
+      btn("左", "左寄せ", () => mutate(() => each((r, c) => put(r, c, (x) => { x.al = "l"; })))), btn("中", "中央", () => mutate(() => each((r, c) => put(r, c, (x) => { x.al = ""; })))), btn("右", "右寄せ", () => mutate(() => each((r, c) => put(r, c, (x) => { x.al = "r"; })))),
+      btn("○", "選んだマスに席の印（○）を入れる", () => mutate(() => { const cov = new Set(); for (const m of F().merges) for (let r = m[0]; r <= m[2]; r++) for (let c = m[1]; c <= m[3]; c++) if (r !== m[0] || c !== m[1]) cov.add(K(r, c)); each((r, c) => { if (!cov.has(K(r, c))) put(r, c, (x) => { x.v = "○"; }); }); }), "lay-seat")),
+    grp("行・列", btn("行を追加", "選んだ行の下に追加", () => { const g = range(); if (F().rows + (g.r2 - g.r1 + 1) > LAY.maxR) return toast("行はこれ以上増やせません"); mutate(() => insert(0, g.r2 + 1, g.r2 - g.r1 + 1)); }, "lay-row-add"),
+      btn("行を削除", "選んだ行を削除", () => { const g = range(); if (g.r2 - g.r1 + 1 >= F().rows) return toast("すべての行は削除できません"); mutate(() => remove(0, g.r1, g.r2)); }, "lay-row-del"),
+      btn("列を追加", "選んだ列の右に追加", () => { const g = range(); if (F().cols + (g.c2 - g.c1 + 1) > LAY.maxC) return toast("列はこれ以上増やせません"); mutate(() => insert(1, g.c2 + 1, g.c2 - g.c1 + 1)); }, "lay-col-add"),
+      btn("列を削除", "選んだ列を削除", () => { const g = range(); if (g.c2 - g.c1 + 1 >= F().cols) return toast("すべての列は削除できません"); mutate(() => remove(1, g.c1, g.c2)); }, "lay-col-del")),
+    grp("大きさ", h("label", { class: "small muted", for: "lay-cw", text: "列幅" }), wIn, h("label", { class: "small muted", for: "lay-rh", text: "行高" }), hIn),
+    grp("表示", sel([["0.5", "50%"], ["0.75", "75%"], ["1", "100%"], ["1.25", "125%"], ["1.5", "150%"]], "1", (v) => { zoom = +v; draw(); }, { id: "lay-zoom", "aria-label": "表示の倍率", style: "width:84px" }),
+      btn("元に戻す", "直前の操作を取り消す（Ctrl+Z）", () => doUndo(), "lay-undo")));
+  wIn.addEventListener("change", () => { const v = Math.max(6, Math.min(400, +wIn.value || LAY.cw)); mutate(() => { const g = range(); for (let c = g.c1; c <= g.c2; c++) F().cw[c] = v; }); });
+  hIn.addEventListener("change", () => { const v = Math.max(6, Math.min(400, +hIn.value || LAY.rh)); mutate(() => { const g = range(); for (let r = g.r1; r <= g.r2; r++) F().rh[r] = v; }); });
+  function doUndo() { const u = undo.pop(); if (!u) return toast("これ以上は戻せません"); if (!doc.floors[u[0]]) return; doc.floors[u[0]] = JSON.parse(u[1]); fi = u[0]; clampSel(); onChange(); draw(); }
+
+  /* 文字の入力：上の入力欄が、選んだマスの文字になる */
+  let typing = false;
+  txt.addEventListener("focus", () => { typing = false; });
+  txt.addEventListener("input", () => {
+    if (!typing) { undo.push([fi, JSON.stringify(F())]); if (undo.length > 40) undo.shift(); typing = true; }
+    const o = origin(a); put(o.r, o.c, (x) => { x.v = txt.value; }); onChange();
+    const td = tds.get(K(o.r, o.c)); if (td) { let d = td.firstElementChild; if (!d && txt.value) { draw(); return; } if (d) d.textContent = txt.value; }
+  });
+  txt.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); const fl = F(), g = range(); a = f = { r: Math.min(fl.rows - 1, g.r2 + 1), c: a.c }; a = { ...a }; draw(); wrap.focus({ preventScroll: true }); }
+    else if (e.key === "Escape") wrap.focus({ preventScroll: true });
+  });
+
+  /* マウスとキーボード */
+  const cellOf = (el) => { const td = el && el.closest && el.closest("td[data-r]"); return td && wrap.contains(td) ? { r: +td.dataset.r, c: +td.dataset.c } : null; };
+  wrap.addEventListener("pointerdown", (e) => { const p = cellOf(e.target); if (!p) return; e.preventDefault(); wrap.focus({ preventScroll: true }); if (e.shiftKey) f = p; else { a = p; f = { ...p }; } drag = true; paint(); });
+  wrap.addEventListener("pointermove", (e) => { if (!drag) return; const p = cellOf(document.elementFromPoint(e.clientX, e.clientY)); if (p && (p.r !== f.r || p.c !== f.c)) { f = p; paint(); } });
+  window.addEventListener("pointerup", () => { drag = false; });
+  wrap.addEventListener("dblclick", () => { txt.focus(); txt.select(); });
+  wrap.addEventListener("keydown", (e) => {
+    const fl = F(); if (!fl) return; const mod = e.ctrlKey || e.metaKey;
+    const mv = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[e.key];
+    if (mv) {
+      e.preventDefault(); const g = range(), p = e.shiftKey ? f : a;
+      const nr = Math.max(0, Math.min(fl.rows - 1, (mv[0] > 0 && !e.shiftKey ? g.r2 : mv[0] < 0 && !e.shiftKey ? g.r1 : p.r) + mv[0])), nc = Math.max(0, Math.min(fl.cols - 1, (mv[1] > 0 && !e.shiftKey ? g.c2 : mv[1] < 0 && !e.shiftKey ? g.c1 : p.c) + mv[1]));
+      if (e.shiftKey) f = { r: nr, c: nc }; else { a = { r: mv[0] ? nr : a.r, c: mv[1] ? nc : a.c }; f = { ...a }; }
+      paint(); const td = tds.get(K(origin(f).r, origin(f).c)); if (td) td.scrollIntoView({ block: "nearest", inline: "nearest" });
+    } else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); mutate(() => each((r, c) => put(r, c, (x) => { x.v = ""; }))); }
+    else if (mod && e.key.toLowerCase() === "z") { e.preventDefault(); doUndo(); }
+    else if (mod && e.key.toLowerCase() === "c") { const g = range(), fl2 = F(); clip = { h: g.r2 - g.r1 + 1, w: g.c2 - g.c1 + 1, cells: [], merges: fl2.merges.filter((m) => m[0] >= g.r1 && m[2] <= g.r2 && m[1] >= g.c1 && m[3] <= g.c2).map((m) => [m[0] - g.r1, m[1] - g.c1, m[2] - g.r1, m[3] - g.c1]) }; each((r, c) => { const x = get(r, c); if (x) clip.cells.push([r - g.r1, c - g.c1, clone(x)]); }); toast("コピーしました（Ctrl+V で貼り付け）"); }
+    else if (mod && e.key.toLowerCase() === "v" && clip) {
+      e.preventDefault(); const g = range();
+      if (g.r1 + clip.h > fl.rows || g.c1 + clip.w > fl.cols) return toast("貼り付け先がはみ出します");
+      mutate(() => { a = { r: g.r1, c: g.c1 }; f = { r: g.r1 + clip.h - 1, c: g.c1 + clip.w - 1 }; unmerge(); each((r, c) => { delete F().cells[K(r, c)]; }); for (const [r, c, x] of clip.cells) F().cells[K(g.r1 + r, g.c1 + c)] = clone(x); for (const m of clip.merges) F().merges.push([m[0] + g.r1, m[1] + g.c1, m[2] + g.r1, m[3] + g.c1]); });
+    } else if (e.key === "Enter" || e.key === "F2") { e.preventDefault(); txt.focus(); txt.select(); }
+    else if ((e.key.length === 1 || e.key === "Process" || e.isComposing) && !mod && !e.altKey) { txt.value = ""; txt.focus(); } // 日本語入力（変換中）もそのまま入力欄へ
+  });
+
+  /* Excel からの読み込み */
+  file.addEventListener("change", async () => {
+    const fl = file.files[0]; file.value = ""; if (!fl) return;
+    toast("Excelを読み込んでいます…");
+    let res; try { res = await importLayoutXlsx(fl); } catch (_) { return toast("読み込めませんでした。xlsx 形式のファイルを選んでください"); }
+    if (!res.floors.length) return toast("読み込める内容がありませんでした");
+    const apply = (replace) => { if (replace) doc.floors.length = 0; doc.floors.push(...res.floors); fi = replace ? 0 : doc.floors.length - res.floors.length; a = { r: 0, c: 0 }; f = { r: 0, c: 0 }; undo.length = 0; onChange(); draw(); toast(`${res.floors.length}枚のシートを読み込みました` + (res.cut ? "（大きすぎる部分は省きました）" : "")); };
+    if (!doc.floors.some((x) => Object.keys(x.cells).length)) return apply(true);
+    const dlg = $("#dlg");
+    dlg.replaceChildren(h("div", { class: "dlg", style: "max-width:460px" }, h("h3", { text: "Excelの読み込み" }),
+      h("div", { text: `${res.floors.length}枚のシート（${res.floors.map((x) => x.name).join("、")}）を読み込みます。今あるレイアウトをどうしますか？` }),
+      h("div", { class: "row" }, h("button", { type: "button", class: "btn", text: "やめる", onclick: () => dlg.close() }), h("span", { style: "margin-left:auto" }),
+        h("button", { type: "button", class: "btn", id: "lay-imp-add", text: "階として追加", onclick: () => { dlg.close(); apply(false); } }),
+        h("button", { type: "button", class: "btn primary", id: "lay-imp-rep", text: "置き換える", onclick: () => { dlg.close(); apply(true); } }))));
+    dlg.style.width = "min(480px,calc(100vw - 32px))"; dlg.addEventListener("close", () => (dlg.style.width = ""), { once: true }); dlg.showModal();
+  });
+
+  draw();
+  return root;
+}
+
+function viewLayout() {
+  const st = S.stores.get(view.id);
+  if (!st) return [h("div", { class: "empty", text: "この店舗は見つかりません。" })];
+  if (!layDraft || layDraft.storeId !== view.id) { const cur = S.layouts.get(view.id); layDraft = { storeId: view.id, doc: { floors: cur && Array.isArray(cur.floors) ? clone(cur.floors) : [] } }; }
+  return [
+    h("div", {}, h("button", { type: "button", class: "linkbtn", text: "← 店舗マスタ", onclick: () => go({ name: "stores" }) })),
+    h("h2", { text: `${st.name || "（店舗名なし）"} のレイアウト` }),
+    h("div", { class: "muted small", style: "max-width:90ch", text: "マス目をドラッグして範囲を選び、上の道具で結合・色・罫線を付けます。文字は入力欄に打ち込みます（マスを選んでそのまま打っても入ります）。矢印キーで移動、Delete で文字を消去、Ctrl+C／Ctrl+V でコピー・貼り付け、Ctrl+Z で元に戻せます。階はタブで切り替えます。" }),
+    readOnly ? h("div", { class: "banner info", text: "閲覧専用のため、変更は保存されません。" }) : null,
+    layoutEditor(layDraft.doc, () => laySaver.touch()),
+  ].filter(Boolean);
 }
 
 /* ---------- 起動 ---------- */
