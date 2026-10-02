@@ -195,6 +195,8 @@ nav button[aria-current="page"]{background:var(--accent-soft);color:var(--accent
   .wrap:has(#nav:not([hidden])) header.top{position:sticky;top:0;height:100vh;box-sizing:border-box;flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:6px;padding:22px 12px 20px;margin:0;border:0;overflow-y:auto;background:#16335a;color:#fff}
   .wrap:has(#nav:not([hidden])) header.top h1{margin:0 0 16px;padding-inline:12px;color:#fff}
   .wrap:has(#nav:not([hidden])) #bell{margin:0 0 12px;border-radius:var(--r);padding:8px 12px;justify-content:flex-start}
+  .wrap:has(#nav:not([hidden])) #bell:not(.on){color:#c9d6e8;border-color:rgba(255,255,255,.25)}
+  .wrap:has(#nav:not([hidden])) #bell:not(.on):hover{background:rgba(255,255,255,.08);color:#fff}
   .wrap:has(#nav:not([hidden])) #bell b{margin-left:auto}
   .wrap:has(#nav:not([hidden])) #bell:focus-visible{outline-color:#fff}
   .wrap:has(#nav:not([hidden])) nav{flex-direction:column;flex-wrap:nowrap;gap:2px}
@@ -219,7 +221,8 @@ nav button[aria-current="page"]{background:var(--accent-soft);color:var(--accent
 .login{max-width:420px;margin:48px auto 0;width:100%}
 #save{margin-left:auto;font-size:12px;color:var(--muted)}
 #save.err{color:var(--bad);font-weight:700}
-#bell{display:inline-flex;align-items:center;gap:6px;border:1px solid #e0a100;background:#fff4d1;color:#6b4a00;border-radius:999px;padding:5px 12px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+#bell{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:none;color:var(--muted);border-radius:999px;padding:5px 12px;font:inherit;font-size:13px;cursor:pointer}
+#bell.on{border-color:#e0a100;background:#fff4d1;color:#6b4a00;font-weight:700}
 #bell b{background:#c62828;color:#fff;border-radius:999px;min-width:18px;padding:0 5px;font-size:12px;line-height:18px;text-align:center}
 #bell:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .wlist{margin:0;padding-left:1.2em}.wlist li{margin-block:4px}
@@ -848,55 +851,85 @@ function startData() {
   // 特定原材料の自動確認（単独アプリのサーバーが月2回書き込む）の結果。新しい情報があればベルを出す。
   unsubs.push(db.doc("settings/specwatch").onSnapshot((snap) => {
     S.watch = snap.exists ? clone(snap.data()) : null; drawBell();
+    if ($("#watch-dlg") && $("#dlg").open) watchDialog();
     const el = $("#watch-line"); if (el) el.replaceWith(watchLine());
   }, () => {}));
 }
 /* ---------- 特定原材料の自動確認とお知らせ ---------- */
-const watchNews = () => { const w = S.watch; return w && w.hasNews && w.sig !== w.ackSig ? w : null; };
-const watchCount = (w) => ["added", "changed", "removed", "upcoming"].reduce((n, k) => n + (Array.isArray(w[k]) ? w[k].length : 0), 0);
+/* お知らせは履歴（items）として残す。status: new=新着 / ack=確認済み / done=取込済み */
+const watchItems = () => (S.watch && Array.isArray(S.watch.items) ? S.watch.items : []).slice().sort((x, y) => String(y.at || "").localeCompare(String(x.at || "")));
+const watchUnread = () => watchItems().filter((x) => x.status === "new").length;
 const jpDay = (iso) => { const d = new Date(iso || ""); return isNaN(d) ? "" : `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`; };
+const WATCH_TYPE = { added: "追加", changed: "区分変更", removed: "対象外", upcoming: "変更予定" };
 function drawBell() {
-  const b = $("#bell"), w = authState === "open" ? watchNews() : null;
-  b.hidden = !w; if (w) $("#bell-n").textContent = watchCount(w);
+  const b = $("#bell"), show = authState === "open" && !!((window.claude && window.claude.host) || S.watch), n = show ? watchUnread() : 0;
+  b.hidden = !show; b.classList.toggle("on", n > 0); $("#bell-n").textContent = n || ""; $("#bell-n").hidden = !n;
+}
+async function saveWatch(mut) { const w = clone(S.watch || {}); w.items = Array.isArray(w.items) ? w.items : []; mut(w); S.watch = w; await db.doc("settings/specwatch").set(w); drawBell(); }
+/** お知らせの内容を「特定原材料」の一覧に反映する。追加は別の呼び方も一緒に入れ、コース成分表へも未確認の行として反映する。 */
+async function importWatch(it) {
+  await Promise.all([setSaver.flush(), courseSaver.flush()]);
+  const set = { ...SET_DEFAULTS(), ...clone(S.settings) };
+  if (!Array.isArray(set.spec) || !set.spec.length) set.spec = clone(SPEC_DEFAULT);
+  const kindOf = (t) => (/義務/.test(t || "") ? "duty" : "rec"), key = norm(it.name);
+  const hit = set.spec.find((x) => norm(x.name) === key || String(x.aliases || "").split(/[、,，]/).some((a) => a.trim() && norm(a) === key));
+  let msg = "";
+  if (it.type === "removed") { if (!hit) return toast("一覧に該当する品目がありません"); set.spec.splice(set.spec.indexOf(hit), 1); msg = `「${hit.name}」を一覧から外しました`; }
+  else if (it.type === "changed") { if (!hit) return toast("一覧に該当する品目がありません"); hit.kind = kindOf(it.to); msg = `「${hit.name}」を${hit.kind === "duty" ? "表示義務" : "表示推奨"}に変更しました`; }
+  else {
+    const extra = String(it.aliases || "").split(/[、,，]/).map((a) => a.trim()).filter(Boolean);
+    if (hit) { const have = String(hit.aliases || "").split(/[、,，]/).map((a) => a.trim()).filter(Boolean); hit.kind = kindOf(it.kind); hit.aliases = [...new Set([...have, ...extra])].join("、"); msg = `「${hit.name}」を更新しました`; }
+    else { set.spec.push({ id: uid("g"), kind: kindOf(it.kind), name: it.name, aliases: [...new Set(extra.filter((a) => norm(a) !== key))].join("、") }); msg = `「${it.name}」を特定原材料に追加しました`; }
+  }
+  set.editedBy = clientId; S.settings = clone(set); setDraft = null;
+  await db.doc("settings/common").set(clone(set));
+  await saveWatch((w) => { const t = w.items.find((x) => x.id === it.id); if (t) { t.status = "done"; t.doneAt = new Date().toISOString(); } });
+  await syncAllCourses();
+  toast(msg); if (view.name === "spec" || view.name === "settings" || view.name === "courses") render();
 }
 function watchDialog() {
-  const w = S.watch; if (!w) return;
-  const dlg = $("#dlg"), sec = (title, items, fmt) => (Array.isArray(items) && items.length ? h("div", {}, h("strong", { text: title }), h("ul", { class: "wlist" }, ...items.map((x) => h("li", { text: fmt(x) })))) : null);
-  const note = (x) => (x.note ? "　" + x.note : "");
-  const src = (Array.isArray(w.sources) ? w.sources : []).filter((x) => /^https:\/\//.test(x.url || ""));
-  dlg.replaceChildren(h("div", { class: "dlg stack", id: "watch-dlg", style: "max-width:640px" },
-    h("h3", { text: "特定原材料のお知らせ" }),
-    h("div", { class: "muted small", text: `${jpDay(w.checkedAt)}の自動確認で、登録内容との違いが見つかりました。AIがウェブ上の公式情報を調べた結果です。出典で内容を確かめてから、「特定原材料」の登録を直してください。` }),
-    w.summary ? h("div", { text: w.summary }) : null,
-    sec("追加された品目（未登録）", w.added, (x) => `${x.name}（${x.kind || "区分不明"}）${note(x)}`),
-    sec("区分が変わった品目", w.changed, (x) => `${x.name}：${x.from || "?"} → ${x.to || "?"}${note(x)}`),
-    sec("対象から外れた品目", w.removed, (x) => `${x.name}${note(x)}`),
-    sec("今後の変更予定（公表済み）", w.upcoming, (x) => `${x.name}${note(x)}`),
-    src.length ? h("div", { class: "small" }, h("strong", { text: "出典" }), h("ul", { class: "wlist" }, ...src.map((x) => h("li", {}, h("a", { href: x.url, target: "_blank", rel: "noopener noreferrer", text: x.title || x.url }))))) : null,
-    h("div", { class: "row" },
-      h("button", { type: "button", class: "btn", text: "特定原材料を開く", onclick: () => { dlg.close(); go({ name: "spec" }); } }),
-      h("span", { style: "margin-left:auto" }),
-      h("button", { type: "button", class: "btn", text: "閉じる", onclick: () => dlg.close() }),
-      watchNews() && !readOnly ? h("button", { type: "button", class: "btn primary", id: "watch-ack", text: "確認済みにする", onclick: async () => {
-        try { await db.doc("settings/specwatch").set({ ...clone(S.watch), ackSig: S.watch.sig, ackAt: new Date().toISOString() }); dlg.close(); toast("お知らせを確認済みにしました"); }
-        catch (_) { toast("保存できませんでした"); }
-      } }) : null)));
-  if (!dlg.open) dlg.showModal();
+  const dlg = $("#dlg"), w = S.watch || {};
+  const draw = () => {
+    const items = watchItems();
+    const card = (it) => {
+      const st = it.status === "new" ? h("span", { class: "pill warn", text: "新着" }) : it.status === "done" ? h("span", { class: "pill ok", text: "取込済み" }) : h("span", { class: "pill plain", text: "確認済み" });
+      const detail = it.type === "added" ? `${it.name}（${it.kind || "区分不明"}）` : it.type === "changed" ? `${it.name}：${it.from || "?"} → ${it.to || "?"}` : it.name;
+      const src = (Array.isArray(it.sources) ? it.sources : []).filter((x) => /^https:\/\//.test(x.url || ""));
+      const act = async (fn, btn) => { btn.disabled = true; try { await fn(); } catch (_) { toast("保存できませんでした"); } draw(); };
+      return h("div", { class: "panel stack witem", style: "gap:6px" },
+        h("div", { class: "row" }, h("span", { class: "small muted", text: jpDay(it.at) }), h("span", { class: "pill plain", text: WATCH_TYPE[it.type] || "お知らせ" }), st),
+        h("div", {}, h("strong", { text: detail })),
+        it.note ? h("div", { class: "small", text: it.note }) : null,
+        it.type === "added" && it.aliases ? h("div", { class: "small muted", text: "別の呼び方：" + it.aliases }) : null,
+        src.length ? h("div", { class: "small" }, "出典：", ...src.flatMap((x, i) => [i ? "、" : "", h("a", { href: x.url, target: "_blank", rel: "noopener noreferrer", text: x.title || x.url })])) : null,
+        readOnly || it.status === "done" ? null : h("div", { class: "row" }, h("span", { style: "margin-left:auto" }),
+          it.status === "new" ? h("button", { type: "button", class: "btn sm", text: "確認済みにする", onclick: (e) => act(() => saveWatch((d) => { const t = d.items.find((x) => x.id === it.id); if (t) t.status = "ack"; }), e.target) }) : null,
+          it.type !== "upcoming" ? h("button", { type: "button", class: "btn sm primary", "data-imp": it.id, text: "取込", onclick: (e) => act(() => importWatch(it), e.target) }) : null));
+    };
+    dlg.replaceChildren(h("div", { class: "dlg stack", id: "watch-dlg" },
+      h("h3", { text: "特定原材料のお知らせ" }),
+      h("div", { class: "muted small", text: "毎月1日と15日に、AIが消費者庁の公式情報を調べた結果です。出典で内容を確かめてから「取込」を押してください。取込むと「特定原材料」の一覧に反映され、コース成分表には未確認の行として入ります（上長承認済みの成分表は承認が外れます）。" }),
+      h("div", { class: "small", text: w.checkedAt ? `最終確認：${jpDay(w.checkedAt)}${w.summary ? "　" + w.summary : ""}` : "まだ自動確認の結果がありません。" }),
+      items.length ? h("div", { class: "stack", style: "gap:10px;max-height:56vh;overflow-y:auto" }, ...items.map(card)) : h("div", { class: "empty", text: "お知らせはありません。登録内容は公式情報と一致しています。" }),
+      h("div", { class: "row" }, h("button", { type: "button", class: "btn", text: "特定原材料を開く", onclick: () => { dlg.close(); go({ name: "spec" }); } }), h("span", { style: "margin-left:auto" }), h("button", { type: "button", class: "btn", text: "閉じる", onclick: () => dlg.close() }))));
+  };
+  draw();
+  if (!dlg.open) { dlg.style.width = "min(720px,calc(100vw - 32px))"; dlg.addEventListener("close", () => (dlg.style.width = ""), { once: true }); dlg.showModal(); }
 }
 $("#bell").addEventListener("click", watchDialog);
 function watchLine() {
   const w = S.watch, host = window.claude && window.claude.host, box = h("div", { class: "panel stack", id: "watch-line" });
   if (!host && !w) { box.hidden = true; return box; }
   const busy = w && w.running && Date.now() - Date.parse(w.startedAt || "") < 5 * 60 * 1000;
-  const state = !w || !w.checkedAt ? "まだ確認していません。" : `最終確認：${jpDay(w.checkedAt)}（${w.hasNews ? (w.sig === w.ackSig ? "登録内容との違いあり・確認済み" : "登録内容との違いあり") : "登録内容との違いなし"}）`;
+  const state = !w || !w.checkedAt ? "まだ確認していません。" : `最終確認：${jpDay(w.checkedAt)}（${watchUnread() ? `新着のお知らせ ${watchUnread()}件` : "新着のお知らせなし"}）`;
   box.append(...[h("div", { class: "row" }, h("h3", { text: "公式情報の自動確認" }),
-    w && w.hasNews ? h("button", { type: "button", class: "linkbtn", text: "内容を見る", onclick: watchDialog }) : null,
+    h("button", { type: "button", class: "linkbtn", text: "お知らせを見る", onclick: watchDialog }),
     h("span", { style: "margin-left:auto" }),
     host && host.checkSpec && !readOnly ? h("button", { type: "button", class: "btn sm", id: "watch-run", disabled: !!busy, text: busy ? "確認中…（1〜2分）" : "今すぐ確認する", onclick: async (e) => {
       e.target.disabled = true; e.target.textContent = "確認中…（1〜2分）";
       if (!(await host.checkSpec())) { e.target.disabled = false; e.target.textContent = "今すぐ確認する"; toast("確認を始められませんでした"); }
     } }) : null),
-    h("div", { class: "small muted", text: "毎月1日と15日に、消費者庁の公式情報をAIが調べ、この一覧と違いがあれば画面にベルでお知らせします。登録は自動では変わりません。" }),
+    h("div", { class: "small muted", text: "毎月1日と15日に、消費者庁の公式情報をAIが調べ、この一覧と違いがあれば「お知らせ」に表示します。お知らせの「取込」を押すまで、登録は変わりません。" }),
     h("div", { class: "small", text: state }),
     w && w.error ? h("div", { class: "small", style: "color:var(--bad)", text: "直近の確認は完了できませんでした。次回の自動確認で再度調べます。" }) : null].filter(Boolean));
   return box;
@@ -986,7 +1019,8 @@ function renderListBody() {
 function newCase() {
   const id = uid("c");
   const c = { id, groupName: "", visitDate: "", storeId: "", storeName: "", createdDate: today(), rows: [] };
-  S.cases.set(id, c); view = { name: "case", id }; draft = clone(c); caseSaver.touch(); render();
+  // 何か入力するまでは保存しない（開いただけ・取込をやめただけで空の案件が残らないようにする）
+  view = { name: "case", id }; draft = clone(c); render();
 }
 
 /* ---------- 案件編集 ---------- */
@@ -1403,12 +1437,28 @@ async function runAi(textData, images, add, msgEl, maxImg) {
 }
 function reviewDialog(people, add, groupName, warn) {
   const dlg = $("#dlg"); const on = people.map(() => true);
+  // 案件の店舗・ご利用日・コースも、この画面で決められるようにする（取り込むときに案件へ反映）
+  const hd = { store: (draft && draft.storeName) || "", visit: (draft && draft.visitDate) || "", course: draft && S.courses.has(draft.courseId) ? draft.courseId : "" };
+  const stores = [...S.stores.values()].filter((x) => x.name).sort((a, b) => a.name.localeCompare(b.name, "ja"));
+  const head = people.length && draft ? h("div", { class: "fields", id: "rv-head" },
+    field("店舗", h("div", {}, h("input", { id: "rv-store", list: "rv-stores", value: hd.store, placeholder: "店舗名を入力、または候補から選択", autocomplete: "off", oninput: (e) => { hd.store = e.target.value; } }),
+      h("datalist", { id: "rv-stores" }, ...stores.map((x) => h("option", { value: x.name }))))),
+    field("ご利用日", h("input", { id: "rv-visit", type: "date", value: hd.visit, oninput: (e) => { hd.visit = e.target.value; } })),
+    field("コース", sel([["", "指定なし（共通設定の内容で作成）"], ...[...S.courses.values()].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja")).map((x) => [x.id, (x.name || "（名称未入力）") + (x.approved ? "【上長承認済】" : "")])], hd.course, (v) => { hd.course = v; }, { id: "rv-course" }))) : null;
+  const applyHead = () => {
+    if (!head || !draft) return;
+    const name = hd.store.trim(), hit = stores.find((x) => norm(x.name) === norm(name));
+    draft.storeName = hit ? hit.name : name; draft.storeId = hit ? hit.id : "";
+    draft.visitDate = hd.visit;
+    draft.courseId = hd.course; const m = M(hd.course); draft.rows.forEach((r) => regen(r, m));
+  };
   const count = h("strong", {});
   const upd = () => { count.textContent = `${on.filter(Boolean).length}名を取り込みます`; };
   dlg.replaceChildren(h("div", { class: "dlg" },
     h("h3", { text: "読み取り結果の確認" }),
     h("div", { class: "banner warn", text: "AIによる読み取りです。読み違いがあり得ますので、原本と照合し、この画面で直接修正してから取り込んでください。取り込んだ行には「AI読取」の印が付きます。" }),
     warn ? h("div", { class: "banner bad", text: warn }) : null,
+    head,
     groupName || people.length ? h("label", { class: "row small muted" }, "団体名の記載：", h("input", { id: "rv-group", value: groupName || "", style: "max-width:320px", oninput: (e) => { groupName = e.target.value.trim(); } })) : null,
     people.length ? h("div", { class: "scroll", style: "max-height:52vh;overflow-y:auto" }, h("table", { class: "prev rv" },
       h("thead", {}, h("tr", {}, ...["", "組", "性別", "氏名", "アレルギー", "成分可否", "備考（資料の記載）", "確認メモ（社内用）"].map((t) => h("th", { text: t })))),
@@ -1422,7 +1472,7 @@ function reviewDialog(people, add, groupName, warn) {
         h("td", {}, h("textarea", { id: `rv-${i}-mm`, "aria-label": "確認メモ", rows: 2, value: p.memo || "", oninput: (e) => { p.memo = e.target.value; } }))))))) : h("div", { class: "empty", text: "アレルギーの記載を読み取れませんでした。" }),
     h("div", { class: "row" }, count, h("span", { style: "margin-left:auto" }),
       h("button", { type: "button", class: "btn", text: "やめる", onclick: () => dlg.close() }),
-      h("button", { type: "button", class: "btn primary", id: "rv-ok", text: "取り込む", disabled: !people.length, onclick: () => { const list = people.filter((_, i) => on[i]); dlg.close(); if (list.length) { if (groupName && draft && !draft.groupName) draft.groupName = groupName; add(list, true); if (groupName) render(); } } }))));
+      h("button", { type: "button", class: "btn primary", id: "rv-ok", text: "取り込む", disabled: !people.length, onclick: () => { const list = people.filter((_, i) => on[i]); dlg.close(); if (list.length) { if (groupName && draft && !draft.groupName) draft.groupName = groupName; add(list, true); applyHead(); caseSaver.touch(); render(); } } }))));
   upd(); if (!dlg.open) dlg.showModal(); fitAll(dlg);
 }
 const isTable = (f) => /\.(xlsx|xls|csv|tsv|txt)$/i.test(f.name), isPdf = (f) => /pdf$/i.test(f.type) || /\.pdf$/i.test(f.name);
