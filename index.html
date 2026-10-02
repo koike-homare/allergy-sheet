@@ -2629,14 +2629,15 @@ function applySeating(lay, fl, tables, plan, groups, rows) {
   const seatOf = new Map(); // 区分 key -> その区分に割り当てた席
   for (const t of tables) {
     const gs = (plan.get(t.id) || []).filter((g) => G.has(g.key) && g.count > 0); if (!gs.length) continue;
-    touch(t.r1, t.c1, (x) => { x.v = gs.map((g) => [...(G.get(g.key).lines || [G.get(g.key).label]), `${g.count}名`].join("\n")).join("\n"); x.bg = G.get(gs[0].key).color; x.fit = 1; delete x.fs; delete x.fg; });
+    const byLabel = new Map(); for (const g of gs) { const d = G.get(g.key); const o = byLabel.get(d.label) || { d, count: 0 }; o.count += g.count; byLabel.set(d.label, o); }
+    touch(t.r1, t.c1, (x) => { x.v = [...byLabel.values()].map((o) => [...(o.d.lines || [o.d.label]), `${o.count}名`].join("\n")).join("\n"); x.bg = G.get(gs[0].key).color; x.fit = 1; delete x.fs; delete x.fg; });
     let i = 0;
     for (const g of gs) for (let n = 0; n < g.count && i < t.seats.length; n++, i++) { const s = t.seats[i]; if (!seatOf.has(g.key)) seatOf.set(g.key, []); seatOf.get(g.key).push(s); } // 色を付けるのは卓だけ。席は○のまま
   }
   // アレルギー対応者：該当する区分の席を★にして、氏名とアレルギーの吹き出しを付ける
   const lost = []; let free = 0;
   for (const row of rows.filter((r) => (r.name || "").trim() && (r.allergy || "").trim())) {
-    const g = groupOfRow(row, groups), list = g ? seatOf.get(g.key) || [] : [], s = list.find((p) => !p.star);
+    const g = groupOfRow(row, groups.filter((x) => !x.al)), list = g ? [...(seatOf.get(g.key + "a") || []), ...(seatOf.get(g.key) || [])] : [], s = list.find((p) => !p.star);
     const text = `${row.name.trim()}\n${row.allergy.trim()}`;
     if (s) {
       s.star = true; touch(s.r, s.c, (x) => { x.v = "★"; x.fg = "#c00000"; x.b = 1; });
@@ -2676,22 +2677,39 @@ function partyPanel(c, ch) {
 function viewCaseLayout() {
   if (!draft) { const c0 = S.cases.get(view.id); if (!c0 || c0.locked) return [h("div", { class: "empty", text: "この案件は見つかりません。" })]; draft = clone(c0); }
   const c = draft, ch = () => caseSaver.touch(), back = h("div", {}, h("button", { type: "button", class: "linkbtn", text: "← 案件に戻る", onclick: () => go({ name: "case", id: c.id }) }));
-  const base = S.layouts.get(c.storeId), fresh = () => ({ storeId: c.storeId, floors: clone(base.floors), notes: [], area: null, orig: {}, ai: (c.layout && c.layout.ai) || "" });
+  const base = S.layouts.get(c.storeId), fresh = () => ({ storeId: c.storeId, floors: clone(base.floors), notes: [], area: null, orig: {}, ai: (c.layout && c.layout.ai) || "", ...(c.layout && Array.isArray(c.layout.opts) ? { opts: c.layout.opts } : {}) });
   if (!c.layout) {
     if (!base || !(base.floors || []).length) return [back, h("div", { class: "banner warn", text: "この店舗にはレイアウトが登録されていません。店舗マスタの「レイアウト」で登録してください。" })];
     c.layout = fresh(); ch();
   }
   const lay = c.layout; lay.notes = lay.notes || []; lay.orig = lay.orig || {};
   const groups = partyGroups(c.party), msg = h("div", { class: "small", id: "seat-msg", style: "white-space:pre-wrap" });
+  // 配席の条件：チェックした項目とAIへの依頼文を合わせて、AIへの指示にする。案件ごとに保存し、次に作る案件の初期値にもする。
+  const OPTS = [["class", "クラス別", "クラスごとに卓を分ける（1つの卓に別のクラスを混ぜない）"], ["sex", "男女別", "男女で卓を分ける（1つの卓に男子と女子を混ぜない）"],
+    ["alsex", "アレルギー対応者も男女別に含める", "アレルギー対応者は別にせず、それぞれのクラス・男女の卓に含める"], ["teacher", "引率（先生）は固める", "引率（先生）は同じ卓、入り切らなければ隣り合う卓に固める"],
+    ["tourcrew", "添乗員、乗務員は固める", "添乗員と乗務員は同じ卓、入り切らなければ隣り合う卓に固める"], ["camnurse", "カメラ、看護師は固める", "カメラと看護師は同じ卓、入り切らなければ隣り合う卓に固める"],
+    ["altogether", "アレルギー対応者を固める", "区分名に「アレルギー対応」と付く人は、クラスや男女が違っても同じ卓、入り切らなければ隣り合う卓に固める"]];
+  if (!Array.isArray(lay.opts)) { lay.opts = []; try { const d = JSON.parse(localStorage.getItem("seatPrompt") || "null"); if (d) { lay.opts = (d.opts || []).filter((k) => OPTS.some((o) => o[0] === k)); if (!lay.ai) lay.ai = String(d.ai || ""); } } catch (_) {} }
+  const remember = () => { try { localStorage.setItem("seatPrompt", JSON.stringify({ opts: lay.opts, ai: lay.ai || "" })); } catch (_) {} };
+  const instruction = () => [...OPTS.filter((o) => lay.opts.includes(o[0])).map((o) => "・" + o[2]), (lay.ai || "").trim() ? "・" + lay.ai.trim() : ""].filter(Boolean).join("\n");
+  const preview = h("div", { class: "small muted", id: "seat-prompt", style: "white-space:pre-wrap" });
+  const showPrompt = () => { const t = instruction(); preview.textContent = t ? "AIへ送る指示：\n" + t : "条件が選ばれていないため、AIを使わず標準の並べ方（クラス・男女ごとに卓を分け、職員等は最後）で作成します。"; };
+  /** 「アレルギー対応者を固める」のときは、対応者を元の区分から切り出して別の区分にする。 */
+  const seatGroups = () => {
+    if (!lay.opts.includes("altogether")) return groups;
+    const cnt = new Map(); for (const r of (c.rows || []).filter((r) => (r.name || "").trim() && (r.allergy || "").trim())) { const g = groupOfRow(r, groups); if (g) cnt.set(g.key, (cnt.get(g.key) || 0) + 1); }
+    const out = []; for (const g of groups) { const k = Math.min(g.n, cnt.get(g.key) || 0); if (g.n - k > 0) out.push({ ...g, n: g.n - k }); if (k) out.push({ ...g, key: g.key + "a", n: k, al: true, ai: g.label + "（アレルギー対応）" }); }
+    return out;
+  };
   const say = (t, bad) => { msg.textContent = t; msg.style.color = bad ? "var(--bad)" : "var(--ok)"; };
   const ed = layoutEditor(lay, ch);
   const areaOf = () => (lay.area && lay.area.fid === ed.api.floor().id ? lay.area : null);
   const areaInfo = h("span", { class: "small muted", id: "seat-area" });
   const info = () => { const fl = ed.api.floor(); if (!fl) return; const ts = layTables(fl, areaOf()), cap = ts.reduce((n, t) => n + t.cap, 0); areaInfo.textContent = `${areaOf() ? "指定したエリア" : "この階の全体"}：卓 ${ts.length}・席 ${cap}　／　利用人数 ${partyTotal(c.party)}名`; };
-  const finish = (fl, tables, plan, note) => {
-    const lost = applySeating(lay, fl, tables, plan, groups, c.rows || []);
+  const finish = (fl, tables, plan, note, gs0 = groups) => {
+    const lost = applySeating(lay, fl, tables, plan, gs0, c.rows || []);
     const seated = new Map(); for (const gs of plan.values()) for (const g of gs) seated.set(g.key, (seated.get(g.key) || 0) + g.count);
-    const short = groups.filter((g) => (seated.get(g.key) || 0) < g.n).map((g) => `${g.label} ${g.n - (seated.get(g.key) || 0)}名`);
+    const short = gs0.filter((g) => (seated.get(g.key) || 0) < g.n).map((g) => `${g.ai || g.label} ${g.n - (seated.get(g.key) || 0)}名`);
     ch(); ed.api.redraw(); info();
     say([short.length ? `席が足りず、配席できなかった人がいます：${short.join("、")}` : "配席を作成しました。", lost.length ? `席を特定できなかったアレルギー対応者：${lost.join("、")}（組・性別が利用人数と合いません。吹き出しを左上に置きました）` : "", note || ""].filter(Boolean).join("\n"), short.length || lost.length);
   };
@@ -2700,24 +2718,26 @@ function viewCaseLayout() {
     if (!groups.length) return say("利用人数が入力されていません。案件画面の「利用人数」に人数を入れてください。", true);
     ed.api.snapshot(); clearSeating(lay); // 前回の配席を消してから卓を探す
     const tables = layTables(fl, areaOf()); if (!tables.length) { ed.api.redraw(); return say("卓が見つかりません。卓（四角）の隣に席の印（○）があるレイアウトで、配席エリアを確かめてください。", true); }
-    const text = (lay.ai || "").trim();
-    if (!text) return finish(fl, tables, seatDefault(tables, groups).plan, "指示が空のため、標準の並べ方（クラス・男女ごとに卓を分け、職員等は最後）で作成しました。");
-    if (!sample) { ed.api.redraw(); return say("この表示環境ではAIが使えません。指示を空にすると、標準の並べ方で作成できます。", true); }
+    const text = instruction(); remember();
+    if (!text) return finish(fl, tables, seatDefault(tables, groups).plan, "条件が選ばれていないため、標準の並べ方（クラス・男女ごとに卓を分け、職員等は最後）で作成しました。");
+    const gs = seatGroups();
+    if (!sample) { ed.api.redraw(); return say("この表示環境ではAIが使えません。条件のチェックと依頼文を空にすると、標準の並べ方で作成できます。", true); }
     btn.disabled = true; say("AIが配席を考えています…（1分ほどかかることがあります）");
     try {
-      const allergy = (c.rows || []).filter((r) => (r.name || "").trim() && (r.allergy || "").trim()).map((r) => { const g = groupOfRow(r, groups); return g ? `${g.key}に1名` : ""; }).filter(Boolean);
+      const allergy = lay.opts.includes("altogether") ? [] : (c.rows || []).filter((r) => (r.name || "").trim() && (r.allergy || "").trim()).map((r) => { const g = groupOfRow(r, groups); return g ? `${g.key}に1名` : ""; }).filter(Boolean);
       const res = await sample.json(`飲食店の団体予約の配席を作ります。卓の一覧と、座る人の区分ごとの人数、担当者からの指示を渡します。指示に従って、どの卓にどの区分を何名座らせるかを決めてください。
 規則：各卓の人数は定員（cap）以内。各区分の合計は、渡した人数とちょうど同じにする（席が足りない場合だけ、入り切らない分を残してよい）。指示にないことは、同じ区分を近い卓にまとめ、できるだけ1つの卓に1つの区分にする。卓の位置は row（上からの行）と col（左からの列）で、数字が近いほど近くにある。
 卓：${JSON.stringify(tables.map((t) => ({ id: t.id, cap: t.cap, row: t.r1 + 1, col: t.c1 + 1 })))}
-区分：${JSON.stringify(groups.map((g) => ({ key: g.key, name: g.label, count: g.n })))}
-${allergy.length ? "食物アレルギー対応者のいる区分：" + allergy.join("、") + "\n" : ""}担当者からの指示：${text}
+区分：${JSON.stringify(gs.map((g) => ({ key: g.key, name: g.ai || g.label, count: g.n })))}
+${allergy.length ? "食物アレルギー対応者のいる区分：" + allergy.join("、") + "\n" : ""}担当者からの指示：
+${text}
 返答はJSONだけにしてください。形式：{"tables":[{"id":"T1","groups":[{"key":"c1m","count":4}]}],"comment":"指示のうち反映できなかった点があれば一言。なければ空"}`);
-      const plan = new Map(tables.map((t) => [t.id, []])), capOf = new Map(tables.map((t) => [t.id, t.cap])), leftG = new Map(groups.map((g) => [g.key, g.n]));
+      const plan = new Map(tables.map((t) => [t.id, []])), capOf = new Map(tables.map((t) => [t.id, t.cap])), leftG = new Map(gs.map((g) => [g.key, g.n]));
       for (const t of Array.isArray(res.tables) ? res.tables : []) {
         if (!plan.has(t.id)) continue; let free = capOf.get(t.id);
         for (const g of Array.isArray(t.groups) ? t.groups : []) { const k = Math.min(free, num(g.count), leftG.get(g.key) || 0); if (k > 0) { plan.get(t.id).push({ key: g.key, count: k }); free -= k; leftG.set(g.key, leftG.get(g.key) - k); } }
       }
-      finish(fl, tables, plan, res.comment ? "AIから：" + String(res.comment).slice(0, 200) : "");
+      finish(fl, tables, plan, res.comment ? "AIから：" + String(res.comment).slice(0, 200) : "", gs);
     } catch (e) { ed.api.redraw(); say(AI_ERR[e && e.code] || "AIで配席を作成できませんでした。もう一度お試しください。", true); }
     btn.disabled = false;
   };
@@ -2725,8 +2745,12 @@ ${allergy.length ? "食物アレルギー対応者のいる区分：" + allergy.
   const panel = h("div", { class: "panel stack", id: "seat-panel" },
     h("div", { class: "row" }, h("h3", { text: "配席の作成" }), areaInfo),
     groups.length ? h("div", { class: "row", id: "seat-legend", style: "gap:6px 10px" }, ...groups.map((g) => h("span", { class: "lay-chip", style: `background:${g.color}`, text: `${g.label} ${g.n}名` }))) : h("div", { class: "small", style: "color:var(--warn)", text: "利用人数が未入力です。案件画面の「利用人数」に入力してください。" }),
-    h("label", { class: "f" }, "AIへの指示（空欄なら、クラス・男女ごとに卓を分ける標準の並べ方）",
-      h("textarea", { id: "seat-ai", rows: 2, value: lay.ai || "", placeholder: "例：クラス別・男女別にする。先生は入口に近い卓に固める。1年1組から順に左上から。", oninput: (e) => { lay.ai = e.target.value; ch(); } })),
+    h("div", { class: "stack", style: "gap:6px" }, h("div", { class: "small muted", text: "配席の条件（複数選べます）" }),
+      h("div", { class: "row", id: "seat-opts", style: "gap:6px 18px" }, ...OPTS.map(([k, label]) => h("label", { class: "row small", style: "gap:6px;cursor:pointer" },
+        h("input", { type: "checkbox", id: "seat-o-" + k, style: "width:auto", checked: lay.opts.includes(k), onchange: (e) => { lay.opts = OPTS.map((o) => o[0]).filter((x) => (x === k ? e.target.checked : lay.opts.includes(x))); ch(); showPrompt(); } }), label)))),
+    h("label", { class: "f" }, "AIに依頼する（条件のほかに頼みたいことを自由に記入）",
+      h("textarea", { id: "seat-ai", rows: 2, value: lay.ai || "", placeholder: "例：1年1組から順に左上から並べる。先生は入口に近い卓にする。", oninput: (e) => { lay.ai = e.target.value; ch(); showPrompt(); } })),
+    preview,
     h("div", { class: "row" },
       h("button", { type: "button", class: "btn", id: "seat-area-set", text: "選んだ範囲を配席エリアにする", onclick: () => { const g = ed.api.range(); lay.area = { fid: ed.api.floor().id, ...g }; ch(); ed.api.redraw(); info(); } }),
       h("button", { type: "button", class: "btn", id: "seat-area-clear", text: "エリアを解除", onclick: () => { lay.area = null; ch(); ed.api.redraw(); info(); } }),
@@ -2734,9 +2758,9 @@ ${allergy.length ? "食物アレルギー対応者のいる区分：" + allergy.
       h("span", { style: "margin-left:auto" }),
       h("button", { type: "button", class: "btn", id: "seat-clear", text: "配席を消す", onclick: () => { ed.api.snapshot(); clearSeating(lay); ch(); ed.api.redraw(); info(); say("配席を消して、店舗のレイアウトに戻しました。"); } }),
       h("button", { type: "button", class: "btn primary", id: "seat-run", text: "配席を作成", onclick: (e) => run(e.target) })),
-    h("div", { class: "small muted", text: "配席エリアは、下のレイアウトでドラッグして範囲を選んでから指定します。吹き出しはドラッグで動かせ、ダブルクリックで文字を直せます。作成し直すと、前回の配席は消えて作り直されます。" }),
+    h("div", { class: "small muted", text: "条件と依頼文は、この案件と一緒に保存されます。配席エリアは、下のレイアウトでドラッグして範囲を選んでから指定します。吹き出しはドラッグで動かせ、ダブルクリックで文字を直せます。作成し直すと、前回の配席は消えて作り直されます。" }),
     msg);
-  queueMicrotask(info);
+  queueMicrotask(info); showPrompt();
   ed.addEventListener("pointerup", () => queueMicrotask(info)); ed.addEventListener("click", () => queueMicrotask(info));
   return [back,
     h("h2", { text: `${c.groupName || "（団体名未入力）"} の配席レイアウト` }),
