@@ -267,7 +267,7 @@ table.list tr.click{cursor:pointer} table.list tr.click:hover td{background:var(
 .empty{padding:36px 16px;text-align:center;color:var(--muted)}
 /* 編集表 */
 .sheet{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
-.srow{display:grid;grid-template-columns:56px 62px 132px minmax(150px,1.1fr) 76px minmax(250px,2.1fr) minmax(170px,1.2fr) minmax(110px,.7fr) minmax(140px,1fr) 40px;gap:0}
+.srow{display:grid;grid-template-columns:56px 62px 128px minmax(144px,1.1fr) 76px minmax(214px,2.1fr) minmax(170px,1.2fr) minmax(100px,.7fr) minmax(176px,1fr) 40px;gap:0}
 .srow>div{padding:8px 6px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);min-width:0}
 .srow>div:last-child{border-right:0}
 .srow.head>div{font-size:12px;color:var(--muted);background:var(--sunken);text-align:center;padding:6px}
@@ -279,6 +279,7 @@ table.list tr.click{cursor:pointer} table.list tr.click:hover td{background:var(
 .memo{margin-top:6px;padding:4px 6px;border-radius:4px;background:var(--warn-soft)}
 .memo label{display:block;font-size:11px;color:var(--warn);margin-bottom:2px}
 .memo textarea{background:var(--surface)}
+.memo.src{margin-top:0;background:var(--accent-soft)} .memo.src label{color:var(--accent)}
 .manual{font-size:11px;color:var(--warn)}
 .linkbtn{background:none;border:0;padding:0;color:var(--accent);text-decoration:underline;cursor:pointer;font-size:11.5px}
 .x{background:none;border:0;color:var(--muted);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px}
@@ -1155,9 +1156,10 @@ function viewCase() {
       h("div", { class: "w" }, lab("アレルゲンの要素"), elTa, elMark),
       h("div", { class: "w" }, lab("対応"), reTa, reMark),
       h("div", { class: "w" }, lab("症状"), h("textarea", { id: r.id + "-sy", rows: 1, value: r.symptom || "", placeholder: "不明", "aria-label": "症状", oninput: (e) => { r.symptom = e.target.value; ch(); } })),
-      h("div", { class: "w" }, lab("備考"), h("textarea", { id: r.id + "-rm", rows: 2, value: r.remark, placeholder: "資料に書かれていた内容", "aria-label": "備考（資料の記載）", oninput: (e) => { r.remark = e.target.value; ch(); } }),
-        h("div", { class: "memo" }, h("label", { for: r.id + "-mm", text: "確認メモ（社内用・PDFには出ません）" }),
-          h("textarea", { id: r.id + "-mm", rows: 1, value: r.memo || "", placeholder: "判読不明、要確認の点など", oninput: (e) => { r.memo = e.target.value; caseSaver.touch(); } }))),
+      h("div", { class: "w" }, lab("備考"), h("div", { class: "memo src" }, h("label", { for: r.id + "-rm", text: "資料メモ（PDF反映あり）" }),
+          h("textarea", { id: r.id + "-rm", rows: 1, value: r.remark, placeholder: "エピペン・薬など", title: "エピペン所持、薬持参、通院中など、症状に対する応急処置や服薬の情報", oninput: (e) => { r.remark = e.target.value; ch(); } })),
+        h("div", { class: "memo" }, h("label", { for: r.id + "-mm", text: "確認メモ（社内用・PDF反映なし）" }),
+          h("textarea", { id: r.id + "-mm", rows: 1, value: r.memo || "", placeholder: "要確認の点など", title: "判読不明の箇所や確認が必要な点など、社内向けの注意", oninput: (e) => { r.memo = e.target.value; caseSaver.touch(); } }))),
       h("div", {}, confirmBtn("×", "削除", () => { c.rows.splice(c.rows.indexOf(r), 1); drawRows(); ch(); }, "x")));
     elTa.value = r.element || ""; reTa.value = r.response || "";
     // 既存行は保存済みの文章を保ったまま表示し、状態表示だけ更新する
@@ -1408,9 +1410,9 @@ function pasteDialog(add) {
 
 /* ---------- 取込：AI読み取り（PDF・画像・文章） ---------- */
 const AI_PROMPT = `あなたは団体旅行の食事手配の担当者を手伝っています。渡された資料（名簿・連絡票・FAX・メールなど）から、食物アレルギーのある人の情報を1人ずつ抜き出してください。
-規則：資料に書かれていることだけを書き写し、推測で補わない。読み取れない項目は空文字にする。食材名は資料の表記のまま書く。外国語で書かれた食材名は訳さず原文のまま書き、すぐ後ろに（）で日本語訳を添える（例：lobster（ロブスター））。「ナッツ類」「甲殻類」のようなまとめた表現や、「味噌」「マヨネーズ」のような食品名も、個別の食材に言い換えずそのまま書く。アレルギーの記載がない人は含めない。選択肢に○や✓を付ける形式の用紙では、印が付いた項目だけを対象にし、印のない選択肢は書かない。手書きで読みにくい文字は、読めた範囲を書いて memo に「判読不明あり（どの項目か）」と書く。remark には資料に実際に書かれていた内容だけを、説明の言葉（「〜との記載あり」「〜との補足あり」など）を付けずに書く。読み取った側の注意や確認事項は remark ではなく memo に分けて書く。「微量混入で発症したことがある」に該当する人は seibun を「不可」、「いいえ」の人は「可」とする。1枚に1人の用紙が複数ある場合は、全員分を出力する。
+規則：資料に書かれていることだけを書き写し、推測で補わない。読み取れない項目は空文字にする。食材名は資料の表記のまま書く。外国語で書かれた食材名は訳さず原文のまま書き、すぐ後ろに（）で日本語訳を添える（例：lobster（ロブスター））。「ナッツ類」「甲殻類」のようなまとめた表現や、「味噌」「マヨネーズ」のような食品名も、個別の食材に言い換えずそのまま書く。アレルギーの記載がない人は含めない。選択肢に○や✓を付ける形式の用紙では、印が付いた項目だけを対象にし、印のない選択肢は書かない。手書きで読みにくい文字は、読めた範囲を書いて memo に「判読不明あり（どの項目か）」と書く。remark は、症状に対する応急処置や薬の情報だけを書く欄で、エピペンの所持、持参する薬・服用中の薬、通院中であること、発症時の対応などを、資料に実際に書かれていた内容だけ、説明の言葉（「〜との記載あり」「〜との補足あり」など）を付けずに短く書く（例：「エピペン所持」「抗ヒスタミン薬を持参」「通院中」）。該当する記載がなければ空にする。それ以外の記載（保護者のコメント、食器の希望など）と、読み取った側の注意や確認事項は remark ではなく memo に分けて書く。「微量混入で発症したことがある」に該当する人は seibun を「不可」、「いいえ」の人は「可」とする。1枚に1人の用紙が複数ある場合は、全員分を出力する。
 返答はJSONだけにしてください。形式：
-{"groupName":"団体名（なければ空）","people":[{"kumi":"組やクラス","sex":"男 または 女 または 空","name":"氏名","allergy":"アレルギーの食材を「、」区切り。程度や条件は（）で添える","seibun":"調味料・だし・エキスなど微量成分の摂取について 可 / 不可 / 不明 のいずれか。記載がなければ空","symptom":"アレルギーの症状（じんましん、かゆみ、呼吸困難、アナフィラキシーなど、資料に書かれていた内容だけ）。症状の記載がなければ「不明」","remark":"資料に書かれていた薬・エピペン・保護者のコメント（書かれていた内容だけ。症状は symptom に書く）","memo":"読み取った側の注意：判読しにくい箇所、確認が必要な点。なければ空"}]}
+{"groupName":"団体名（なければ空）","people":[{"kumi":"組やクラス","sex":"男 または 女 または 空","name":"氏名","allergy":"アレルギーの食材を「、」区切り。程度や条件は（）で添える","seibun":"調味料・だし・エキスなど微量成分の摂取について 可 / 不可 / 不明 のいずれか。記載がなければ空","symptom":"アレルギーの症状（じんましん、かゆみ、呼吸困難、アナフィラキシーなど、資料に書かれていた内容だけ）。症状の記載がなければ「不明」","remark":"資料メモ：エピペン所持・持参薬・服用中の薬・通院中など、応急処置や薬の情報（書かれていた内容だけ。なければ空。症状は symptom に書く）","memo":"確認メモ（社内向けの注意）：判読しにくい箇所、確認が必要な点、remark に入らないその他の記載。なければ空"}]}
 
 `;
 let aiCtl = null;
@@ -1477,7 +1479,7 @@ function reviewDialog(people, add, groupName, warn) {
     head,
     groupName || people.length ? h("label", { class: "row small muted" }, "団体名の記載：", h("input", { id: "rv-group", value: groupName || "", style: "max-width:320px", oninput: (e) => { groupName = e.target.value.trim(); } })) : null,
     people.length ? h("div", { class: "scroll", style: "max-height:52vh;overflow-y:auto" }, h("table", { class: "prev rv" },
-      h("thead", {}, h("tr", {}, ...["", "組", "性別", "氏名", "アレルギー", "成分可否", "症状", "備考（資料の記載）", "確認メモ（社内用）"].map((t) => h("th", { text: t })))),
+      h("thead", {}, h("tr", {}, ...["", "組", "性別", "氏名", "アレルギー", "成分可否", "症状", "資料メモ（PDF反映あり）", "確認メモ（社内用・PDF反映なし）"].map((t) => h("th", { text: t })))),
       h("tbody", {}, ...people.map((p, i) => h("tr", {}, h("td", { style: "min-width:0" }, h("input", { id: "rv-" + i, type: "checkbox", style: "width:auto", checked: true, onchange: (e) => { on[i] = e.target.checked; upd(); } })),
         h("td", {}, h("input", { id: `rv-${i}-kumi`, "aria-label": "組", value: p.kumi, oninput: (e) => { p.kumi = e.target.value; } })),
         h("td", {}, sel([["", ""], "男", "女"], p.sex, (v) => { p.sex = v; }, { id: `rv-${i}-sex`, "aria-label": "性別" })),
@@ -1485,8 +1487,8 @@ function reviewDialog(people, add, groupName, warn) {
         h("td", {}, h("textarea", { id: `rv-${i}-al`, "aria-label": "アレルギー", rows: 2, value: p.allergy, oninput: (e) => { p.allergy = e.target.value; } })),
         h("td", {}, sel([["", ""], "可", "不可", "不明"], p.seibun, (v) => { p.seibun = v; }, { id: `rv-${i}-sb`, "aria-label": "成分可否" })),
         h("td", {}, h("textarea", { id: `rv-${i}-sy`, "aria-label": "症状", rows: 1, value: p.symptom || "不明", oninput: (e) => { p.symptom = e.target.value; } })),
-        h("td", {}, h("textarea", { id: `rv-${i}-rm`, "aria-label": "備考", rows: 2, value: p.remark, oninput: (e) => { p.remark = e.target.value; } })),
-        h("td", {}, h("textarea", { id: `rv-${i}-mm`, "aria-label": "確認メモ", rows: 2, value: p.memo || "", oninput: (e) => { p.memo = e.target.value; } }))))))) : h("div", { class: "empty", text: "アレルギーの記載を読み取れませんでした。" }),
+        h("td", {}, h("textarea", { id: `rv-${i}-rm`, "aria-label": "資料メモ", rows: 2, placeholder: "エピペン所持、薬持参、通院中など", value: p.remark, oninput: (e) => { p.remark = e.target.value; } })),
+        h("td", {}, h("textarea", { id: `rv-${i}-mm`, "aria-label": "確認メモ", rows: 2, placeholder: "判読不明、要確認の点など", value: p.memo || "", oninput: (e) => { p.memo = e.target.value; } }))))))) : h("div", { class: "empty", text: "アレルギーの記載を読み取れませんでした。" }),
     h("div", { class: "row" }, count, h("span", { style: "margin-left:auto" }),
       h("button", { type: "button", class: "btn", text: "やめる", onclick: () => dlg.close() }),
       h("button", { type: "button", class: "btn primary", id: "rv-ok", text: "取り込む", disabled: !people.length, onclick: () => { const list = people.filter((_, i) => on[i]); dlg.close(); if (list.length) { if (groupName && draft && !draft.groupName) draft.groupName = groupName; add(list, true); applyHead(); caseSaver.touch(); render(); } } }))));
