@@ -341,7 +341,16 @@ div.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute
 .lay-sw{width:22px;height:22px;border:1px solid #8a93a3;border-radius:3px;padding:0;cursor:pointer}
 .lay-wrap{overflow:auto;max-height:68vh;border:1px solid var(--line);border-radius:4px;background:#fff;outline:none}
 .lay-wrap:focus-visible{border-color:var(--accent)}
-.lay-wrap table{border-collapse:collapse;table-layout:fixed;background:#fff;color:#000;user-select:none;margin:10px;cursor:cell}
+.lay-wrap table{border-collapse:collapse;table-layout:fixed;background:#fff;color:#000;user-select:none;cursor:cell}
+.lay-canvas{position:relative;display:inline-block;padding:10px;color:#000}
+.lay-over{position:absolute;inset:0;pointer-events:none}
+.lay-area{position:absolute;border:2px dashed #d97706;background:rgba(217,119,6,.06);box-sizing:border-box}
+.lay-lines{position:absolute;inset:0;width:100%;height:100%;overflow:visible} .lay-lines line{stroke:#c00000;stroke-width:1.5}
+.lay-note{position:absolute;pointer-events:auto;background:#fffbe6;border:1.5px solid #c00000;border-radius:8px;padding:3px 18px 3px 7px;font-size:11px;line-height:1.3;color:#000;white-space:pre-wrap;max-width:200px;cursor:move;box-shadow:0 1px 3px rgba(0,0,0,.25);user-select:none;touch-action:none}
+.lay-note-t[contenteditable="plaintext-only"]{cursor:text;user-select:text;outline:1px dashed #c00000}
+.lay-note-x{position:absolute;top:0;right:1px;border:0;background:none;color:#c00000;font-size:13px;line-height:1;padding:2px 3px;cursor:pointer}
+.lay-chip{border-radius:999px;padding:2px 10px;font-size:12px;color:#000;border:1px solid rgba(0,0,0,.2)}
+.pt-row{gap:6px;align-items:center}
 .lay-wrap td{padding:0;overflow:hidden;position:relative}
 .lay-wrap td>div{overflow:hidden;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.15;white-space:pre-wrap;word-break:break-all}
 .lay-wrap td.sel::after{content:"";position:absolute;inset:0;background:rgba(31,78,140,.2);pointer-events:none}
@@ -992,7 +1001,7 @@ $("#open-settings").addEventListener("click", async () => {
   approvalDialog("共通設定を開く", "共通設定の閲覧・変更には、上長承認のパスワードが必要です。", () => go({ name: "settings" }));
 });
 function render() {
-  const cur = view.name === "case" ? "list" : view.name === "layout" ? "stores" : view.name;
+  const cur = view.name === "case" || view.name === "clayout" ? "list" : view.name === "layout" ? "stores" : view.name;
   for (const b of $("#nav").children) { if (b.dataset.v === cur) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); }
   const app = $("#app");
   $("#nav").hidden = authState !== "open"; $("#logout").hidden = authState !== "open" || !dataKey;
@@ -1007,6 +1016,7 @@ function render() {
   else if (view.name === "stores") app.replaceChildren(...top, ...viewStores());
   else if (view.name === "courses") app.replaceChildren(...top, ...viewCourses());
   else if (view.name === "spec") app.replaceChildren(...top, ...viewSpec());
+  else if (view.name === "clayout") { if (!($("#lay") && $("#seat-panel") && draft && draft.id === view.id)) app.replaceChildren(...top, ...viewCaseLayout()); }
   else if (view.name === "layout") { if (!($("#lay") && layDraft && layDraft.storeId === view.id)) app.replaceChildren(...top, ...viewLayout()); } // 編集中は描き直さない（選択や取り消しの履歴を保つ）
   else app.replaceChildren(...top, ...viewSettings());
   if (view.name === "list") renderListBody();
@@ -1299,6 +1309,7 @@ function viewCase() {
       field("コース", h("div", {}, sel([["", "指定なし（共通設定の内容で作成）"], ...[...S.courses.values()].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja")).map((x) => [x.id, (x.name || "（名称未入力）") + (x.approved ? "【上長承認済】" : "")])], S.courses.has(c.courseId) ? c.courseId : "", (v) => { c.courseId = v; const m = M(v); c.rows.forEach((r) => regen(r, m)); ch(); render(); }, { id: "c-course" }),
         !S.courses.has(c.courseId) && S.courses.size && c.rows.length ? h("div", { class: "small", id: "c-course-hint", style: "color:var(--warn);margin-top:4px", text: "コースが未選択です。選ぶと、そのコースの成分表で注意文と対応を作り直します。" }) : null)),
       field("作成日", h("input", { id: "c-created", type: "date", value: c.createdDate, oninput: (e) => { c.createdDate = e.target.value; ch(); } }))),
+    partyPanel(c, () => caseSaver.touch()),
     stale ? h("div", { class: "banner warn" }, `コース成分表または共通設定が変更されています。${stale}名分の文章が現在の内容と異なります。`,
       h("button", { type: "button", class: "btn sm", text: "現在の内容で更新する", onclick: () => { c.rows.forEach((r) => regen(r, store)); ch(); render(); } })) : null,
     h("div", { class: "panel drop", id: "drop",
@@ -2292,7 +2303,7 @@ async function importLayoutXlsx(file) {
 }
 
 /** レイアウトの編集画面。doc.floors を直接書き換え、変更のたびに onChange を呼ぶ。 */
-function layoutEditor(doc, onChange) {
+function layoutEditor(doc, onChange, opts = {}) {
   let fi = 0, a = { r: 0, c: 0 }, f = { r: 0, c: 0 }, zoom = 1, clip = null, drag = false, tds = new Map();
   const undo = [];
   const F = () => doc.floors[fi], K = (r, c) => r + "," + c;
@@ -2339,7 +2350,13 @@ function layoutEditor(doc, onChange) {
         if (x.v) {
           let hgt = 0; for (let i = r; i <= r2; i++) hgt += fl.rh[i];
           const d = document.createElement("div"); d.textContent = x.v;
-          d.style.cssText = `height:${hgt - 1}px;font-size:${x.fs || 12}px;${x.fg ? `color:${x.fg};` : ""}${x.b ? "font-weight:700;" : ""}${x.al === "l" ? "justify-content:flex-start;text-align:left;padding-left:2px;" : x.al === "r" ? "justify-content:flex-end;text-align:right;padding-right:2px;" : ""}`;
+          let fs = x.fs || 12, fit = "";
+          if (x.fit) { // 配席の表記：行の途中で折り返さず、マスに収まる大きさに文字を合わせる
+            let wid = 0; for (let i = c; i <= c2; i++) wid += fl.cw[i];
+            const lines = String(x.v).split("\n"), em = Math.max(...lines.map((t) => [...t].reduce((n, ch) => n + (ch.charCodeAt(0) > 255 ? 1 : 0.6), 0)));
+            fs = Math.max(6, Math.min(13, Math.floor(((wid - 3) / em) * 10) / 10, Math.floor(((hgt - 3) / (lines.length * 1.15)) * 10) / 10)); fit = "white-space:pre;word-break:keep-all;";
+          }
+          d.style.cssText = `height:${hgt - 1}px;font-size:${fs}px;${fit}${x.fg ? `color:${x.fg};` : ""}${x.b ? "font-weight:700;" : ""}${x.al === "l" ? "justify-content:flex-start;text-align:left;padding-left:2px;" : x.al === "r" ? "justify-content:flex-end;text-align:right;padding-right:2px;" : ""}`;
           td.append(d);
         }
         tds.set(K(r, c), td); tr.append(td);
@@ -2347,9 +2364,41 @@ function layoutEditor(doc, onChange) {
       tb.append(tr);
     }
     const table = h("table", { id: "lay-table" }, h("colgroup", {}, ...fl.cw.map((w) => h("col", { style: `width:${w}px` }))), tb);
-    table.style.width = fl.cw.reduce((n, w) => n + w, 0) + "px"; table.style.zoom = zoom;
-    const top = wrap.scrollTop, left = wrap.scrollLeft; wrap.replaceChildren(table); wrap.scrollTop = top; wrap.scrollLeft = left;
+    table.style.width = fl.cw.reduce((n, w) => n + w, 0) + "px";
+    const canvas = h("div", { class: "lay-canvas", id: "lay-canvas" }, table, overlay()); canvas.style.zoom = zoom;
+    const top = wrap.scrollTop, left = wrap.scrollLeft; wrap.replaceChildren(canvas); wrap.scrollTop = top; wrap.scrollLeft = left;
     paint();
+  }
+  /* マス目の上に重ねるもの：配席エリアの枠と、動かせる吹き出し（doc.notes）。座標は等倍のピクセル。 */
+  const PAD = 10;
+  const X = (c) => { const fl = F(); let x = PAD; for (let i = 0; i < c; i++) x += fl.cw[i]; return x; };
+  const Y = (r) => { const fl = F(); let y = PAD; for (let i = 0; i < r; i++) y += fl.rh[i]; return y; };
+  function overlay() {
+    const fl = F(), layer = h("div", { class: "lay-over" });
+    const ar = doc.area && doc.area.fid === fl.id ? doc.area : null;
+    if (ar) layer.append(h("div", { class: "lay-area", id: "lay-area", style: `left:${X(ar.c1)}px;top:${Y(ar.r1)}px;width:${X(ar.c2 + 1) - X(ar.c1)}px;height:${Y(ar.r2 + 1) - Y(ar.r1)}px` }));
+    const notes = (doc.notes || []).filter((n) => n.fid === fl.id);
+    if (notes.length) {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); svg.setAttribute("class", "lay-lines"); layer.append(svg);
+      for (const n of notes) {
+        const line = n.r != null ? document.createElementNS("http://www.w3.org/2000/svg", "line") : null;
+        const el = h("div", { class: "lay-note", "data-note": n.id, style: `left:${n.x}px;top:${n.y}px` }, h("div", { class: "lay-note-t", text: n.text || "" }),
+          h("button", { type: "button", class: "lay-note-x", text: "×", title: "この吹き出しを消す", "aria-label": "吹き出しを消す", onpointerdown: (e) => e.stopPropagation(), onclick: () => { doc.notes.splice(doc.notes.indexOf(n), 1); onChange(); draw(); } }));
+        const aim = () => { if (!line) return; line.setAttribute("x1", n.x + el.offsetWidth / 2); line.setAttribute("y1", n.y + el.offsetHeight / 2); line.setAttribute("x2", X(n.c) + fl.cw[n.c] / 2); line.setAttribute("y2", Y(n.r) + fl.rh[n.r] / 2); };
+        if (line) svg.append(line);
+        el.addEventListener("pointerdown", (e) => {
+          if (e.target.isContentEditable) return;
+          e.preventDefault(); e.stopPropagation(); el.setPointerCapture(e.pointerId);
+          const sx = e.clientX, sy = e.clientY, ox = n.x, oy = n.y; let moved = false;
+          const mv = (ev) => { moved = true; n.x = Math.max(0, Math.round(ox + (ev.clientX - sx) / zoom)); n.y = Math.max(0, Math.round(oy + (ev.clientY - sy) / zoom)); el.style.left = n.x + "px"; el.style.top = n.y + "px"; aim(); };
+          const up = () => { el.removeEventListener("pointermove", mv); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up); if (moved) onChange(); };
+          el.addEventListener("pointermove", mv); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
+        });
+        el.addEventListener("dblclick", (e) => { e.stopPropagation(); const t = el.firstElementChild; t.contentEditable = "plaintext-only"; t.focus(); t.addEventListener("blur", () => { t.contentEditable = "false"; n.text = t.innerText.trim(); onChange(); aim(); }, { once: true }); });
+        layer.append(el); queueMicrotask(aim);
+      }
+    }
+    return layer;
   }
   function paint() {
     const fl = F(); if (!fl) return; const g = range(), o = origin(a);
@@ -2478,6 +2527,8 @@ function layoutEditor(doc, onChange) {
   });
 
   draw();
+  // 案件側の配席機能が使う入口
+  root.api = { floor: F, range, redraw: draw, snapshot: () => { undo.push([fi, JSON.stringify(F())]); if (undo.length > 40) undo.shift(); }, X, Y };
   return root;
 }
 
@@ -2492,6 +2543,206 @@ function viewLayout() {
     readOnly ? h("div", { class: "banner info", text: "閲覧専用のため、変更は保存されません。" }) : null,
     layoutEditor(layDraft.doc, () => laySaver.touch()),
   ].filter(Boolean);
+}
+
+/* ---------- 案件ごとの利用人数と配席 ----------
+   案件に party（利用人数）と layout（店舗レイアウトの写し＋配席の結果）を持たせる。
+   卓＝周りに席（○）がある四角。席の数がその卓の定員。 */
+const STAFF = [["teacher", "引率（先生）", "引率"], ["nurse", "看護師", "看護師"], ["camera", "カメラ", "カメラ"], ["tour", "添乗員", "添乗員"], ["crew", "乗務員", "乗務員"]];
+const newParty = () => ({ classes: [{ id: uid("k"), year: "", kumi: "", m: "", f: "" }], staff: {}, others: [] });
+const num = (v) => { const n = parseInt(String(v == null ? "" : v).replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0)), 10); return n > 0 ? n : 0; };
+const half = (v) => String(v == null ? "" : v).replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0)).trim();
+const SEAT_COLORS = ["#bdd7ee", "#f8cbad", "#c6e0b4", "#ffe699", "#d9c3e8", "#b4e5e0", "#f4b6c2", "#cfe2a8", "#ffd9b3", "#c9d4f0", "#e8d2b0", "#d0e8c0"];
+const STAFF_COLORS = { teacher: "#d9d9d9", nurse: "#ffc7ce", camera: "#e2efda", tour: "#ddebf7", crew: "#fff2cc" };
+/** 利用人数を、配席の単位（区分）の一覧にする。key は AI とのやり取りにも使う。 */
+function partyGroups(party) {
+  const out = []; if (!party) return out;
+  (party.classes || []).forEach((k, i) => {
+    const name = (half(k.year) ? half(k.year) + "年" : "") + (half(k.kumi) ? half(k.kumi) + "組" : "") || "クラス" + (i + 1);
+    if (num(k.m)) out.push({ key: `c${i + 1}m`, label: `${name} 男子`, lines: [name, "男子"], n: num(k.m), color: SEAT_COLORS[(i * 2) % SEAT_COLORS.length], year: half(k.year), kumi: half(k.kumi), sex: "男" });
+    if (num(k.f)) out.push({ key: `c${i + 1}f`, label: `${name} 女子`, lines: [name, "女子"], n: num(k.f), color: SEAT_COLORS[(i * 2 + 1) % SEAT_COLORS.length], year: half(k.year), kumi: half(k.kumi), sex: "女" });
+  });
+  for (const [id, , short] of STAFF) if (num((party.staff || {})[id])) out.push({ key: id, label: short, n: num(party.staff[id]), color: STAFF_COLORS[id], staff: true });
+  (party.others || []).forEach((o, i) => { if (num(o.n)) out.push({ key: `o${i + 1}`, label: (o.name || "その他").trim(), n: num(o.n), color: SEAT_COLORS[(SEAT_COLORS.length - 1 - i + SEAT_COLORS.length * 4) % SEAT_COLORS.length], staff: true }); });
+  return out;
+}
+const partyTotal = (party) => partyGroups(party).reduce((n, g) => n + g.n, 0);
+const isSeatCell = (x) => !!x && /^[○〇◯★☆]$/.test(String(x.v || "").trim());
+/** 卓を探す：線で囲まれた四角（結合したマス、または四方に線のあるマス）で、隣に席（○）があるもの。area があればその中だけ。
+    1つの席が複数の四角に接するときは、小さいほう（卓）に付ける。 */
+function layTables(fl, area) {
+  const K = (r, c) => r + "," + c, covered = new Set(), cands = [];
+  const dg = (r, c, i) => +(((fl.cells[K(r, c)] || {}).bd || "0000")[i]) || 0;
+  for (const m of fl.merges) {
+    for (let r = m[0]; r <= m[2]; r++) for (let c = m[1]; c <= m[3]; c++) covered.add(K(r, c));
+    const [r1, c1, r2, c2] = m;
+    if (dg(r1, c1, 0) && dg(r1, c1, 3) && (dg(r2, c1, 2) || dg(r2, c2, 2)) && (dg(r1, c2, 1) || dg(r2, c2, 1))) cands.push(m.slice());
+  }
+  for (const [k, x] of Object.entries(fl.cells)) { if (covered.has(k) || isSeatCell(x)) continue; if (/^[12]{4}$/.test(x.bd || "")) { const [r, c] = k.split(",").map(Number); cands.push([r, c, r, c]); } }
+  cands.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const inA = (r, c) => !area || (r >= area.r1 && r <= area.r2 && c >= area.c1 && c <= area.c2);
+  const owner = new Map(); // 席 -> いちばん小さい四角
+  cands.forEach((m, i) => {
+    const [r1, c1, r2, c2] = m; if (!inA(r1, c1) || !inA(r2, c2)) return;
+    const size = (r2 - r1 + 1) * (c2 - c1 + 1);
+    const add = (r, c) => { const k = K(r, c); if (r < 0 || c < 0 || r >= fl.rows || c >= fl.cols || covered.has(k) || !inA(r, c) || !isSeatCell(fl.cells[k])) return; const o = owner.get(k); if (!o || size < o.size) owner.set(k, { i, size, r, c }); };
+    for (let r = r1; r <= r2; r++) { add(r, c1 - 1); add(r, c2 + 1); }
+    for (let c = c1; c <= c2; c++) { add(r1 - 1, c); add(r2 + 1, c); }
+  });
+  const seats = new Map(); for (const o of owner.values()) { if (!seats.has(o.i)) seats.set(o.i, []); seats.get(o.i).push({ r: o.r, c: o.c }); }
+  const tables = [];
+  cands.forEach((m, i) => { const ss = seats.get(i); if (ss) tables.push({ id: "T" + (tables.length + 1), r1: m[0], c1: m[1], r2: m[2], c2: m[3], seats: ss.sort((a, b) => a.c - b.c || a.r - b.r), cap: ss.length }); });
+  return tables;
+}
+/** 前回の配席で書き換えたマスを、店舗レイアウトの状態に戻す（自動で付けた吹き出しも消す）。 */
+function clearSeating(lay) {
+  for (const [k, v] of Object.entries(lay.orig || {})) { const [fid, pos] = k.split(":"); const f2 = lay.floors.find((x) => x.id === fid); if (!f2) continue; if (v) f2.cells[pos] = clone(v); else delete f2.cells[pos]; }
+  lay.orig = {}; lay.notes = (lay.notes || []).filter((n) => !n.auto);
+}
+/** 指示がないときの標準の配席：クラス・男女ごとに卓を分け、職員等は最後にまとめる。卓が足りないときだけ相席にする。 */
+function seatDefault(tables, groups) {
+  const run = (mix) => {
+    const plan = new Map(tables.map((t) => [t.id, []])), left = new Map(tables.map((t) => [t.id, t.cap])); let rest = 0;
+    for (const g of groups) {
+      let n = g.n;
+      for (const t of tables) { if (!n) break; const free = left.get(t.id); if (!free || (!mix && plan.get(t.id).length)) continue; const k = Math.min(free, n); plan.get(t.id).push({ key: g.key, count: k }); left.set(t.id, free - k); n -= k; }
+      rest += n;
+    }
+    return { plan, rest };
+  };
+  const a = run(false); return a.rest ? run(true) : a;
+}
+/** 案件の人の「組」「性別」から、利用人数のどの区分に当たるかを探す。 */
+function groupOfRow(row, groups) {
+  const d = half(row.kumi).match(/\d+/g) || [], sex = row.sex === "男" || row.sex === "女" ? row.sex : "";
+  const cls = groups.filter((g) => !g.staff && (!sex || g.sex === sex));
+  const hit = cls.filter((g) => (d.length >= 2 ? g.year === d[0] && g.kumi === d[1] : d.length === 1 ? g.kumi === d[0] || (!g.kumi && g.year === d[0]) : false));
+  if (hit.length === 1) return hit[0];
+  if (hit.length > 1 && sex) return hit[0];
+  return !d.length && cls.length === 1 ? cls[0] : null;
+}
+/** 配席の結果をレイアウトに書き込む。卓に「1年2組 男子4名」と区分の色。席は○のままで、アレルギー対応者の席だけ★と吹き出し。 */
+function applySeating(lay, fl, tables, plan, groups, rows) {
+  const K = (r, c) => r + "," + c, G = new Map(groups.map((g) => [g.key, g]));
+  clearSeating(lay);
+  const touch = (r, c, fn) => { const k = K(r, c), ok = fl.id + ":" + k; if (!(ok in lay.orig)) lay.orig[ok] = fl.cells[k] ? clone(fl.cells[k]) : null; const x = fl.cells[k] || (fl.cells[k] = {}); fn(x); };
+  const seatOf = new Map(); // 区分 key -> その区分に割り当てた席
+  for (const t of tables) {
+    const gs = (plan.get(t.id) || []).filter((g) => G.has(g.key) && g.count > 0); if (!gs.length) continue;
+    touch(t.r1, t.c1, (x) => { x.v = gs.map((g) => [...(G.get(g.key).lines || [G.get(g.key).label]), `${g.count}名`].join("\n")).join("\n"); x.bg = G.get(gs[0].key).color; x.fit = 1; delete x.fs; delete x.fg; });
+    let i = 0;
+    for (const g of gs) for (let n = 0; n < g.count && i < t.seats.length; n++, i++) { const s = t.seats[i]; if (!seatOf.has(g.key)) seatOf.set(g.key, []); seatOf.get(g.key).push(s); } // 色を付けるのは卓だけ。席は○のまま
+  }
+  // アレルギー対応者：該当する区分の席を★にして、氏名とアレルギーの吹き出しを付ける
+  const lost = []; let free = 0;
+  for (const row of rows.filter((r) => (r.name || "").trim() && (r.allergy || "").trim())) {
+    const g = groupOfRow(row, groups), list = g ? seatOf.get(g.key) || [] : [], s = list.find((p) => !p.star);
+    const text = `${row.name.trim()}\n${row.allergy.trim()}`;
+    if (s) {
+      s.star = true; touch(s.r, s.c, (x) => { x.v = "★"; x.fg = "#c00000"; x.b = 1; });
+      let x = 10, y = 10; for (let c = 0; c < s.c; c++) x += fl.cw[c]; for (let r = 0; r < s.r; r++) y += fl.rh[r];
+      lay.notes.push({ id: uid("n"), fid: fl.id, r: s.r, c: s.c, x: x + 26, y: Math.max(0, y - 46), text, auto: true, rowId: row.id });
+    } else { lost.push(row.name.trim()); lay.notes.push({ id: uid("n"), fid: fl.id, x: 14 + (free % 4) * 170, y: 14 + Math.floor(free / 4) * 54, text, auto: true, rowId: row.id }); free++; }
+  }
+  return lost;
+}
+/** 案件画面の「利用人数」欄。 */
+function partyPanel(c, ch) {
+  if (!c.party) c.party = newParty();
+  const p = c.party; p.staff = p.staff || {}; p.others = p.others || []; p.classes = p.classes || [];
+  const total = h("strong", { id: "pt-total" }), upd = () => { total.textContent = `合計 ${partyTotal(p)}名`; };
+  const n = (obj, key, id, label) => h("input", { id, type: "text", inputmode: "numeric", value: obj[key] || "", "aria-label": label, style: "width:56px;text-align:right", oninput: (e) => { obj[key] = e.target.value; upd(); ch(); } });
+  const list = h("div", { class: "stack", style: "gap:6px" }), others = h("div", { class: "stack", style: "gap:6px" });
+  const drawC = () => list.replaceChildren(...p.classes.map((k, i) => h("div", { class: "row pt-row" },
+    n(k, "year", `pt-${i}-y`, "年"), h("span", { text: "年" }), n(k, "kumi", `pt-${i}-k`, "組"), h("span", { text: "組" }),
+    h("span", { class: "muted small", style: "margin-left:8px", text: "男子" }), n(k, "m", `pt-${i}-m`, "男子の人数"), h("span", { text: "人" }),
+    h("span", { class: "muted small", style: "margin-left:8px", text: "女子" }), n(k, "f", `pt-${i}-f`, "女子の人数"), h("span", { text: "人" }),
+    p.classes.length > 1 ? h("button", { type: "button", class: "x", text: "×", title: "この行を消す", "aria-label": "この行を消す", onclick: () => { p.classes.splice(i, 1); drawC(); upd(); ch(); } }) : null)));
+  const drawO = () => others.replaceChildren(...p.others.map((o, i) => h("div", { class: "row pt-row" },
+    h("input", { id: `pt-o${i}-n`, value: o.name || "", placeholder: "区分名（例：保護者）", "aria-label": "その他の区分名", style: "width:180px", oninput: (e) => { o.name = e.target.value; ch(); } }),
+    n(o, "n", `pt-o${i}-c`, "人数"), h("span", { text: "人" }),
+    h("button", { type: "button", class: "x", text: "×", title: "この行を消す", "aria-label": "この行を消す", onclick: () => { p.others.splice(i, 1); drawO(); upd(); ch(); } }))));
+  drawC(); drawO(); upd();
+  const lay = S.layouts.get(c.storeId), has = !!(lay && (lay.floors || []).length) || !!c.layout;
+  return h("div", { class: "panel stack", id: "party" },
+    h("div", { class: "row" }, h("h3", { text: "利用人数" }), total, h("span", { style: "margin-left:auto" }),
+      h("button", { type: "button", class: "btn primary", id: "btn-layout", disabled: !has, text: c.layout ? "レイアウトを開く" : "レイアウト作成", onclick: () => go({ name: "clayout", id: c.id }) })),
+    has ? null : h("div", { class: "small muted", text: c.storeId ? "この店舗にはレイアウトが登録されていません。店舗マスタの「レイアウト」で登録すると、ここから配席を作成できます。" : "店舗マスタに登録済みの店舗を選ぶと、その店舗のレイアウトで配席を作成できます。" }),
+    list, h("div", {}, h("button", { type: "button", class: "btn sm", id: "pt-add", text: "＋ クラスを追加", onclick: () => { p.classes.push({ id: uid("k"), year: "", kumi: "", m: "", f: "" }); drawC(); ch(); } })),
+    h("div", { class: "row", style: "gap:6px 18px" }, ...STAFF.map(([id, label]) => h("label", { class: "row small", style: "gap:6px" }, label, n(p.staff, id, "pt-" + id, label), "人"))),
+    others, h("div", {}, h("button", { type: "button", class: "btn sm", id: "pt-other", text: "＋ その他を追加", onclick: () => { p.others.push({ id: uid("o"), name: "", n: "" }); drawO(); ch(); } })));
+}
+/** 案件ごとのレイアウト画面：店舗のレイアウトを写し、利用人数から配席を作る。 */
+function viewCaseLayout() {
+  if (!draft) { const c0 = S.cases.get(view.id); if (!c0 || c0.locked) return [h("div", { class: "empty", text: "この案件は見つかりません。" })]; draft = clone(c0); }
+  const c = draft, ch = () => caseSaver.touch(), back = h("div", {}, h("button", { type: "button", class: "linkbtn", text: "← 案件に戻る", onclick: () => go({ name: "case", id: c.id }) }));
+  const base = S.layouts.get(c.storeId), fresh = () => ({ storeId: c.storeId, floors: clone(base.floors), notes: [], area: null, orig: {}, ai: (c.layout && c.layout.ai) || "" });
+  if (!c.layout) {
+    if (!base || !(base.floors || []).length) return [back, h("div", { class: "banner warn", text: "この店舗にはレイアウトが登録されていません。店舗マスタの「レイアウト」で登録してください。" })];
+    c.layout = fresh(); ch();
+  }
+  const lay = c.layout; lay.notes = lay.notes || []; lay.orig = lay.orig || {};
+  const groups = partyGroups(c.party), msg = h("div", { class: "small", id: "seat-msg", style: "white-space:pre-wrap" });
+  const say = (t, bad) => { msg.textContent = t; msg.style.color = bad ? "var(--bad)" : "var(--ok)"; };
+  const ed = layoutEditor(lay, ch);
+  const areaOf = () => (lay.area && lay.area.fid === ed.api.floor().id ? lay.area : null);
+  const areaInfo = h("span", { class: "small muted", id: "seat-area" });
+  const info = () => { const fl = ed.api.floor(); if (!fl) return; const ts = layTables(fl, areaOf()), cap = ts.reduce((n, t) => n + t.cap, 0); areaInfo.textContent = `${areaOf() ? "指定したエリア" : "この階の全体"}：卓 ${ts.length}・席 ${cap}　／　利用人数 ${partyTotal(c.party)}名`; };
+  const finish = (fl, tables, plan, note) => {
+    const lost = applySeating(lay, fl, tables, plan, groups, c.rows || []);
+    const seated = new Map(); for (const gs of plan.values()) for (const g of gs) seated.set(g.key, (seated.get(g.key) || 0) + g.count);
+    const short = groups.filter((g) => (seated.get(g.key) || 0) < g.n).map((g) => `${g.label} ${g.n - (seated.get(g.key) || 0)}名`);
+    ch(); ed.api.redraw(); info();
+    say([short.length ? `席が足りず、配席できなかった人がいます：${short.join("、")}` : "配席を作成しました。", lost.length ? `席を特定できなかったアレルギー対応者：${lost.join("、")}（組・性別が利用人数と合いません。吹き出しを左上に置きました）` : "", note || ""].filter(Boolean).join("\n"), short.length || lost.length);
+  };
+  const run = async (btn) => {
+    const fl = ed.api.floor(); if (!fl) return;
+    if (!groups.length) return say("利用人数が入力されていません。案件画面の「利用人数」に人数を入れてください。", true);
+    ed.api.snapshot(); clearSeating(lay); // 前回の配席を消してから卓を探す
+    const tables = layTables(fl, areaOf()); if (!tables.length) { ed.api.redraw(); return say("卓が見つかりません。卓（四角）の隣に席の印（○）があるレイアウトで、配席エリアを確かめてください。", true); }
+    const text = (lay.ai || "").trim();
+    if (!text) return finish(fl, tables, seatDefault(tables, groups).plan, "指示が空のため、標準の並べ方（クラス・男女ごとに卓を分け、職員等は最後）で作成しました。");
+    if (!sample) { ed.api.redraw(); return say("この表示環境ではAIが使えません。指示を空にすると、標準の並べ方で作成できます。", true); }
+    btn.disabled = true; say("AIが配席を考えています…（1分ほどかかることがあります）");
+    try {
+      const allergy = (c.rows || []).filter((r) => (r.name || "").trim() && (r.allergy || "").trim()).map((r) => { const g = groupOfRow(r, groups); return g ? `${g.key}に1名` : ""; }).filter(Boolean);
+      const res = await sample.json(`飲食店の団体予約の配席を作ります。卓の一覧と、座る人の区分ごとの人数、担当者からの指示を渡します。指示に従って、どの卓にどの区分を何名座らせるかを決めてください。
+規則：各卓の人数は定員（cap）以内。各区分の合計は、渡した人数とちょうど同じにする（席が足りない場合だけ、入り切らない分を残してよい）。指示にないことは、同じ区分を近い卓にまとめ、できるだけ1つの卓に1つの区分にする。卓の位置は row（上からの行）と col（左からの列）で、数字が近いほど近くにある。
+卓：${JSON.stringify(tables.map((t) => ({ id: t.id, cap: t.cap, row: t.r1 + 1, col: t.c1 + 1 })))}
+区分：${JSON.stringify(groups.map((g) => ({ key: g.key, name: g.label, count: g.n })))}
+${allergy.length ? "食物アレルギー対応者のいる区分：" + allergy.join("、") + "\n" : ""}担当者からの指示：${text}
+返答はJSONだけにしてください。形式：{"tables":[{"id":"T1","groups":[{"key":"c1m","count":4}]}],"comment":"指示のうち反映できなかった点があれば一言。なければ空"}`);
+      const plan = new Map(tables.map((t) => [t.id, []])), capOf = new Map(tables.map((t) => [t.id, t.cap])), leftG = new Map(groups.map((g) => [g.key, g.n]));
+      for (const t of Array.isArray(res.tables) ? res.tables : []) {
+        if (!plan.has(t.id)) continue; let free = capOf.get(t.id);
+        for (const g of Array.isArray(t.groups) ? t.groups : []) { const k = Math.min(free, num(g.count), leftG.get(g.key) || 0); if (k > 0) { plan.get(t.id).push({ key: g.key, count: k }); free -= k; leftG.set(g.key, leftG.get(g.key) - k); } }
+      }
+      finish(fl, tables, plan, res.comment ? "AIから：" + String(res.comment).slice(0, 200) : "");
+    } catch (e) { ed.api.redraw(); say(AI_ERR[e && e.code] || "AIで配席を作成できませんでした。もう一度お試しください。", true); }
+    btn.disabled = false;
+  };
+  const moved = c.layout.storeId !== c.storeId && base && (base.floors || []).length;
+  const panel = h("div", { class: "panel stack", id: "seat-panel" },
+    h("div", { class: "row" }, h("h3", { text: "配席の作成" }), areaInfo),
+    groups.length ? h("div", { class: "row", id: "seat-legend", style: "gap:6px 10px" }, ...groups.map((g) => h("span", { class: "lay-chip", style: `background:${g.color}`, text: `${g.label} ${g.n}名` }))) : h("div", { class: "small", style: "color:var(--warn)", text: "利用人数が未入力です。案件画面の「利用人数」に入力してください。" }),
+    h("label", { class: "f" }, "AIへの指示（空欄なら、クラス・男女ごとに卓を分ける標準の並べ方）",
+      h("textarea", { id: "seat-ai", rows: 2, value: lay.ai || "", placeholder: "例：クラス別・男女別にする。先生は入口に近い卓に固める。1年1組から順に左上から。", oninput: (e) => { lay.ai = e.target.value; ch(); } })),
+    h("div", { class: "row" },
+      h("button", { type: "button", class: "btn", id: "seat-area-set", text: "選んだ範囲を配席エリアにする", onclick: () => { const g = ed.api.range(); lay.area = { fid: ed.api.floor().id, ...g }; ch(); ed.api.redraw(); info(); } }),
+      h("button", { type: "button", class: "btn", id: "seat-area-clear", text: "エリアを解除", onclick: () => { lay.area = null; ch(); ed.api.redraw(); info(); } }),
+      h("button", { type: "button", class: "btn", id: "seat-note", text: "吹き出しを追加", onclick: () => { const g = ed.api.range(), fl = ed.api.floor(); lay.notes.push({ id: uid("n"), fid: fl.id, x: ed.api.X(g.c1) + 20, y: Math.max(0, ed.api.Y(g.r1) - 40), text: "メモ" }); ch(); ed.api.redraw(); } }),
+      h("span", { style: "margin-left:auto" }),
+      h("button", { type: "button", class: "btn", id: "seat-clear", text: "配席を消す", onclick: () => { ed.api.snapshot(); clearSeating(lay); ch(); ed.api.redraw(); info(); say("配席を消して、店舗のレイアウトに戻しました。"); } }),
+      h("button", { type: "button", class: "btn primary", id: "seat-run", text: "配席を作成", onclick: (e) => run(e.target) })),
+    h("div", { class: "small muted", text: "配席エリアは、下のレイアウトでドラッグして範囲を選んでから指定します。吹き出しはドラッグで動かせ、ダブルクリックで文字を直せます。作成し直すと、前回の配席は消えて作り直されます。" }),
+    msg);
+  queueMicrotask(info);
+  ed.addEventListener("pointerup", () => queueMicrotask(info)); ed.addEventListener("click", () => queueMicrotask(info));
+  return [back,
+    h("h2", { text: `${c.groupName || "（団体名未入力）"} の配席レイアウト` }),
+    moved ? h("div", { class: "banner warn row" }, h("span", { text: "案件の店舗が変わっています。今のレイアウトは変更前の店舗のものです。" }), h("span", { style: "margin-left:auto" }), confirmBtn("今の店舗のレイアウトで作り直す", "本当に作り直す", () => { c.layout = fresh(); ch(); draft = clone(c); app0(); }, "btn sm")) : null,
+    panel, ed].filter(Boolean);
+  function app0() { const a = $("#app"); a.replaceChildren(...viewCaseLayout()); }
 }
 
 /* ---------- 起動 ---------- */
