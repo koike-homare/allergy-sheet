@@ -273,6 +273,8 @@ table.list tr.click{cursor:pointer} table.list tr.click:hover td{background:var(
 .srow.head>div{font-size:12px;color:var(--muted);background:var(--sunken);text-align:center;padding:6px}
 .srow .lab{display:none;font-size:11px;color:var(--muted)}
 .srow textarea,.srow input,.srow select{padding:4px 6px}
+.srow input:not([type=checkbox]),.srow select{height:36px;box-sizing:border-box}
+.srow textarea{min-height:36px;box-sizing:border-box;display:block}
 .srow .state{margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .memo{margin-top:6px;padding:4px 6px;border-radius:4px;background:var(--warn-soft)}
 .memo label{display:block;font-size:11px;color:var(--warn);margin-bottom:2px}
@@ -348,6 +350,10 @@ table.rv td{padding:3px;white-space:normal}
 table.rv input,table.rv select,table.rv textarea{font-size:12.5px;padding:3px 5px}
 table.rv td:nth-child(2){width:84px} table.rv td:nth-child(3){width:64px} table.rv td:nth-child(4){width:130px} table.rv td:nth-child(5){width:22%} table.rv td:nth-child(6){width:72px}
 table.prev select{font-size:12px;padding:2px 4px;min-width:96px}
+/* 読み取り結果の確認：1行入力とプルダウンの高さをそろえる */
+table.rv input:not([type=checkbox]),table.rv select{font-size:12.5px;padding:3px 5px;height:32px;box-sizing:border-box;min-width:0}
+table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:block}
+.fields input:not([type=checkbox]),.fields select,#rv-group{height:36px;box-sizing:border-box}
 #toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:99px;font-size:13px;max-width:calc(100vw - 32px);z-index:10}
 </style>
 
@@ -1403,7 +1409,7 @@ const AI_PROMPT = `あなたは団体旅行の食事手配の担当者を手伝�
 
 `;
 let aiCtl = null;
-const AI_ERR = { not_granted: "AIの利用が許可されていないため読み取れません。", rate_limited: "利用が集中しています。少し待ってからもう一度お試しください。", image_rejected: "この画像は読み取れませんでした。別のファイルでお試しください。", images_unavailable: "この表示環境では、PDF・画像をAIに渡すことができません。Excel・CSV・テキスト貼り付けは使えます。", refused: "この内容は読み取れませんでした。", invalid_json: "読み取り結果を整理できませんでした。もう一度お試しください。", session_expired: "サインインし直してから、もう一度お試しください。", sampling_disabled: "このアカウントではAIの読み取りが使えません。", no_api_key: "AIの設定（APIキー）がまだ登録されていません。管理者に連絡してください。", bad_api_key: "AIの設定（APIキー）が正しくありません。管理者に連絡してください。", upstream_error: "AIから応答がありませんでした。少し待ってからもう一度お試しください。" };
+const AI_ERR = { not_granted: "AIの利用が許可されていないため読み取れません。", rate_limited: "利用が集中しています。少し待ってからもう一度お試しください。", image_rejected: "この画像は読み取れませんでした。別のファイルでお試しください。", images_unavailable: "この表示環境では、PDF・画像をAIに渡すことができません。Excel・CSV・テキスト貼り付けは使えます。", refused: "この内容は読み取れませんでした。", invalid_json: "読み取り結果を整理できませんでした。もう一度お試しください。", session_expired: "サインインし直してから、もう一度お試しください。", sampling_disabled: "このアカウントではAIの読み取りが使えません。", no_api_key: "AIの設定（APIキー）がまだ登録されていません。管理者に連絡してください。", no_credit: "AIクレジットの残高がありません。管理者に連絡してください（クレジットの追加購入が必要です）。", bad_api_key: "AIの設定（APIキー）が正しくありません。管理者に連絡してください。", upstream_error: "AIから応答がありませんでした。少し待ってからもう一度お試しください。" };
 /** 画像は1回に送れる枚数ごとに分けて順番に読み取り、結果をまとめて確認画面に出す。 */
 async function runAi(textData, images, add, msgEl, maxImg) {
   const dlg = $("#dlg");
