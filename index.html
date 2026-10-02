@@ -342,13 +342,17 @@ div.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute
 dialog{border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);padding:0;width:min(1000px,calc(100vw - 32px));max-height:calc(100vh - 40px)}
 dialog::backdrop{background:rgba(10,15,25,.5)}
 .dlg{display:flex;flex-direction:column;gap:14px;padding:18px}
+/* 読み取り結果の確認：右端をドラッグして横幅を変えられる */
+.dlg-grip{position:absolute;top:0;right:0;bottom:0;width:12px;cursor:ew-resize;touch-action:none;display:flex;align-items:center;justify-content:center}
+.dlg-grip::after{content:"";width:4px;height:44px;border-radius:4px;background:var(--line)}
+.dlg-grip:hover::after,.dlg-grip.drag::after{background:var(--accent)}
 table.prev{border-collapse:collapse;font-size:12.5px;width:100%}
 table.prev th,table.prev td{border:1px solid var(--line);padding:4px 6px;vertical-align:top;white-space:pre-wrap;min-width:70px}
 table.prev th{background:var(--sunken);font-weight:400}
 table.prev tr.hd td{background:var(--accent-soft)}
 table.rv td{padding:3px;white-space:normal}
 table.rv input,table.rv select,table.rv textarea{font-size:12.5px;padding:3px 5px}
-table.rv td:nth-child(2){width:84px} table.rv td:nth-child(3){width:64px} table.rv td:nth-child(4){width:130px} table.rv td:nth-child(5){width:22%} table.rv td:nth-child(6){width:72px}
+table.rv td:nth-child(2){width:84px} table.rv td:nth-child(3){width:64px} table.rv td:nth-child(4){width:130px} table.rv td:nth-child(5){width:22%} table.rv td:nth-child(6){width:72px} table.rv td:nth-child(7){width:20%}
 table.prev select{font-size:12px;padding:2px 4px;min-width:96px}
 /* 読み取り結果の確認：1行入力とプルダウンの高さをそろえる */
 table.rv input:not([type=checkbox]),table.rv select{font-size:12.5px;padding:3px 5px;height:32px;box-sizing:border-box;min-width:0}
@@ -1484,8 +1488,20 @@ function reviewDialog(people, add, groupName, warn) {
     h("div", { class: "row" }, count, h("span", { style: "margin-left:auto" }),
       h("button", { type: "button", class: "btn", text: "やめる", onclick: () => dlg.close() }),
       h("button", { type: "button", class: "btn primary", id: "rv-ok", text: "取り込む", disabled: !people.length, onclick: () => { const list = people.filter((_, i) => on[i]); dlg.close(); if (list.length) { if (groupName && draft && !draft.groupName) draft.groupName = groupName; add(list, true); applyHead(); caseSaver.touch(); render(); } } }))));
+  // 横幅は通常の約1.5倍。右端のつまみをドラッグすると変えられ、閉じるまで（次に開くときも）その幅を保つ。
+  const grip = h("div", { class: "dlg-grip", id: "rv-grip", title: "ドラッグして横幅を変更" });
+  const clampW = (w) => Math.max(Math.min(640, window.innerWidth - 32), Math.min(window.innerWidth - 32, w));
+  grip.addEventListener("pointerdown", (e) => {
+    e.preventDefault(); grip.setPointerCapture(e.pointerId); grip.classList.add("drag");
+    const move = (ev) => { rvWidth = clampW(2 * (ev.clientX - window.innerWidth / 2) + 8); dlg.style.width = rvWidth + "px"; fitAll(dlg); };
+    const up = () => { grip.classList.remove("drag"); grip.removeEventListener("pointermove", move); grip.removeEventListener("pointerup", up); grip.removeEventListener("pointercancel", up); };
+    grip.addEventListener("pointermove", move); grip.addEventListener("pointerup", up); grip.addEventListener("pointercancel", up);
+  });
+  dlg.firstElementChild.append(grip); dlg.firstElementChild.style.position = "relative";
+  dlg.style.width = clampW(rvWidth || 1500) + "px"; dlg.addEventListener("close", () => (dlg.style.width = ""), { once: true });
   upd(); if (!dlg.open) dlg.showModal(); fitAll(dlg);
 }
+let rvWidth = 0;
 const isTable = (f) => /\.(xlsx|xls|csv|tsv|txt)$/i.test(f.name), isPdf = (f) => /pdf$/i.test(f.type) || /\.pdf$/i.test(f.name);
 async function tableText(f) {
   await loadScript(LIB.xlsx);
