@@ -346,11 +346,13 @@ div.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute
 .lay-over{position:absolute;inset:0;pointer-events:none}
 .lay-area{position:absolute;border:2px dashed #d97706;background:rgba(217,119,6,.06);box-sizing:border-box}
 .lay-lines{position:absolute;inset:0;width:100%;height:100%;overflow:visible} .lay-lines line{stroke:#c00000;stroke-width:1.5}
-.lay-note{position:absolute;pointer-events:auto;background:#fffbe6;border:1.5px solid #c00000;border-radius:8px;padding:3px 18px 3px 7px;font-size:11px;line-height:1.3;color:#000;white-space:pre-wrap;max-width:200px;cursor:move;box-shadow:0 1px 3px rgba(0,0,0,.25);user-select:none;touch-action:none}
+.lay-note{position:absolute;pointer-events:auto;background:#fffbe6;border:1.5px solid #c00000;border-radius:8px;padding:3px 18px 3px 7px;font-size:11px;line-height:1.3;color:#000;white-space:pre;cursor:move;box-shadow:0 1px 3px rgba(0,0,0,.25);user-select:none;touch-action:none}
 .lay-note-t[contenteditable="plaintext-only"]{cursor:text;user-select:text;outline:1px dashed #c00000}
 .lay-note-x{position:absolute;top:0;right:1px;border:0;background:none;color:#c00000;font-size:13px;line-height:1;padding:2px 3px;cursor:pointer}
 .lay-pin{position:absolute;width:11px;height:11px;margin:-5.5px 0 0 -5.5px;border-radius:50%;background:#c00000;border:2px solid #fff;box-shadow:0 0 0 1px #c00000;pointer-events:auto;cursor:grab;touch-action:none}
 .lay-pin:active{cursor:grabbing}
+.lay-guide{position:absolute;border-left:2px solid #e11d2a;border-top:2px solid #e11d2a;margin:-1px 0 0 -1px;pointer-events:none;z-index:3}
+.lay-wrap.pen table,.lay-wrap.pen td{cursor:crosshair} .lay-bar .lay-ico.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 .resp-warn{margin-top:4px;font-size:12px;line-height:1.45;color:var(--bad,#c00000);background:#fff4f2;border:1px solid var(--bad,#c00000);border-radius:6px;padding:5px 8px}
 .srow select.chosen{font-weight:700}
 .resp-sel>summary{cursor:pointer;font-size:11px;color:var(--muted);margin-bottom:4px} .resp-cards{display:grid;gap:6px;margin-bottom:4px}
@@ -2715,8 +2717,21 @@ function layoutEditor(doc, onChange, opts = {}) {
           if (e.target.isContentEditable) return;
           e.preventDefault(); e.stopPropagation(); el.setPointerCapture(e.pointerId);
           const sx = e.clientX, sy = e.clientY, ox = n.x, oy = n.y; let moved = false;
-          const mv = (ev) => { if (!moved) pushUndo(); moved = true; n.x = Math.max(0, Math.round(ox + (ev.clientX - sx) / zoom)); n.y = Math.max(0, Math.round(oy + (ev.clientY - sy) / zoom)); el.style.left = n.x + "px"; el.style.top = n.y + "px"; aim(); };
-          const up = () => { el.removeEventListener("pointermove", mv); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up); if (moved) onChange(); };
+          // ほかの吹き出しと、左・中央・右／上・中央・下がそろう位置に近づいたら吸い付けて、赤い線でそろったことを示す
+          let guides = []; const clearG = () => { guides.forEach((g) => g.remove()); guides = []; };
+          const others = notes.filter((o) => o !== n).map((o) => { const oe = layer.querySelector(`[data-note="${o.id}"]`); return oe ? { x: o.x, y: o.y, w: oe.offsetWidth, h: oe.offsetHeight } : null; }).filter(Boolean);
+          const snap = () => {
+            clearG(); const w = el.offsetWidth, hh = el.offsetHeight, T = 5; let bx = null, by = null;
+            for (const o of others) {
+              for (const [mine, i] of [[n.x, 0], [n.x + w / 2, 1], [n.x + w, 2]]) { const tg = [o.x, o.x + o.w / 2, o.x + o.w][i], df = tg - mine; if (Math.abs(df) <= T && (!bx || Math.abs(df) < Math.abs(bx.df))) bx = { df, at: tg, o }; }
+              for (const [mine, i] of [[n.y, 0], [n.y + hh / 2, 1], [n.y + hh, 2]]) { const tg = [o.y, o.y + o.h / 2, o.y + o.h][i], df = tg - mine; if (Math.abs(df) <= T && (!by || Math.abs(df) < Math.abs(by.df))) by = { df, at: tg, o }; }
+            }
+            if (bx) { n.x = Math.max(0, Math.round(n.x + bx.df)); const y1 = Math.min(n.y, bx.o.y) - 8, y2 = Math.max(n.y + hh, bx.o.y + bx.o.h) + 8; guides.push(h("div", { class: "lay-guide", style: `left:${Math.round(bx.at)}px;top:${y1}px;width:0;height:${y2 - y1}px` })); }
+            if (by) { n.y = Math.max(0, Math.round(n.y + by.df)); const x1 = Math.min(n.x, by.o.x) - 8, x2 = Math.max(n.x + w, by.o.x + by.o.w) + 8; guides.push(h("div", { class: "lay-guide", style: `left:${x1}px;top:${Math.round(by.at)}px;width:${x2 - x1}px;height:0` })); }
+            layer.append(...guides);
+          };
+          const mv = (ev) => { if (!moved) pushUndo(); moved = true; n.x = Math.max(0, Math.round(ox + (ev.clientX - sx) / zoom)); n.y = Math.max(0, Math.round(oy + (ev.clientY - sy) / zoom)); if (!ev.altKey) snap(); else clearG(); el.style.left = n.x + "px"; el.style.top = n.y + "px"; aim(); };
+          const up = () => { el.removeEventListener("pointermove", mv); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up); clearG(); if (moved) onChange(); };
           el.addEventListener("pointermove", mv); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
         });
         el.addEventListener("dblclick", (e) => { e.stopPropagation(); const t = el.firstElementChild; t.contentEditable = "plaintext-only"; t.focus(); t.addEventListener("blur", () => { t.contentEditable = "false"; const v = t.innerText.trim(); if (v !== n.text) { pushUndo(); n.text = v; onChange(); } aim(); }, { once: true }); });
@@ -2869,7 +2884,9 @@ function layoutEditor(doc, onChange, opts = {}) {
     grp("結合", btn("結合", "選んだ範囲を1つのマスにする", () => mutate(() => { const g = range(); unmerge(); if (g.r1 !== g.r2 || g.c1 !== g.c2) { each((r, c) => { if (r !== g.r1 || c !== g.c1) put(r, c, (x) => { x.v = ""; }); }); F().merges.push([g.r1, g.c1, g.r2, g.c2]); } }), m ? null : "lay-merge"), btn("解除", "結合を解除", () => mutate(unmerge), m ? null : "lay-unmerge")),
     grp("背景", ...BG.map(([v, t]) => sw(v, t, () => mutate(() => each((r, c) => put(r, c, (x) => { x.bg = v; }))))), m ? null : pick),
     grp("文字色", ...FG.map(([v, t]) => sw(v, t, () => mutate(() => each((r, c) => put(r, c, (x) => { x.fg = v === "#000000" ? "" : v; })))))),
-    grp("罫線", btn("外枠", "範囲の外側に線", () => border("out"), m ? null : "lay-b-out"), btn("太枠", "範囲の外側に太い線", () => border("thick"), m ? null : "lay-b-thick"), btn("格子", "すべてのマスに線", () => border("all"), m ? null : "lay-b-all"), btn("なし", "線を消す", () => border("none"), m ? null : "lay-b-none")),
+    grp("罫線", btn("外枠", "範囲の外側に線", () => border("out"), m ? null : "lay-b-out"), btn("太枠", "範囲の外側に太い線", () => border("thick"), m ? null : "lay-b-thick"), btn("格子", "すべてのマスに線", () => border("all"), m ? null : "lay-b-all"), btn("なし", "線を消す", () => border("none"), m ? null : "lay-b-none"),
+      ...(m ? [] : [icon("lay-pen", "ペン：マスの境目をなぞって、自由に線を引く（もう一度押すか Esc で終了）", '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>', () => setPen(penMode === "pen" ? "" : "pen")),
+        icon("lay-erase", "消しゴム：マスの境目をなぞって、線を消す（もう一度押すか Esc で終了）", '<path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/>', () => setPen(penMode === "erase" ? "" : "erase"))])),
     grp("文字", btn("太字", "太字の切り替え", () => mutate(() => { const o = origin(a), on = !(get(o.r, o.c) || {}).b; each((r, c) => put(r, c, (x) => { x.b = on ? 1 : 0; })); })),
       sel([["10", "小"], ["12", "標準"], ["15", "大"], ["20", "特大"]], "12", (v) => mutate(() => each((r, c) => put(r, c, (x) => { x.fs = +v === 12 ? 0 : +v; }))), { id: m ? null : "lay-fs", "aria-label": "文字の大きさ", style: "width:76px" }),
       btn("左", "左寄せ", () => mutate(() => each((r, c) => put(r, c, (x) => { x.al = "l"; })))), btn("中", "中央", () => mutate(() => each((r, c) => put(r, c, (x) => { x.al = ""; })))), btn("右", "右寄せ", () => mutate(() => each((r, c) => put(r, c, (x) => { x.al = "r"; })))),
@@ -2901,11 +2918,38 @@ function layoutEditor(doc, onChange, opts = {}) {
     else if (e.key === "Escape") wrap.focus({ preventScroll: true });
   });
 
+  /* ペン（フリー罫線）と消しゴム：マスの境目をなぞると、その境目に線を引く／消す */
+  let penMode = "", penOn = false, penLast = "", penAxis = "", penA = null, penMoved = false;
+  function setPen(mode) { penMode = mode; wrap.classList.toggle("pen", !!mode); for (const [id, k] of [["#lay-pen", "pen"], ["#lay-erase", "erase"]]) { const b = bar.querySelector(id); if (b) { b.classList.toggle("on", mode === k); b.setAttribute("aria-pressed", mode === k ? "true" : "false"); } } }
+  // なぞっている向き（横・縦）を見て、その向きの境目だけに引く（角の近くで、直角の線が勝手に付かないようにする）
+  function penMove(e) { const dx = e.clientX - penA.x, dy = e.clientY - penA.y; if (Math.hypot(dx, dy) >= 5) { penAxis = Math.abs(dx) >= Math.abs(dy) ? "h" : "v"; penA = { x: e.clientX, y: e.clientY }; penMoved = true; } if (penAxis) penAt(e); }
+  function penAt(e) {
+    const fl = F(), cv = $("#lay-canvas"); if (!fl || !cv) return;
+    const bx = cv.getBoundingClientRect(), px = (e.clientX - bx.left) / zoom, py = (e.clientY - bx.top) / zoom;
+    if (px < X(0) - 6 || py < Y(0) - 6 || px > X(fl.cols) + 6 || py > Y(fl.rows) + 6) return;
+    let r = 0, c = 0; while (r < fl.rows - 1 && Y(r + 1) <= py) r++; while (c < fl.cols - 1 && X(c + 1) <= px) c++;
+    const d = [py - Y(r), X(c + 1) - px, Y(r + 1) - py, px - X(c)], ok = penAxis === "h" ? [0, 2] : penAxis === "v" ? [1, 3] : [0, 1, 2, 3]; let side = ok[0]; for (const i of ok) if (d[i] < d[side]) side = i;
+    if (d[side] > 8) return; // 境目から離れているときは何もしない
+    const key = r + "," + c + "," + side; if (key === penLast) return; penLast = key;
+    const nb = [[r - 1, c, 2], [r, c + 1, 3], [r + 1, c, 0], [r, c - 1, 1]][side], inG = nb[0] >= 0 && nb[1] >= 0 && nb[0] < fl.rows && nb[1] < fl.cols;
+    const m1 = mergeAt(r, c), m2 = inG ? mergeAt(nb[0], nb[1]) : null;
+    if (m1 && m1 === m2) return; // 結合したマスの内側には線を引けない
+    const cur = (rr, cc, s) => +(((fl.cells[K(rr, cc)] || {}).bd || "0000")[s]) || 0;
+    if (penMode === "pen") { if (cur(r, c, side) || (inG && cur(nb[0], nb[1], nb[2]))) return; if (m1 && inG && !m2) setBd(nb[0], nb[1], nb[2], 1); else setBd(r, c, side, 1); }
+    else { if (!cur(r, c, side) && !(inG && cur(nb[0], nb[1], nb[2]))) return; setBd(r, c, side, 0); if (inG) setBd(nb[0], nb[1], nb[2], 0); }
+    onChange(); draw();
+  }
   /* マウスとキーボード */
   const cellOf = (el) => { const td = el && el.closest && el.closest("td[data-r]"); return td && wrap.contains(td) ? { r: +td.dataset.r, c: +td.dataset.c } : null; };
+  wrap.addEventListener("pointerdown", (e) => {
+    if (!penMode || e.button === 2 || !e.target.closest || !e.target.closest("#lay-canvas") || e.target.closest(".lay-note,.lay-pin,.lay-move")) return;
+    e.preventDefault(); e.stopImmediatePropagation(); wrap.focus({ preventScroll: true }); pushUndo(); penOn = true; penLast = ""; penAxis = ""; penMoved = false; penA = { x: e.clientX, y: e.clientY };
+  });
+  wrap.addEventListener("pointermove", (e) => { if (penOn) penMove(e); });
+  wrap.addEventListener("pointerup", (e) => { if (penOn && !penMoved) { penAxis = ""; penAt(e); } }); // 動かさずに押しただけなら、いちばん近い境目1つ
   wrap.addEventListener("pointerdown", (e) => { const p = cellOf(e.target); if (!p || e.button === 2) return; e.preventDefault(); wrap.focus({ preventScroll: true }); if (e.shiftKey) f = p; else { a = p; f = { ...p }; } drag = true; paint(); });
   wrap.addEventListener("pointermove", (e) => { if (!drag) return; const p = cellOf(document.elementFromPoint(e.clientX, e.clientY)); if (p && (p.r !== f.r || p.c !== f.c)) { f = p; paint(); } });
-  window.addEventListener("pointerup", () => { drag = false; });
+  window.addEventListener("pointerup", () => { drag = false; penOn = false; });
   wrap.addEventListener("dblclick", () => { txt.focus(); txt.select(); });
   // 右クリック：道具を、その場に小さな窓で出す。選んだ範囲の外を右クリックしたときは、そのマスを選び直す。
   wrap.addEventListener("contextmenu", (e) => {
@@ -2917,6 +2961,7 @@ function layoutEditor(doc, onChange, opts = {}) {
   });
   wrap.addEventListener("keydown", (e) => {
     const fl = F(); if (!fl) return; const mod = e.ctrlKey || e.metaKey;
+    if (e.key === "Escape" && penMode) { setPen(""); return; }
     const mv = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[e.key];
     if (mv && e.altKey) { e.preventDefault(); const g = range(); moveRange(g, g.r1 + mv[0], g.c1 + mv[1]); return; }
     if (mv) {
@@ -3108,7 +3153,7 @@ function applySeating(lay, fl, tables, plan, groups, rows) {
     items.push({ row, s, text: noteText(row) });
   }
   const PX = (c) => fl.cw.slice(0, c).reduce((n, w) => n + w, 10), PY = (r) => fl.rh.slice(0, r).reduce((n, w) => n + w, 10), W = PX(fl.cols), H = PY(fl.rows);
-  const size = (text) => { const em = (t) => [...t].reduce((n, ch) => n + (ch.charCodeAt(0) > 255 ? 1 : 0.58), 0), ls = text.split("\n"), w = Math.min(200, Math.ceil(Math.max(...ls.map(em)) * 11) + 30); return { w, h: ls.reduce((n, t) => n + Math.max(1, Math.ceil((em(t) * 11) / 172)), 0) * 14.3 + 9 }; };
+  const size = (text) => { const em = (t) => [...t].reduce((n, ch) => n + (ch.charCodeAt(0) > 255 ? 1 : 0.58), 0), ls = text.split("\n"), w = Math.ceil(Math.max(...ls.map(em)) * 11) + 30; return { w, h: ls.length * 14.3 + 9 }; }; // 吹き出しは折り返さない
   const used = lay.notes.filter((n) => n.fid === fl.id).map((n) => ({ x: n.x, y: n.y, ...size(n.text || "") }));
   const hits = (b, list, gap) => list.some((o) => b.x < o.x + o.w + gap && b.x + b.w + gap > o.x && b.y < o.y + o.h + gap && b.y + b.h + gap > o.y);
   const stars = items.filter((i) => i.s).map((i) => ({ x: PX(i.s.c), y: PY(i.s.r), w: fl.cw[i.s.c], h: fl.rh[i.s.r] }));
@@ -3192,7 +3237,7 @@ function layNoteBoxes(lay, fl, ctx) {
   ctx.font = "11px 'BIZ UDPGothic','Hiragino Sans','Yu Gothic',Meiryo,sans-serif";
   return ((lay && lay.notes) || []).filter((n) => n.fid === fl.id).map((n) => {
     const lines = [];
-    for (const raw of String(n.text || "").split("\n")) { let cur = ""; for (const ch of raw) { if (cur && ctx.measureText(cur + ch).width > 186) { lines.push(cur); cur = ch; } else cur += ch; } lines.push(cur); }
+    for (const raw of String(n.text || "").split("\n")) { lines.push(raw); } // 折り返さない
     const w = Math.ceil(Math.max(10, ...lines.map((l) => ctx.measureText(l).width))) + 16, hh = Math.ceil(lines.length * 14.3) + 8, x = Math.max(0, n.x - 10), y = Math.max(0, n.y - 10);
     const tip = n.tx != null ? { x: n.tx - 10, y: n.ty - 10 } : n.r != null && n.r < fl.rows && n.c < fl.cols ? { x: X(n.c) + fl.cw[n.c] / 2, y: Y(n.r) + fl.rh[n.r] / 2 } : null;
     return { x, y, w, h: hh, lines, tip, loose: !!n.auto && n.r == null };
