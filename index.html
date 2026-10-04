@@ -256,6 +256,7 @@ button.chip{font-size:11.5px}
 .banner.bad{background:var(--bad-soft);color:var(--bad)}
 .banner.info{background:var(--accent-soft);color:var(--accent)}
 .pill{display:inline-block;border-radius:99px;padding:1px 9px;font-size:12px;font-weight:700;white-space:nowrap}
+tr.pj-inv-un td{background:var(--warn-soft)} table.pj-inv input{width:100%}
 .pj-st{border-radius:99px;padding:2px 8px;font-size:12px;font-weight:700;width:auto;border:1px solid transparent;cursor:pointer}
 .pj-st.st-run{background:#e3edfb;color:#1d4f9c} .pj-st.st-yet{background:var(--warn-soft);color:var(--warn)} .pj-st.st-bill{background:var(--bad-soft);color:var(--bad)} .pj-st.st-paid{background:var(--ok-soft);color:var(--ok)}
 .pj-st option{background:#fff;color:#222;font-weight:400}
@@ -458,7 +459,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <span id="save"></span>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 110</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 113</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -2487,6 +2488,13 @@ function viewSettings() {
       h("div", { class: "fields" },
         field("OAuth クライアントID", h("input", { id: "set-gClientId", value: s.gClientId || "", placeholder: "例：1234567890-xxxxxxxx.apps.googleusercontent.com", autocomplete: "off", oninput: (e) => { s.gClientId = e.target.value.trim(); ch(); } })),
         field("保存先フォルダ（フォルダのURL、またはID）", h("input", { id: "set-gFolderId", value: s.gFolderId || "", placeholder: "例：https://drive.google.com/drive/folders/xxxxxxxx", autocomplete: "off", oninput: (e) => { s.gFolderId = e.target.value.trim(); ch(); } })))),
+    h("div", { class: "panel stack", id: "invset" }, h("h3", { text: "請求書の発行元（PJ管理）" }),
+      h("div", { class: "muted small", text: "PJ管理の請求書に載せる、発行元の情報です。空の項目は請求書に載せません。" }),
+      h("div", { class: "fields" }, field("会社名", inp("invName")), field("登録番号（インボイス。例：T1234567890123）", inp("invRegNo"))),
+      h("div", { class: "fields" }, field("住所・TEL・FAX（改行して入力）", ta("invAddr", 4)), field("お振込み先（例：○○銀行 ○○支店 普通預金 0000000 カ）○○）", ta("invBank", 2))),
+      field("備考の定型文（空にすると載せません）", h("textarea", { id: "set-invNote", rows: 2, value: s.invNote === undefined ? PJ_INV_NOTE : s.invNote, oninput: (e) => { s.invNote = e.target.value; ch(); } })),
+      h("div", { class: "fields" }, ...[["invLogo", "ロゴの画像（右上に載せる）", 600], ["invSeal", "社印の画像（発行元の右に重ねる）", 300]].map(([k, label, max]) => { const pv = h("div", { id: "set-" + k + "-pv" }); const drawPv = () => pv.replaceChildren(...(s[k] ? [h("img", { src: s[k], alt: "", style: "max-height:64px;max-width:200px;border:1px solid var(--line);background:#fff;padding:4px" }), h("button", { type: "button", class: "btn sm", style: "margin-left:8px", text: "外す", onclick: () => { delete s[k]; ch(); drawPv(); } })] : [h("span", { class: "muted small", text: "未登録" })])); drawPv();
+        return field(label, h("div", { class: "stack", style: "gap:6px" }, h("input", { type: "file", id: "set-" + k, accept: "image/*", onchange: async (e) => { const f = e.target.files[0]; e.target.value = ""; if (!f) return; try { const bm = await createImageBitmap(f), k2 = Math.min(1, max / Math.max(bm.width, bm.height)), cv = h("canvas", { width: Math.round(bm.width * k2), height: Math.round(bm.height * k2) }); cv.getContext("2d").drawImage(bm, 0, 0, cv.width, cv.height); s[k] = cv.toDataURL("image/png"); ch(); drawPv(); } catch (_) { toast("画像を読み込めませんでした"); } } }), pv)); }))),
     h("div", { class: "panel stack", id: "wordkinds" }, h("h3", { text: "食品以外のアレルギー・料理名の扱い" }),
       h("div", { class: "muted small", text: "申告にこれらの言葉があると、食材としては判定しません。食品以外は「食品ではないため、当店では判断ができません」と書き、対応は通常コースを含む選択肢になります（ほかに該当する食材がない場合）。料理名は「原材料が特定できないため、当店では判断ができません」と書き、通常コースを含まない選択肢になります。コースに同じ名前の料理があるときは「該当あり」として扱います。" }),
       field("食品以外として扱う言葉（「、」で区切る）", ta("nonFood", 3)), field("料理名として扱う言葉（「、」で区切る）", ta("dishNames", 3))),
@@ -2933,6 +2941,7 @@ function viewPjSheet(c) {
       h("button", { type: "button", class: "btn", id: "pj-sync", text: "シートから読み直す", title: "利用日・フライトナンバーなど、一覧に出す項目をスプレッドシートから読み直す", onclick: () => sync(false) }),
       h("button", { type: "button", class: "btn", id: "pj-hist", text: "変更履歴", title: "いつ・だれが・どのセルを・何から何に変えたかを見る", onclick: async (e) => { e.target.disabled = true; const ok = await sync(true); e.target.disabled = false; say(""); pjHistDialog(c, ok ? "" : "今のスプレッドシートを読めなかったため、前回までの記録を表示しています（Google にログインすると、最新の直接編集も記録されます）。"); } }),
       h("span", { style: "margin-left:auto" }),
+      h("button", { type: "button", class: "btn", id: "pj-inv", text: "請求書作成", title: "案件の終了後、数量と金額を入れて請求書（PDF）を作り、案件の Drive フォルダへ保存する", onclick: () => pjInvoice(c, ch, drawHead) }),
       h("button", { type: "button", class: "btn", id: "pj-deliv", text: "検品・納品書", title: "クライアントへ渡す検品・納品書を PDF（A4縦）で保存する。取り消した品目（取り消し線の行）は載せません", onclick: async (e) => { e.target.disabled = true; await pjDeliveryPdf(c, say); drawHead(); e.target.disabled = false; } }),
       xBtn, pBtn,
       h("a", { class: "btn", href: url, target: "_blank", rel: "noopener", id: "pj-open", text: "別タブで開く" }),
@@ -3012,6 +3021,207 @@ async function pjDeliveryPdf(c, say) {
     await dl.save({ filename: ("検品・納品書 " + pjName(c)).replace(/[\\/:*?"<>|]/g, "") + ".pdf", data: pdf.output("blob") });
     say(`検品・納品書を出力しました（${pages.length}ページ）。`);
   } catch (e) { made.forEach((x) => x.remove()); say(e && e.code === "declined" ? "" : e && e.code ? "この表示環境では保存できませんでした。" : String((e && e.message) || "検品・納品書を作成できませんでした。"), true); }
+}
+
+/* ----- PJ管理：請求書 -----
+   案件の終了後、手書きで数量・金額が書かれた資料が届く。直接入力するか、資料を読み込んで（AI）金額を入れ、PDF（A4縦）にして案件の Drive フォルダへ保存する。
+   税率：食品・飲料は 8%（軽減）、配送料・深夜早朝料金・非食品（ドライアイス・包材・食器など）・アルコール類は 10%。行ごとに変えられる。消費税は税率ごとに1回、端数を切り捨てる。 */
+const PJ_FEE = { delivery: 20000, night: 8000 };
+const pjNum = (v) => { const n = parseFloat(String(v == null ? "" : v).replace(/[,，¥￥円\s]/g, "")); return isFinite(n) ? n : null; };
+const pjYen = (n) => "¥" + Math.round(n).toLocaleString("ja-JP");
+const pjNight = (t) => { const m = /^(\d{1,2})[:：](\d{2})/.exec(String(t || "").trim()); if (!m) return false; const hh = +m[1]; return hh >= 22 || hh < 8; };
+function pjTaxGuess(name) {
+  const t = String(name || "");
+  if (/non[\s-]?alcohol|ノンアルコール|alcohol[\s-]?free/i.test(t)) return 8;
+  if (/beer|ビール|wine|ワイン|champagne|シャンパン|\bsake\b|日本酒|焼酎|shochu|梅酒|whisk|ウイスキー|ウィスキー|vodka|ウォッカ|\bgin\b|\brum\b|tequila|テキーラ|brandy|ブランデー|cognac|コニャック|liquor|liqueur|リキュール|highball|ハイボール|cocktail|カクテル|prosecco|\bcava\b|alcohol|アルコール|酒類/i.test(t)) return 10;
+  if (/dry\s*ice|ドライアイス|包材|packag|食器|cutlery|カトラリー|napkin|ナプキン|chopstick|割り箸|割箸|\bstraws?\b|ストロー|delivery|配送|配達料|surcharge/i.test(t)) return 10;
+  return 8;
+}
+const pjInvFile = (c, total) => `【御請求書】${String(c.flight || "").trim() || "—"}_${Math.round(total)}_${String(c.visitDate || "").replace(/-/g, "")}`.replace(/[\\/:*?"<>|]/g, "");
+function pjInvTotals(inv) {
+  const by = { 8: 0, 10: 0, 0: 0 }; for (const l of inv.lines) { const a = pjNum(l.amount); if (a != null) by[[8, 10].includes(+l.tax) ? +l.tax : 0] += a; }
+  const tax8 = Math.floor(by[8] * 0.08), tax10 = Math.floor(by[10] * 0.1);
+  return { sub8: by[8], sub10: by[10], sub0: by[0], tax8, tax10, total: by[8] + by[10] + by[0] + tax8 + tax10 };
+}
+/** シートの品目のセル（英語の行のあとに日本語の行）を、品目名（英語・日本語）と内訳に分ける。内訳は「- chicken and leek - ねぎま」のように英語と日本語を1行に並べる。 */
+function pjInvName(a) {
+  const enT = pjEn(a), all = String(a || "").trim(), jaT = all.length > enT.length ? all.slice(all.indexOf(enT) + enT.length).trim() : "";
+  const en = enT.split("\n").map((x) => x.trim()).filter(Boolean), ja = jaT.split("\n").map((x) => x.trim()).filter(Boolean), sub = [];
+  for (let i = 1; i < Math.max(en.length, ja.length); i++) { const e = en[i] || "", j = (ja[i] || "").replace(/^[-‐－ー・*＊\s]+/, ""); sub.push(e ? e + (j ? " - " + j : "") : "- " + j); }
+  return { name: en[0] || "", ja: ja[0] || "", sub: sub.join("\n") };
+}
+/** 今のシート（取り消した品目を除く）から、請求の行を作る。配送料と、該当すれば深夜・早朝料金を足す。 */
+async function pjInvSeed(c) {
+  const sh = await pjSheetRead(c); pjTakeHead(c, sh);
+  let rd = []; try { const fm = await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${c.drive.sheetId}?ranges=${encodeURIComponent("'" + sh.main.title.replace(/'/g, "''") + "'!A1:A800")}&fields=${encodeURIComponent("sheets(data(rowData(values(effectiveFormat(textFormat(strikethrough))))))")}`); rd = ((((fm.sheets || [])[0] || {}).data || [])[0] || {}).rowData || []; } catch (_) {}
+  const struck = (r) => !!((((rd[r] || {}).values || [])[0] || {}).effectiveFormat || {}).textFormat?.strikethrough;
+  const lines = sh.rows.filter((x) => !x.sec && !struck(x.r)).map((x) => { const p = pjInvName(x.a); return { id: uid("l"), ...p, qty: x.b, unit: "", amount: "", tax: pjTaxGuess(p.name + " " + p.ja + " " + p.sub) }; });
+  lines.push({ id: uid("l"), name: "Delivery fee", ja: "配送料", qty: "1", unit: String(PJ_FEE.delivery), amount: String(PJ_FEE.delivery), tax: 10, fee: "delivery" });
+  if (pjNight(c.time)) lines.push({ id: uid("l"), name: "Late-night / early-morning surcharge", ja: "深夜・早朝料金", qty: "1", unit: String(PJ_FEE.night), amount: String(PJ_FEE.night), tax: 10, fee: "night" });
+  return lines;
+}
+/** 手書きの資料を読み、行ごとの数量・単価・金額を入れる。PDF は手書きが文字として取れないため、必ず画像にして渡す。 */
+async function pjInvRead(inv, files, say) {
+  if (!sample) throw new Error("この表示環境ではAIの読み取りが使えません。");
+  const imgs = [], texts = [];
+  for (const f of files) {
+    if (isPdf(f)) { await loadScript(LIB.pdf); await loadScript(LIB.pdfw); const pdf = await pdfjsLib.getDocument({ data: await f.arrayBuffer(), isEvalSupported: false }).promise;
+      for (let n = 1; n <= Math.min(pdf.numPages, 4); n++) { const page = await pdf.getPage(n), base = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: Math.min(3, 2000 / Math.max(base.width, base.height)) }); const cv = h("canvas", { width: Math.round(vp.width), height: Math.round(vp.height) }); await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise; imgs.push(await new Promise((ok) => cv.toBlob(ok, "image/jpeg", 0.9))); } }
+    else if (isTable(f)) texts.push(await tableText(f));
+    else if (/^image\//.test(f.type)) imgs.push(f);
+  }
+  if (!imgs.length && !texts.length) throw new Error("読み取れる資料がありませんでした。");
+  say("AIが資料を読んでいます…（1分ほどかかることがあります）");
+  const r = await sample.json(`プライベートジェットのケータリングの注文表に、案件の終了後、手書きなどで実際の数量と金額が書き込まれた資料です。請求書を作るため、行ごとの数量・単価・金額を読み取ってください。
+規則：
+・下の「請求の行」の i ごとに、資料に書かれた数量（qty）、単価（unit）、金額（amount）を数字だけで返す（円記号や桁区切りは付けない）。書かれていない項目は空文字にする。推測で数字を作らない。計算で補わない。
+・数字がかすれている、複数の読み方ができる、訂正されていて読みにくい行は unclear を true にする。
+・「請求の行」にない品目や費用が資料に書かれていたら、extra に入れる（item は資料の表記、itemJa は日本語訳。資料が日本語なら item に英訳を入れる）。
+・資料に合計金額が書かれていたら total に数字だけで入れる（税込か税抜か分かれば totalNote に書く）。
+返答はJSONだけ。形式：{"lines":[{"i":0,"qty":"","unit":"","amount":"","unclear":false}],"extra":[{"item":"","itemJa":"","qty":"","unit":"","amount":"","unclear":false}],"total":"","totalNote":"","summary":"気づいた点を1〜2文で"}
+請求の行：
+${JSON.stringify(inv.lines.map((l, i) => ({ i, item: l.name, itemJa: l.ja, qty: l.qty })))}
+${texts.length ? "資料：\n" + texts.join("\n\n").slice(0, 40000) : "添付の画像が資料です。"}`, imgs.length ? { images: imgs.slice(0, 4) } : {});
+  const s = (v) => String(v == null ? "" : v).trim(); let n = 0;
+  const put = (l, x) => { for (const k of ["qty", "unit", "amount"]) if (s(x[k]) !== "" && pjNum(x[k]) != null) l[k] = String(pjNum(x[k])); const q = pjNum(l.qty), u = pjNum(l.unit); if (s(x.amount) === "" && s(x.unit) !== "" && q != null && u != null) l.amount = String(Math.round(q * u)); l.ai = true; if (x.unclear) l.unsure = true; else delete l.unsure; n++; };
+  for (const x of Array.isArray(r.lines) ? r.lines : []) { const l = inv.lines[+x.i]; if (l && (s(x.qty) || s(x.unit) || s(x.amount))) put(l, x); }
+  for (const x of Array.isArray(r.extra) ? r.extra : []) { if (!s(x.item) && !s(x.itemJa)) continue; const l = { id: uid("l"), name: s(x.item), ja: s(x.itemJa), qty: "", unit: "", amount: "", tax: pjTaxGuess(s(x.item) + " " + s(x.itemJa)), added: true }; const at = inv.lines.findIndex((y) => y.fee); inv.lines.splice(at < 0 ? inv.lines.length : at, 0, l); put(l, x); }
+  return { n, total: pjNum(r.total), totalNote: s(r.totalNote), summary: s(r.summary) };
+}
+/** 請求書の PDF（A4縦）。現在使っている請求書の様式に合わせる（税率ごとに区切り、白黒の体裁）。金額が空の行は載せない。 */
+const PJ_INV_NOTE = "※振込手数料はご負担くださいますようお願い申し上げます。";
+async function pjInvPdf(c) {
+  const inv = c.inv, T = pjInvTotals(inv), st = S.settings, made = [];
+  try {
+    await loadScript(LIB.h2c); await loadScript(LIB.jspdf); try { await document.fonts.ready; } catch (_) {}
+    const PW = 794, PH = 1123, PADX = 62, PADT = 50, FOOT = 40, DK = "#3f3f3f", ZB = "#ebebeb", num = (n) => Math.round(n).toLocaleString("ja-JP");
+    const jd = (v) => { const m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(String(v || "")); return m ? `${m[1]}年${+m[2]}月${+m[3]}日` : ""; }, md = (v) => { const m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(String(v || "")); return m ? `${+m[2]}月${+m[3]}日` : ""; };
+    const live = inv.lines.filter((l) => pjNum(l.amount) != null && (l.name || l.ja)), grp = (r) => live.filter((l) => ([8, 10].includes(+l.tax) ? +l.tax : 0) === r);
+    // 表の行（区切り・品目・小計）を順に並べる
+    const W = [50, 0, 38, 84, 150], cellS = "padding:2.5px 6px;font-size:10px;line-height:1.35;vertical-align:middle;";
+    const band = (t) => h("tr", {}, h("td", { colspan: "5", style: `background:${DK};color:#fff;font-size:10px;padding:2.5px 4px`, text: t }));
+    const sub = (t, v) => h("tr", {}, h("td", { colspan: "4", style: `${cellS}border-top:1.5px solid #000;border-bottom:1px solid #000;padding-left:4px`, text: t }), h("td", { style: `${cellS}border-top:1.5px solid #000;border-bottom:1px solid #000;text-align:right`, text: num(v) }));
+    const item = (l, i, first) => { const z = i % 2 ? `background:${ZB};` : "", q = pjNum(l.qty), u = pjNum(l.unit), vl = "border-left:1px solid #bdbdbd;"; return h("tr", {},
+      h("td", { style: cellS + z + "white-space:nowrap", text: first ? md(c.visitDate) : "" }), h("td", { style: cellS + z + vl + "white-space:pre-wrap", text: [l.name, l.ja].filter(Boolean).join("  ") + (l.sub ? "\n" + l.sub : "") }),
+      h("td", { style: cellS + z + vl + "text-align:center", text: q != null ? String(q) : "" }), h("td", { style: cellS + z + vl + "text-align:right", text: u != null ? num(u) : "" }), h("td", { style: cellS + z + vl + "text-align:right", text: num(pjNum(l.amount)) })); };
+    const trs = [];
+    for (const [r, head, sb, v] of [[10, "●税率10%項目", "●税率10%項目小計", T.sub10], [8, "●税率8%項目（軽減税率対象項目）", "●税率8%項目（軽減税率対象項目）小計", T.sub8], [0, "●消費税の対象外の項目", "●消費税の対象外の項目小計", T.sub0]]) {
+      const g = grp(r); if (!g.length) continue; trs.push({ el: band(head), keep: true }); g.forEach((l, i) => trs.push({ el: item(l, i, i === 0) })); trs.push({ el: sub(sb, v) }); }
+    const pages = [];
+    const newPage = (noTable) => {
+      const first = !pages.length, body = h("tbody");
+      const table = h("table", { style: "width:100%;border-collapse:collapse;table-layout:fixed;margin-top:" + (first ? 14 : 10) + "px" },
+        h("colgroup", {}, ...W.map((w) => h("col", { style: w ? `width:${w}px` : "" }))),
+        h("thead", {}, h("tr", {}, ...["", "項目", "数量", "単価", "税抜金額"].map((t) => h("th", { style: "border-top:1.5px solid #000;border-bottom:1.5px solid #000;font-size:10px;font-weight:700;padding:2px 4px;text-align:center", text: t })))), body);
+      const top = first ? [
+        h("div", { style: "height:12px;background:#000" }),
+        h("div", { style: "display:flex;justify-content:flex-end;margin-top:6px" }, h("div", { style: "display:flex;gap:34px;border-bottom:1px solid #000;padding:0 4px 1px 12px;font-size:10px" }, h("span", { text: "発行日" }), h("span", { text: jd(inv.date) }))),
+        h("div", { style: "display:flex;gap:70px;align-items:flex-start;margin-top:6px" },
+          h("div", { style: "flex:1;min-width:0" },
+            h("div", { style: "font-size:21px;letter-spacing:.12em;margin-top:14px", text: "請求書" }),
+            h("div", { style: "display:flex;align-items:flex-end;border-bottom:1px solid #000;margin-top:14px;padding-bottom:3px" }, h("div", { style: "flex:1;text-align:center;font-size:18px;white-space:pre-wrap", text: inv.to || "　" }), h("div", { style: "font-size:10px;padding:0 10px 2px", text: "御中" })),
+            h("div", { style: "display:flex;border:1px solid #000;margin-top:11px;align-items:center" }, h("div", { style: "font-size:10px;padding:5px 3px;border-right:1px solid #000;white-space:nowrap", text: "フライトNo." }), h("div", { style: "flex:1;text-align:center;font-size:17px", text: c.flight || "" })),
+            inv.toInfo ? h("div", { style: "font-size:12px;white-space:pre-wrap;line-height:1.45;margin:3px 0 0 3px", text: inv.toInfo }) : null,
+            h("div", { style: "font-size:10px;margin:16px 0 0 3px", text: "下記の通り、ご請求申し上げます。" }),
+            h("div", { style: "display:flex;align-items:flex-end;border-bottom:1.5px solid #000;margin-top:22px;padding:0 4px 5px 3px" }, h("div", { style: "font-size:10px;padding-bottom:3px", text: "金額" }), h("div", { style: "margin-left:auto;font-size:18px", text: pjYen(T.total) }), h("div", { style: "font-size:10px;padding:0 0 3px 5px", text: "（税込）" }))),
+          h("div", { style: "width:150px;flex:none;position:relative" },
+            h("div", { style: "height:62px;display:flex;align-items:center;justify-content:flex-end" }, st.invLogo ? h("img", { src: st.invLogo, style: "max-height:58px;max-width:150px" }) : null),
+            h("div", { style: "font-size:10px;line-height:1.5;margin-top:22px;position:relative" },
+              h("div", { text: st.invName || "株式会社HASSIN" }), st.invAddr ? h("div", { style: "white-space:pre-wrap", text: st.invAddr }) : null,
+              st.invSeal ? h("img", { src: st.invSeal, style: "position:absolute;right:-14px;top:12px;width:60px;height:60px;opacity:.92" }) : null,
+              st.invRegNo ? h("div", { style: "margin-top:16px", text: "登録番号：" + st.invRegNo }) : null))),
+      ] : [h("div", { style: "display:flex;align-items:baseline;gap:14px;border-bottom:1px solid #000;padding-bottom:5px;font-size:10px" }, h("div", { style: "font-size:13px;letter-spacing:.12em", text: "請求書" }), h("div", { text: (inv.to || "") + (inv.to ? "　御中" : "") }), h("div", { style: "margin-left:auto", text: ["フライトNo. " + (c.flight || ""), jd(inv.date)].filter(Boolean).join("　／　") }))];
+      const inner = h("div", {}, ...top.filter(Boolean), noTable ? null : table), pno = h("span", {});
+      const page = h("div", { style: `position:fixed;left:-30000px;top:0;width:${PW}px;height:${PH}px;box-sizing:border-box;padding:${PADT}px ${PADX}px 0;background:#fff;color:#000;overflow:hidden;font-family:'BIZ UDPGothic','MS PGothic','Hiragino Sans','Yu Gothic',Meiryo,sans-serif` }, inner,
+        h("div", { style: `position:absolute;left:${PADX}px;right:${PADX}px;bottom:20px;text-align:right;font-size:8.5px;color:#555` }, pno));
+      document.body.append(page); made.push(page); const pg = { page, inner, body, pno }; pages.push(pg); return pg;
+    };
+    const fits = (pg) => pg.inner.getBoundingClientRect().height <= PH - PADT - FOOT;
+    let pg = newPage();
+    for (let i = 0; i < trs.length; i++) { const t = trs[i], nx = t.keep && trs[i + 1] ? trs[i + 1] : null; pg.body.append(t.el); if (nx) pg.body.append(nx.el);
+      if (!fits(pg) && pg.body.children.length > (nx ? 2 : 1)) { t.el.remove(); if (nx) nx.el.remove(); pg = newPage(); pg.body.append(t.el); if (nx) pg.body.append(nx.el); } if (nx) i++; }
+    const sr = (t, v, z) => h("div", { style: `display:flex;font-size:10px;padding:2.5px 6px;${z ? "background:" + ZB : ""}` }, h("span", { text: t }), h("span", { style: "margin-left:auto", text: num(v) }));
+    const notes = [st.invBank ? "【お振込み先】" + String(st.invBank).replace(/\n/g, "　") : "", inv.due ? "\n【お振込み期日】" + jd(inv.due) : "", st.invNote === undefined ? PJ_INV_NOTE : st.invNote, inv.note].filter(Boolean).join("\n");
+    const tail = h("div", {},
+      h("div", { style: "display:flex;justify-content:flex-end;margin-top:14px" }, h("div", { style: "width:226px" },
+        sr("小計", T.sub8 + T.sub10 + T.sub0), ...(T.sub10 ? [sr("消費税（10%対象）", T.tax10, 1)] : []), ...(T.sub8 ? [sr("消費税（ 8%対象）", T.tax8, 1)] : []), sr("税込合計", T.total),
+        h("div", { style: "height:26px" }), ...(T.sub10 ? [sr("10%対象合計", T.sub10 + T.tax10)] : []), ...(T.sub8 ? [sr("8%対象合計", T.sub8 + T.tax8)] : []), ...(T.sub0 ? [sr("対象外合計", T.sub0)] : []))),
+      h("div", { style: "border-top:1.5px solid #000;margin-top:14px;padding:3px 3px 0" }, h("div", { style: "font-size:9px;font-weight:700", text: "備考" }), h("div", { style: "font-size:11.5px;font-weight:700;white-space:pre-wrap;line-height:1.45", text: notes })));
+    pg.inner.append(tail); if (!fits(pg)) { tail.remove(); pg = newPage(true); pg.inner.append(tail); }
+    pages.forEach((q, i) => { q.pno.textContent = pages.length > 1 ? `${i + 1} / ${pages.length}` : ""; });
+    const pdf = new jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "portrait", compress: true });
+    for (const [i, q] of pages.entries()) { const shot = await html2canvas(q.page, { scale: 2.5, backgroundColor: "#ffffff", logging: false, windowWidth: PW + 80 }); q.page.remove(); if (i) pdf.addPage("a4", "portrait"); pdf.addImage(shot.toDataURL("image/jpeg", 0.93), "JPEG", 0, 0, 210, 297); }
+    return { blob: pdf.output("blob"), total: T.total, pages: pages.length };
+  } catch (e) { made.forEach((x) => x.remove()); throw e; }
+}
+/** 請求書の PDF を、案件の Drive フォルダへ保存する。 */
+async function pjInvUpload(c, blob, name) {
+  const tok = await gToken(), bd = "tcore" + Math.random().toString(36).slice(2), meta = { name: name + ".pdf", mimeType: "application/pdf", parents: [c.drive.folderId] };
+  const body = new Blob(["--" + bd + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" + JSON.stringify(meta) + "\r\n--" + bd + "\r\nContent-Type: application/pdf\r\n\r\n", blob, "\r\n--" + bd + "--"]);
+  const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,webViewLink", { method: "POST", headers: { Authorization: "Bearer " + tok, "Content-Type": "multipart/related; boundary=" + bd }, body });
+  if (!res.ok) { let t = ""; try { t = ((await res.json()).error || {}).message || ""; } catch (_) {} throw new Error(`Googleドライブに保存できませんでした（${res.status}）。${res.status === 404 ? "案件のフォルダが見つからないか、このアカウントに権限がありません。" : res.status === 403 ? "このアカウントに、案件のフォルダへ書き込む権限がありません。" : ""}${t ? "\n" + t : ""}`); }
+  const j = await res.json(); return { id: j.id, url: j.webViewLink || "https://drive.google.com/file/d/" + j.id + "/view" };
+}
+async function pjInvoice(c, ch, after) {
+  const dlg = $("#dlg"), msg = h("span", { class: "small", id: "pj-inv-msg", style: "white-space:pre-wrap" }), say = (t, bad) => { msg.textContent = t; msg.style.color = bad ? "var(--bad)" : "var(--ok)"; };
+  const wait = (t) => { dlg.replaceChildren(h("div", { class: "dlg" }, h("h3", { text: "請求書作成" }), h("div", { text: t }))); if (!dlg.open) dlg.showModal(); };
+  if (!c.inv || !Array.isArray(c.inv.lines)) {
+    wait("スプレッドシートから品目を読んでいます…");
+    try { const lines = await pjInvSeed(c), d = new Date(), p2 = (n) => String(n).padStart(2, "0"); c.inv = { lines, to: "", toInfo: "", date: `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`, due: "", note: "", issued: [] }; ch(); }
+    catch (e) { dlg.replaceChildren(h("div", { class: "dlg" }, h("h3", { text: "請求書作成" }), h("div", { class: "banner bad", style: "white-space:pre-wrap", text: String((e && e.message) || "スプレッドシートを読めませんでした。") }), h("div", { class: "row" }, h("span", { style: "margin-left:auto" }), h("button", { type: "button", class: "btn", text: "閉じる", onclick: () => dlg.close() })))); return; }
+  }
+  const inv = c.inv; inv.issued = inv.issued || [];
+  const body = h("tbody"), sums = h("div", { id: "pj-inv-sum", class: "stack", style: "gap:2px;min-width:280px" }), warn = h("div", { class: "small", id: "pj-inv-warn" }), issued = h("div", { class: "stack small", id: "pj-inv-issued", style: "gap:3px" });
+  const drawSum = () => { const T = pjInvTotals(inv), r = (a, b, st) => h("div", { class: "row", style: "gap:10px" + (st ? ";border-top:1px solid var(--line);padding-top:4px;margin-top:2px" : "") }, h("span", { class: st ? "" : "muted small", text: a }), h("strong", { style: "margin-left:auto" + (st ? ";font-size:18px" : ""), text: b }));
+    sums.replaceChildren(r("8%対象（食品・飲料） 小計", pjYen(T.sub8)), r("消費税 8%", pjYen(T.tax8)), r("10%対象 小計", pjYen(T.sub10)), r("消費税 10%", pjYen(T.tax10)), ...(T.sub0 ? [r("対象外", pjYen(T.sub0))] : []), r("ご請求金額（税込）", pjYen(T.total), true));
+    const empty = inv.lines.filter((l) => pjNum(l.amount) == null && (l.name || l.ja)).length, un = inv.lines.filter((l) => l.unsure).length;
+    warn.replaceChildren(...[empty ? h("div", { class: "muted", text: `金額が空の行が ${empty} 行あります（請求書には載せません）。` }) : null, un ? h("div", { style: "color:var(--warn)", text: `黄色の ${un} 行は、AIが読み取りに自信のない行です。資料と照合してください。` }) : null].filter(Boolean)); };
+  const drawIssued = () => issued.replaceChildren(...(inv.issued.length ? [h("div", { class: "muted", text: "発行済み：" }), ...inv.issued.slice().reverse().map((x) => h("div", {}, h("a", { href: x.url, target: "_blank", rel: "noopener", text: x.name + ".pdf" }), h("span", { class: "muted", text: "　" + new Date(x.at).toLocaleString("ja-JP", { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) + "　" + pjYen(x.total || 0) })))] : []));
+  const draw = () => { body.replaceChildren(...inv.lines.map((l) => {
+    const amt = h("input", { id: l.id + "-amt", value: l.amount || "", inputmode: "numeric", "aria-label": "金額", style: "width:104px;text-align:right;font-weight:700", oninput: (e) => { l.amount = e.target.value; delete l.unsure; tr.classList.remove("pj-inv-un"); ch(); drawSum(); } });
+    const calc = () => { const q = pjNum(l.qty), u = pjNum(l.unit); if (q != null && u != null) { l.amount = String(Math.round(q * u)); amt.value = l.amount; } };
+    const tr = h("tr", { class: l.unsure ? "pj-inv-un" : "" },
+      h("td", {}, h("input", { id: l.id + "-name", value: l.name || "", "aria-label": "品目（英語）", placeholder: "品目（英語）", oninput: (e) => { l.name = e.target.value; ch(); } }),
+        l.sub != null && l.sub !== "" || l.subOpen ? h("textarea", { id: l.id + "-sub", rows: Math.max(2, String(l.sub || "").split("\n").length), "aria-label": "内訳", placeholder: "内訳（1行に1つ。例：- chicken and leek - ねぎま）", style: "margin-top:4px;font-size:12px", oninput: (e) => { l.sub = e.target.value; ch(); } }, l.sub || "") : h("button", { type: "button", class: "linkbtn small", id: l.id + "-subbtn", text: "＋ 内訳", onclick: () => { l.subOpen = true; draw(); } })),
+      h("td", {}, h("input", { id: l.id + "-ja", value: l.ja || "", "aria-label": "品目（日本語）", placeholder: "日本語", oninput: (e) => { l.ja = e.target.value; ch(); } })),
+      h("td", {}, h("input", { id: l.id + "-qty", value: l.qty || "", inputmode: "decimal", "aria-label": "数量", style: "width:64px;text-align:right", oninput: (e) => { l.qty = e.target.value; calc(); ch(); drawSum(); } })),
+      h("td", {}, h("input", { id: l.id + "-unit", value: l.unit || "", inputmode: "numeric", "aria-label": "単価", style: "width:96px;text-align:right", oninput: (e) => { l.unit = e.target.value; calc(); ch(); drawSum(); } })),
+      h("td", {}, amt),
+      h("td", {}, h("select", { id: l.id + "-tax", "aria-label": "税率", style: "width:auto", onchange: (e) => { l.tax = +e.target.value; ch(); drawSum(); } }, ...[[8, "8%（軽減）"], [10, "10%"], [0, "対象外"]].map(([v, t]) => h("option", { value: String(v), text: t, selected: (+l.tax === v) || undefined })))),
+      h("td", {}, confirmBtn("×", "削除", () => { inv.lines.splice(inv.lines.indexOf(l), 1); draw(); ch(); }, "x")));
+    return tr; })); drawSum(); };
+  const fld = (key, label, o = {}) => field(label, h("input", { id: "pj-inv-" + key, value: inv[key] || "", ...o, oninput: (e) => { inv[key] = e.target.value; ch(); } }));
+  const file = h("input", { type: "file", id: "pj-inv-file", accept: ".pdf,.xlsx,.xls,.csv,image/*", multiple: true, hidden: true, onchange: async (e) => { const fs = [...e.target.files]; e.target.value = ""; if (!fs.length) return;
+    try { say("資料を準備しています…"); const r = await pjInvRead(inv, fs, say); draw(); ch(); const T = pjInvTotals(inv);
+      say(`${r.n}行に読み取った数字を入れました。必ず資料と照合してください。` + (r.total != null ? `\n資料に書かれた合計：${pjYen(r.total)}${r.totalNote ? "（" + r.totalNote + "）" : ""}／いまの合計（税込）：${pjYen(T.total)}` : "") + (r.summary ? "\nAIから：" + r.summary.slice(0, 200) : ""), r.total != null && Math.round(r.total) !== Math.round(T.total) && Math.round(r.total) !== Math.round(T.sub8 + T.sub10 + T.sub0)); }
+    catch (err) { if (err && err.code === "cancelled") return; say(AI_ERR[err && err.code] || String((err && err.message) || "読み取れませんでした。"), true); } } });
+  const busy = (b, on) => { for (const x of dlg.querySelectorAll("button")) x.disabled = on; };
+  const make = async (toDrive, btn) => {
+    if (!inv.lines.some((l) => pjNum(l.amount) != null)) return say("金額の入った行がありません。", true);
+    if (toDrive && !inv.to.trim()) return say("ご請求先（宛名）を入れてください。", true);
+    busy(btn, true);
+    try { say("請求書を作成中…"); const r = await pjInvPdf(c), name = pjInvFile(c, r.total);
+      if (toDrive) { say("Googleドライブに保存しています…"); const f = await pjInvUpload(c, r.blob, name); inv.issued.push({ at: new Date().toISOString(), name, url: f.url, id: f.id, total: r.total }); if (inv.issued.length > 20) inv.issued.shift(); c.status = "請求中"; ch(); drawIssued(); if (after) after(); say(`請求書を発行し、案件のフォルダに保存しました（${name}.pdf）。ステータスを「請求中」にしました。`); }
+      else if (dl) { await dl.save({ filename: "下書き " + name + ".pdf", data: r.blob }); say("下書きの PDF を保存しました（Googleドライブには保存していません）。"); }
+      else say("この表示環境では保存できません。", true);
+    } catch (e) { say(e && e.code === "declined" ? "" : String((e && e.message) || "請求書を作成できませんでした。"), true); }
+    busy(btn, false);
+  };
+  dlg.replaceChildren(h("div", { class: "dlg" }, h("h3", { text: "請求書作成" }),
+    h("div", { class: "fields" }, fld("to", "ご請求先（「御中」は自動で付きます）", { placeholder: "例：株式会社○○" }), field("ご請求先の登録番号・MAILなど（任意）", h("textarea", { id: "pj-inv-toInfo", rows: 2, placeholder: "例：登録番号：T0000000000000\nMAIL：xxx@example.com", oninput: (e) => { inv.toInfo = e.target.value; ch(); } }, inv.toInfo || "")), fld("date", "発行日", { type: "date" }), fld("due", "お振込み期日", { type: "date" })),
+    h("div", { class: "row", style: "gap:8px" },
+      h("button", { type: "button", class: "btn", id: "pj-inv-read", text: "データを読み込む（手書きの資料：PDF・画像・Excel）", onclick: () => file.click() }),
+      h("button", { type: "button", class: "btn", id: "pj-inv-add", text: "＋ 行を追加", onclick: () => { const at = inv.lines.findIndex((y) => y.fee); inv.lines.splice(at < 0 ? inv.lines.length : at, 0, { id: uid("l"), name: "", ja: "", qty: "", unit: "", amount: "", tax: 8 }); draw(); ch(); } }),
+      h("span", { style: "margin-left:auto" }),
+      confirmBtn("シートから品目を入れ直す", "入力した金額は消えます。入れ直す", async () => { try { say("スプレッドシートを読んでいます…"); inv.lines = await pjInvSeed(c); draw(); ch(); say("品目を入れ直しました。"); } catch (e) { say(String((e && e.message) || "読めませんでした。"), true); } }, "btn sm"), file),
+    h("div", { class: "muted small", text: "数量と単価を入れると金額（税抜）を計算します。金額だけを直接入れることもできます。税率は、食品・飲料が 8%、配送料・深夜早朝料金・非食品（ドライアイス・包材・食器など）・アルコール類が 10% で、行ごとに変えられます。消費税は税率ごとに端数を切り捨てます。" }),
+    h("div", { class: "scroll", style: "max-height:44vh;overflow-y:auto" }, h("table", { class: "prev pj-inv", id: "pj-inv-lines" }, h("thead", {}, h("tr", {}, ...["品目（英語）", "日本語", "数量", "単価", "金額（税抜）", "税率", ""].map((t) => h("th", { text: t })))), body)),
+    h("div", { class: "row", style: "align-items:flex-start;gap:20px" }, h("div", { class: "stack", style: "flex:1;gap:6px" }, field("備考（請求書に載せる文。任意）", h("textarea", { id: "pj-inv-note", rows: 2, oninput: (e) => { inv.note = e.target.value; ch(); } }, inv.note || "")), warn, issued), sums),
+    h("div", { class: "row" }, msg, h("span", { style: "margin-left:auto" }),
+      h("button", { type: "button", class: "btn", text: "閉じる", onclick: () => dlg.close() }),
+      h("button", { type: "button", class: "btn", id: "pj-inv-draft", text: "下書きPDFを保存", title: "確認用。この端末に保存するだけで、Googleドライブには保存しない", onclick: (e) => make(false, e.target) }),
+      h("button", { type: "button", class: "btn primary", id: "pj-inv-issue", text: "請求書を発行（Driveに保存）", onclick: (e) => make(true, e.target) }))));
+  draw(); drawIssued(); if (!dlg.open) dlg.showModal();
 }
 
 /* ----- PJ管理：変更履歴 -----
