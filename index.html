@@ -438,7 +438,7 @@ table.prev{border-collapse:collapse;font-size:12.5px;width:100%}
 table.prev th,table.prev td{border:1px solid var(--line);padding:4px 6px;vertical-align:top;white-space:pre-wrap;min-width:70px}
 table.prev th{background:var(--sunken);font-weight:400}
 table.prev tr.hd td{background:var(--accent-soft)}
-table.rv td{padding:3px;white-space:normal}
+table.rv td{padding:3px;white-space:normal} table.rv tr.rv-judge td{padding:4px 8px 8px;border-top:0;background:#f7f9fc} table.rv tr.rv-judge.rv-dup td{background:#fff8e6}
 table.rv input,table.rv select,table.rv textarea{font-size:12.5px;padding:3px 5px}
 table.rv td:nth-child(2){width:52px} table.rv td:nth-child(3){width:72px} table.rv td:nth-child(4){width:64px} table.rv td:nth-child(5){width:130px} table.rv td:nth-child(6){width:18%} table.rv td:nth-child(7){width:72px} table.rv td:nth-child(8){width:10%} table.rv td:nth-child(9){width:12%} table.rv td:nth-child(10){width:14%} table.rv td:nth-child(11){width:12%}
 table.prev select{font-size:12px;padding:2px 4px;min-width:96px}
@@ -466,7 +466,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <span id="save"></span>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 123</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 125</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -623,10 +623,15 @@ const isFruit = (name) => { const fs = fruitSet(); return entryTerms({ name }).s
 /** 食品ではないアレルギー（判断ができない旨を書き、判定には使わない）と、料理名（原材料が特定できない）の標準の一覧。共通設定で編集する。 */
 const NONFOOD_DEFAULT = "ハウスダスト、ダニ、ほこり、埃、カビ、花粉、スギ、杉、ヒノキ、檜、ブタクサ、イネ、猫、犬、動物、動物の毛、鳥、羽毛、うさぎ、ハムスター、馬、蜂、金属、ラテックス、ゴム、そば枕、そばがら、蕎麦殻、薬、薬剤、消毒液、漆、日光、紫外線、寒冷";
 const DISH_DEFAULT = "カレー、カレーライス、オムライス、ハンバーグ、シチュー、グラタン、ドリア、ラーメン、餃子、ギョーザ、コロッケ、天ぷら、フライ、お好み焼き、たこ焼き、ピザ、パスタ、スパゲッティ、サンドイッチ、ケーキ、クッキー、チョコレート、アイスクリーム、プリン";
+/** 範囲が広く、成分表では1つずつ判定できない言葉（宗教上の制限・動物性・野菜全般・ビタミン類など）。判定はせず、お持込みを勧める。共通設定で編集する。 */
+const BROAD_DEFAULT = "動物性食材、動物性食品、動物性、植物性食材、肉類、肉全般、肉、魚介類、魚介全般、魚全般、海産物、シーフード、野菜、野菜全般、野菜類、果物全般、穀物、穀類、五葷、ビタミン、ビタミン類、ミネラル、たんぱく質、タンパク質、添加物、食品添加物、保存料、着色料、香辛料、スパイス、発酵食品、油、油脂、糖類、砂糖、塩、ベジタリアン、ヴィーガン、ビーガン、ハラール、ハラル、コーシャ、宗教上の制限";
+const BROAD_TEXT = "は対象となる食材の範囲が広く、当店の成分表では個別に判定ができません。お客様の安全を最優先に考え、お持込みを推奨いたします。";
+const RESP_BYO_BROAD = "※対象となる食材の範囲が広く、当店では個別の除去対応ができかねます。お客様の安全を最優先に考え、お持込みを推奨いたします。なお、お持込み料は不要です。";
 const listHas = (src, tag) => { const t = norm(tag); return splitList(src).some((x) => norm(x) === t); };
 /** その言葉が「食品以外」か「料理名」か。行ごとの指定（AIの読み取り）→ 共通設定の一覧 の順に見る。 */
 function wordKind(tag, row) {
-  const k = row && row.kindMap && row.kindMap[tag]; if (k === "nonfood" || k === "dish") return k;
+  const k = row && row.kindMap && row.kindMap[tag]; if (k === "nonfood" || k === "dish" || k === "broad") return k;
+  if (listHas(S.settings.broadWords != null ? S.settings.broadWords : BROAD_DEFAULT, tag)) return "broad";
   if (listHas(S.settings.nonFood != null ? S.settings.nonFood : NONFOOD_DEFAULT, tag)) return "nonfood";
   if (listHas(S.settings.dishNames != null ? S.settings.dishNames : DISH_DEFAULT, tag)) return "dish";
   return "";
@@ -661,6 +666,7 @@ function resolveTag(store, tag, row) {
   // 食品以外・料理名は、食材としては判定しない
   const wk = wordKind(tag, row);
   if (wk === "nonfood") return { tag, kind: "nonfood", parts: [] };
+  if (wk === "broad") return { tag, kind: "broad", parts: [] };
   if (wk === "dish") { const t0 = norm(tag), inC = !!(store && store.course && (store.course.dishes || []).some((d) => d.name && (norm(d.name) === t0 || norm(d.name).includes(t0)))); return { tag, kind: inC ? "dishin" : "dish", parts: [] }; }
   // 成分表にない果物：現物は使用なし、ソース類は「果物」の成分ありとして扱う（コース指定時のみ）
   if (store && store.fruit && isFruit(tag)) return { tag, kind: "fruit", parts: [{ name: tag, entry: { name: tag, group: "果物", genbutsu: "none", usedIn: "", seibun: "contained", note: "" } }] };
@@ -687,6 +693,7 @@ function analyse(row, store) {
     if (it.kind === "nonfood") { it.j = { ...J0, g: "na", s: "na", hit: false, clear: true }; it.state = "nonfood"; it.tip = "食品ではないため判定しません（資料には「判断ができない」と書きます）。押すと扱いを変えられます"; }
     else if (it.kind === "dish") { it.j = { ...J0, g: "unk", s: "unk", hit: false, clear: false }; it.state = "dish"; it.tip = "料理名のため原材料が特定できません（資料には「判断ができない」と書き、通常コースを含まない選択肢にします）。押すと扱いを変えられます"; }
     else if (it.kind === "dishin") { it.j = { ...J0, g: "used", s: "unk", hit: true, clear: false }; it.state = "dish"; it.tip = "コースに同じ名前の料理があります（該当あり）"; }
+    else if (it.kind === "broad") { it.j = { ...J0, g: "unk", s: "unk", hit: false, clear: false }; it.state = "dish"; it.tip = "範囲が広く、成分表では1つずつ判定できません（資料には「個別に判定ができない」と書き、お持込みを勧めます）。押すと扱いを変えられます"; }
     else if (it.kind === "none") { it.state = "bad"; it.tip = "成分表にも辞書にもない言葉です"; }
     else if (it.kind === "maybe") { it.state = "maybe"; it.tip = `「${it.m.entry.name}」と同じ扱いでよいか未確認` + (it.parts.length ? "（今は成分表にない食材として、現物は使用なしと扱っています）" : ""); }
     else if (it.kind === "ext") { it.state = "ext"; it.tip = "成分表にない食材：現物は使用なしとして扱います（押すと、どのアレルゲンに当たるかを登録できます）"; }
@@ -707,12 +714,13 @@ function genElement(row, store) {
   const { items } = analyse(row, store);
   if (!items.length) return "";
   const T = { ...DEFAULT_TPL, ...S.settings };
-  const none = [], used = [], groups = [], sNone = [], todo = [], notes = [], lead = [], fruits = [], exts = [], nonFoods = [], dishes = [], dishIn = [];
+  const none = [], used = [], groups = [], sNone = [], todo = [], notes = [], lead = [], fruits = [], exts = [], nonFoods = [], dishes = [], dishIn = [], broads = [];
   for (const it of items) {
     const { label: tag, j } = it;
     if (it.kind === "nonfood") { nonFoods.push(tag); continue; }
     if (it.kind === "dish") { dishes.push(tag); continue; }
     if (it.kind === "dishin") { dishIn.push(tag); continue; }
+    if (it.kind === "broad") { broads.push(tag); continue; }
     if (j.g === "none") none.push(tag);
     else if (j.g === "used") {
       // 辞書経由（味噌→大豆 など）は、実際に使用しているアレルゲン名で書く。「味噌を使用」とは言わない。
@@ -733,6 +741,7 @@ function genElement(row, store) {
     for (const p of it.parts) if (p.entry && p.entry.note && !notes.includes(p.entry.note)) notes.push(p.entry.note);
   }
   const L = [...lead];
+  if (broads.length) L.push(`「${broads.join("、")}」${BROAD_TEXT}`);
   if (dishIn.length) L.push(`「${dishIn.join("、")}」はコース内容に含まれております。`);
   if (dishes.length) L.push(store && store.course ? `「${dishes.join("、")}」はコース内容に含まれておりませんが、原材料が特定できないため、当店では判断ができません。` : `「${dishes.join("、")}」は原材料が特定できないため、当店では判断ができません。`);
   if (nonFoods.length) L.push(`「${nonFoods.join("、")}」は食品ではないため、当店では判断ができません。`);
@@ -816,7 +825,7 @@ const respRisk = (row, store) => !!row.final && /通常/.test(row.final) && resp
 /** 資料（PDF・Excel）の「対応」欄に出す文章：最終的な対応を選ぶ前は選択肢の文章、選んだ後は決定した内容。 */
 const respOut = (row, store) => { const w = row.final ? respCaution(row, store) : ""; return row.final ? row.final + (w ? "\n" + w : "") : row.response || ""; };
 /** 注意文：手で書き換えていなければ、該当ありの人が通常コースを選んだときだけ標準の文面を入れる。 */
-const respCaution = (row, store) => (row.cautionAuto === false ? row.caution || "" : respRisk(row, store) ? RESP_WARN : IS_BYO.test(row.final || "") ? RESP_BYO : "");
+const respCaution = (row, store) => (row.cautionAuto === false ? row.caution || "" : respRisk(row, store) ? RESP_WARN : IS_BYO.test(row.final || "") ? (hasBroad(row) && !hasTrace(row) ? RESP_BYO_BROAD : RESP_BYO) : "");
 const IS_BYO = /持ち?込/;
 const RESP_BYO = "※店内ではアレルゲンを含む様々な食材を取り扱っているため、微量混入（コンタミネーション）を防ぐことができません。お客様の安全を最優先に考え、お持込みを推奨いたします。なお、お持込み料は不要です。";
 /** 微量不可の品目があるか。 */
@@ -835,10 +844,12 @@ function applyChoice(row, store) {
   if (hit.length === 1) { row.final = hit[0]; delete row.finalFree; } else { row.final = want; row.finalFree = true; }
   row.finalTouched = true; delete row.finalAuto;
 }
-/** 微量不可がある人は、最終的な対応を自動で「お持込み」にする（人が選び直したら、それを優先する）。 */
+/** 範囲の広い言葉（動物性食材・宗教上の制限など）があるか。 */
+const hasBroad = (row) => parseTags(row.allergy).some((t) => wordKind(jaOf(t, row.allergy) || t, row && row.kindMap && row.kindMap[t] ? { kindMap: { [jaOf(t, row.allergy) || t]: row.kindMap[t] } } : null) === "broad");
+/** 微量不可、または範囲の広い言葉がある人は、最終的な対応を自動で「お持込み」にする（人が選び直したら、それを優先する）。 */
 function finalAuto(row) {
   if (row.finalTouched) return;
-  if (hasTrace(row)) { const o = respOptions(row.response).find((x) => IS_BYO.test(x)) || "お持込み"; if (!row.final || row.finalAuto) { row.final = o; row.finalAuto = true; delete row.finalFree; } }
+  if (hasTrace(row) || hasBroad(row)) { const o = respOptions(row.response).find((x) => IS_BYO.test(x)) || "お持込み"; if (!row.final || row.finalAuto) { row.final = o; row.finalAuto = true; delete row.finalFree; } }
   else if (row.finalAuto) { row.final = ""; delete row.finalAuto; }
 }
 /** 配席の吹き出しに書く内容：氏名・アレルゲン・選んだ対応（コース名）。 */
@@ -863,7 +874,7 @@ function M(courseId) {
   if (fruit) for (const e of entries) if (e.genbutsu && e.seibun && isFruit(e.name)) { e.group = "果物"; e.seibun = "contained"; }
   return { ...base, id: "course:" + co.id + (fruit ? "+f" : ""), entries, course: co, fruit };
 }
-const SET_DEFAULTS = () => ({ ...DEFAULT_TPL, company: "", dept: "", tel: "", fax: "", notes: "", special: "", signNote: "", courseSub: "", courseNotes: "", coursePolicy: "", commonNote: "", response: "", responseOk: "", entries: [], dict: [], spec: clone(SPEC_DEFAULT), fruitMode: true, fruits: FRUITS_DEFAULT, nonFood: NONFOOD_DEFAULT, dishNames: DISH_DEFAULT });
+const SET_DEFAULTS = () => ({ ...DEFAULT_TPL, company: "", dept: "", tel: "", fax: "", notes: "", special: "", signNote: "", courseSub: "", courseNotes: "", coursePolicy: "", commonNote: "", response: "", responseOk: "", entries: [], dict: [], spec: clone(SPEC_DEFAULT), fruitMode: true, fruits: FRUITS_DEFAULT, nonFood: NONFOOD_DEFAULT, dishNames: DISH_DEFAULT, broadWords: BROAD_DEFAULT });
 function regen(row, store) {
   if (row.elementAuto !== false) row.element = genElement(row, store);
   if (row.responseAuto !== false) row.response = genResponse(row, store);
@@ -1437,7 +1448,7 @@ function viewCase() {
       // 通常コースは、どの選択肢のときでも選べるようにする（該当ありの人が選ぶと注意文が入る）
       if (!os.some((o) => /通常/.test(o))) os.unshift(respOptions(store && store.responseOk).find((o) => /通常/.test(o)) || "通常コース");
       if (r.final && !r.finalFree && !os.includes(r.final)) os.push(r.final);
-      finSel.replaceChildren(h("option", { value: "", text: "（未選択）" }), ...os.map((o) => h("option", { value: o, text: (hasTrace(r) && IS_BYO.test(o) ? "【AI判定】" : "") + o, selected: !r.finalFree && r.final === o })), h("option", { value: "__free", text: "フリー入力", selected: !!r.finalFree }));
+      finSel.replaceChildren(h("option", { value: "", text: "（未選択）" }), ...os.map((o) => h("option", { value: o, text: ((hasTrace(r) || hasBroad(r)) && IS_BYO.test(o) ? "【AI判定】" : "") + o, selected: !r.finalFree && r.final === o })), h("option", { value: "__free", text: "フリー入力", selected: !!r.finalFree }));
       finIn.hidden = !r.finalFree; if (r.finalFree && finIn.value !== (r.final || "")) finIn.value = r.final || "";
       docHint.hidden = !r.choice; docHint.textContent = r.choice ? "資料の記載：" + r.choice + (r.finalFree ? "（選択肢に当てはまるものがないため、そのまま入れています）" : "") : "";
       finSel.classList.toggle("chosen", !!r.final);
@@ -1453,8 +1464,8 @@ function viewCase() {
       if (elTa.value !== r.element) elTa.value = r.element;
       if (reTa.value !== r.response) reTa.value = r.response;
       const a = analyse(r, store);
-      chips.replaceChildren(...a.items.flatMap((i) => i.kind === "nonfood" || i.kind === "dish" || i.kind === "dishin"
-        ? [h("button", { type: "button", class: "chip " + (i.kind === "nonfood" ? "ext" : i.kind === "dishin" ? "bad" : "maybe"), title: i.tip, text: i.label + (i.kind === "nonfood" ? " 食品以外" : i.kind === "dishin" ? " 料理名（コースにあり）" : " 料理名"), onclick: () => resolveDialog(i.ja || i.tag, r, i.tag) })]
+      chips.replaceChildren(...a.items.flatMap((i) => i.kind === "nonfood" || i.kind === "dish" || i.kind === "dishin" || i.kind === "broad"
+        ? [h("button", { type: "button", class: "chip " + (i.kind === "nonfood" ? "ext" : i.kind === "dishin" ? "bad" : "maybe"), title: i.tip, text: i.label + (i.kind === "nonfood" ? " 食品以外" : i.kind === "dishin" ? " 料理名（コースにあり）" : i.kind === "broad" ? " 範囲が広い" : " 料理名"), onclick: () => resolveDialog(i.ja || i.tag, r, i.tag) })]
         : i.kind === "dict" && i.j.extP.length
         // まとめた表現は、成分表にある品目と、ない食材を別の札に分ける
         ? [(() => { const inS = i.parts.filter((p) => !(p.entry && p.entry.unlisted)); return inS.length ? h("span", { class: "chip " + i.state, title: i.tip, text: i.label + "＝" + inS.map((p) => p.name + (p.entry && p.entry.genbutsu && p.entry.seibun ? "" : "?")).join("・") }) : h("span", { class: "chip " + i.state, title: i.tip, text: i.label }); })(),
@@ -1538,9 +1549,9 @@ function viewCase() {
     // 「食品以外」「料理名」として扱う言葉は共通設定の一覧に持つ。登録すると、ほかの案件でも同じ扱いになる。
     const setKind = (k) => { dlg.close(); if (row && row.kindMap) delete row.kindMap[rawTag]; patchSettings((t) => {
       const drop = (src) => splitList(src).filter((x) => norm(x) !== norm(tag)).join("、");
-      t.nonFood = drop(t.nonFood); t.dishNames = drop(t.dishNames);
-      if (k === "nonfood") t.nonFood = [t.nonFood, tag].filter(Boolean).join("、"); if (k === "dish") t.dishNames = [t.dishNames, tag].filter(Boolean).join("、");
-    }, k === "nonfood" ? `「${tag}」を食品以外として登録しました` : k === "dish" ? `「${tag}」を料理名として登録しました` : `「${tag}」を食材として扱うように戻しました`); };
+      t.nonFood = drop(t.nonFood); t.dishNames = drop(t.dishNames); t.broadWords = drop(t.broadWords != null ? t.broadWords : BROAD_DEFAULT);
+      if (k === "nonfood") t.nonFood = [t.nonFood, tag].filter(Boolean).join("、"); if (k === "dish") t.dishNames = [t.dishNames, tag].filter(Boolean).join("、"); if (k === "broad") t.broadWords = [t.broadWords, tag].filter(Boolean).join("、");
+    }, k === "nonfood" ? `「${tag}」を食品以外として登録しました` : k === "dish" ? `「${tag}」を料理名として登録しました` : k === "broad" ? `「${tag}」を範囲の広い言葉として登録しました` : `「${tag}」を食材として扱うように戻しました`); };
     const inp = h("input", { id: "rs-maps", placeholder: "例：大豆、小麦" }), msg = h("div", { class: "small", style: "min-height:1.6em" });
     const ask = h("button", { type: "button", class: "btn", id: "rs-ai", text: "AIに相談する", onclick: async () => {
       ask.disabled = true; msg.style.color = ""; msg.textContent = "考えています…";
@@ -1557,9 +1568,10 @@ function viewCase() {
       h("div", { class: "muted small", text: "成分表にない言葉です。判定に使うアレルゲンを登録すると、この言葉が出てきたときに自動で照合します（共通設定の「言い換え辞書」に保存されます）。" }),
       field("判定に使うアレルゲン（「、」で区切る）", inp),
       h("div", { class: "muted small", text: "成分表にあるアレルゲン：" + (names.join("、") || "なし") }), msg,
-      h("div", { class: "panel stack", style: "padding:8px 10px;gap:6px" }, h("div", { class: "small", text: kindNow === "nonfood" ? "いまは「食品以外」として扱っています（資料には「食品ではないため判断ができない」と書き、判定には使いません）。" : kindNow === "dish" ? "いまは「料理名」として扱っています（資料には「原材料が特定できないため判断ができない」と書き、通常コースを含まない選択肢にします）。" : "食材ではない場合は、次のどちらかとして登録できます。" }),
+      h("div", { class: "panel stack", style: "padding:8px 10px;gap:6px" }, h("div", { class: "small", text: kindNow === "nonfood" ? "いまは「食品以外」として扱っています（資料には「食品ではないため判断ができない」と書き、判定には使いません）。" : kindNow === "dish" ? "いまは「料理名」として扱っています（資料には「原材料が特定できないため判断ができない」と書き、通常コースを含まない選択肢にします）。" : kindNow === "broad" ? "いまは「範囲の広い言葉」として扱っています（資料には「個別に判定ができない」と書き、お持込みを勧めます）。" : "食材ではない場合や、範囲が広くて判定できない場合は、次のいずれかとして登録できます。" }),
         h("div", { class: "row" }, kindNow !== "nonfood" ? h("button", { type: "button", class: "btn sm", id: "rs-nonfood", text: "食品以外として登録（ハウスダスト・動物など）", onclick: () => setKind("nonfood") }) : null,
           kindNow !== "dish" ? h("button", { type: "button", class: "btn sm", id: "rs-dish", text: "料理名として登録（カレー・オムライスなど）", onclick: () => setKind("dish") }) : null,
+          kindNow !== "broad" ? h("button", { type: "button", class: "btn sm", id: "rs-broad", text: "範囲の広い言葉として登録（動物性食材・野菜全般・宗教上の制限など）", onclick: () => setKind("broad") }) : null,
           kindNow ? h("button", { type: "button", class: "btn sm", id: "rs-food", text: "食材として扱う（登録を外す）", onclick: () => setKind("") }) : null)),
       h("div", { class: "row" }, sample ? ask : null,
         h("button", { type: "button", class: "linkbtn", text: store.course ? "成分表に行を追加する" : "共通設定に行を追加する", onclick: () => { dlg.close(); addToMaster(tag); } }),
@@ -1669,9 +1681,9 @@ function sbMapFrom(allergy, each) {
   return out;
 }
 /** AIが「食品以外」「料理名」と読み取った言葉を、アレルギー欄の言葉に結び付ける。 */
-function kindMapFrom(allergy, nonFood, dishes) {
+function kindMapFrom(allergy, nonFood, dishes, broad) {
   const tags = parseTags(allergy), out = {};
-  for (const [list, k] of [[nonFood, "nonfood"], [dishes, "dish"]]) for (const w of Array.isArray(list) ? list : []) { const item = String(w || "").trim(); if (!item) continue; const tag = tags.find((x) => x === item) || tags.find((x) => x.includes(item) || item.includes(x)); if (tag && !out[tag]) out[tag] = k; }
+  for (const [list, k] of [[nonFood, "nonfood"], [dishes, "dish"], [broad, "broad"]]) for (const w of Array.isArray(list) ? list : []) { const item = String(w || "").trim(); if (!item) continue; const tag = tags.find((x) => x === item) || tags.find((x) => x.includes(item) || item.includes(x)); if (tag && !out[tag]) out[tag] = k; }
   return out;
 }
 const normSeibun = (v) => (/不可|×|ng|ダメ|だめ/i.test(v) ? "不可" : /不明|[?？]/.test(v) ? "不明" : /可|○|〇|ok/i.test(v) ? "可" : "");
@@ -1780,9 +1792,9 @@ function pasteDialog(add) {
 
 /* ---------- 取込：AI読み取り（PDF・画像・文章） ---------- */
 const AI_PROMPT = `あなたは団体旅行の食事手配の担当者を手伝っています。渡された資料（名簿・連絡票・FAX・メールなど）から、食物アレルギーのある人の情報を1人ずつ抜き出してください。
-規則：資料に書かれていることだけを書き写し、推測で補わない。読み取れない項目は空文字にする。食材名は資料の表記のまま書く。外国語で書かれた食材名は訳さず原文のまま書き、すぐ後ろに（）で日本語訳を添える（例：lobster（ロブスター））。「ナッツ類」「甲殻類」のようなまとめた表現や、「味噌」「マヨネーズ」のような食品名も、個別の食材に言い換えずそのまま書く。食品ではないアレルギー（ハウスダスト、動物、そば枕など）や料理名（カレー、オムライスなど）が書かれていても、省かずに allergy にそのまま書き、nonFood / dishes にもその言葉を入れる。アレルギーの記載も食事の指定もない人は含めない。選択肢に○や✓を付ける形式の用紙では、印が付いた項目だけを対象にし、印のない選択肢は書かない。手書きで読みにくい文字は、読めた範囲を書いて memo に「判読不明あり（どの項目か）」と書く。remark は、相手（学校・保護者・旅行会社）から届いた情報を書く欄で、エピペンの所持、持参する薬・服用中の薬、通院中であること、発症時の対応のほか、備考欄や欄外に書かれた保護者・学校からの補足（例：「たこ焼きは食べられません」「保護者に確認中」「パンを持参予定」「同じ油・同じ釜も不可」）を、資料に実際に書かれていた内容だけ、説明の言葉（「〜との記載あり」「備考：」など）を付けずに短く書く。該当する記載がなければ空にする。memo は、読み取った側（あなた）からの注意だけを書く欄で、判読しにくい箇所、記載の食い違い、複数の読み方ができる点、可能性にとどまる点など、人が原本で確かめるべきことを書く。資料に書かれていた内容そのものは memo には書かない。食事の内容がその人について指定されているとき（例：「2年3組 山田太郎はチキンステーキ」「佐藤さんは通常コースで」「田中さんはお弁当を持参」）は、choice にその内容を書く。アレルギーの記載がなく、食事の指定だけが書かれている人も、氏名と choice を書いて含める。「微量混入で発症したことがある」に該当する人は seibun を「不可」、「いいえ」の人は「可」とする。1枚に1人の用紙が複数ある場合は、全員分を出力する。
+規則：資料に書かれていることだけを書き写し、推測で補わない。読み取れない項目は空文字にする。食材名は資料の表記のまま書く。外国語で書かれた食材名は訳さず原文のまま書き、すぐ後ろに（）で日本語訳を添える（例：lobster（ロブスター））。「ナッツ類」「甲殻類」のようなまとめた表現や、「味噌」「マヨネーズ」のような食品名も、個別の食材に言い換えずそのまま書く。食品ではないアレルギー（ハウスダスト、動物、そば枕など）や料理名（カレー、オムライスなど）が書かれていても、省かずに allergy にそのまま書き、nonFood / dishes にもその言葉を入れる。アレルギーではない食事制限（宗教上・主義上の理由で食べられないもの）や、範囲の広い区分（動物性食材、野菜全般、ビタミン類など）も、省かずに allergy に資料の表記のまま書き、broad にその言葉を入れる。アレルギーの記載も食事の指定もない人は含めない。選択肢に○や✓を付ける形式の用紙では、印が付いた項目だけを対象にし、印のない選択肢は書かない。手書きで読みにくい文字は、読めた範囲を書いて memo に「判読不明あり（どの項目か）」と書く。remark は、相手（学校・保護者・旅行会社）から届いた情報を書く欄で、エピペンの所持、持参する薬・服用中の薬、通院中であること、発症時の対応のほか、備考欄や欄外に書かれた保護者・学校からの補足（例：「たこ焼きは食べられません」「保護者に確認中」「パンを持参予定」「同じ油・同じ釜も不可」）を、資料に実際に書かれていた内容だけ、説明の言葉（「〜との記載あり」「備考：」など）を付けずに短く書く。該当する記載がなければ空にする。memo は、読み取った側（あなた）からの注意だけを書く欄で、判読しにくい箇所、記載の食い違い、複数の読み方ができる点、可能性にとどまる点など、人が原本で確かめるべきことを書く。資料に書かれていた内容そのものは memo には書かない。食事の内容がその人について指定されているとき（例：「2年3組 山田太郎はチキンステーキ」「佐藤さんは通常コースで」「田中さんはお弁当を持参」）は、choice にその内容を書く。アレルギーの記載がなく、食事の指定だけが書かれている人も、氏名と choice を書いて含める。「微量混入で発症したことがある」に該当する人は seibun を「不可」、「いいえ」の人は「可」とする。1枚に1人の用紙が複数ある場合は、全員分を出力する。
 返答はJSONだけにしてください。形式：
-{"groupName":"団体名（なければ空）","visitDate":"利用日・食事の日を YYYY-MM-DD で（年が書かれていなければ空）","storeName":"利用する店舗名（なければ空）","courseName":"コース・メニュー名（なければ空）","party":{"classes":[{"year":"学年（数字だけ）","kumi":"組（数字や記号だけ。例：1、A）","male":"男子の人数（数字）","female":"女子の人数（数字）"}],"teacher":"引率・先生の人数","nurse":"看護師の人数","camera":"カメラマンの人数","tour":"添乗員の人数","crew":"乗務員（運転手・ガイド）の人数","others":[{"name":"上のどれにも当たらない区分名","count":"人数"}]},"unclear":["資料全体の項目のうち、読み取りに自信がないものの名前（visitDate / storeName / courseName / party / groupName）"],"people":[{"unclear":["この人の項目のうち、読み取りに自信がないものの名前（year / kumi / sex / name / allergy / seibun / symptom / remark）"],"year":"学年（数字だけ。例：2。記載がなければ空）","kumi":"組・クラス（例：3組、A組。学年は year に書き、ここには入れない。記載がなければ空）","sex":"男 または 女 または 空","name":"氏名","allergy":"アレルギーの食材を「、」区切り。程度や条件は（）で添える","seibun":"調味料・だし・エキスなど微量成分の摂取について 可 / 不可 / 不明 / 微量不可（同じ厨房での微量の混入も不可）のいずれか。記載がなければ空。食材ごとに違う場合は、いちばん多いものを書く","nonFood":["allergy に書いたもののうち、食品ではないもの（ハウスダスト、ダニ、花粉、猫や犬などの動物、そば枕、金属、薬など）"],"dishes":["allergy に書いたもののうち、食材ではなく料理名・メニュー名・加工食品名で、原材料が1つに決まらないもの（カレー、オムライス、ケーキなど）"],"seibunEach":[{"item":"allergy に書いた食材名（程度や条件の（）は付けない）","value":"可 / 不可 / 不明 / 微量不可"}],"symptom":"アレルギーの症状（じんましん、かゆみ、呼吸困難、アナフィラキシーなど、資料に書かれていた内容だけ）。症状の記載がなければ「不明」","remark":"資料メモ：相手から届いた情報。エピペン所持・持参薬・通院中など応急処置や薬の情報と、備考欄などに書かれた保護者・学校からの補足（書かれていた内容だけ。なければ空。症状は symptom に書く）","memo":"確認メモ（社内向けの注意）：判読しにくい箇所、記載の食い違い、可能性にとどまる点など、読み取った側からの注意だけ。なければ空","choice":"その人について指定された食事の内容（例：チキンステーキ、通常コース、お持ち込み）。資料の表記のまま。指定がなければ空"}]}
+{"groupName":"団体名（なければ空）","visitDate":"利用日・食事の日を YYYY-MM-DD で（年が書かれていなければ空）","storeName":"利用する店舗名（なければ空）","courseName":"コース・メニュー名（なければ空）","party":{"classes":[{"year":"学年（数字だけ）","kumi":"組（数字や記号だけ。例：1、A）","male":"男子の人数（数字）","female":"女子の人数（数字）"}],"teacher":"引率・先生の人数","nurse":"看護師の人数","camera":"カメラマンの人数","tour":"添乗員の人数","crew":"乗務員（運転手・ガイド）の人数","others":[{"name":"上のどれにも当たらない区分名","count":"人数"}]},"unclear":["資料全体の項目のうち、読み取りに自信がないものの名前（visitDate / storeName / courseName / party / groupName）"],"people":[{"unclear":["この人の項目のうち、読み取りに自信がないものの名前（year / kumi / sex / name / allergy / seibun / symptom / remark）"],"year":"学年（数字だけ。例：2。記載がなければ空）","kumi":"組・クラス（例：3組、A組。学年は year に書き、ここには入れない。記載がなければ空）","sex":"男 または 女 または 空","name":"氏名","allergy":"アレルギーの食材を「、」区切り。程度や条件は（）で添える","seibun":"調味料・だし・エキスなど微量成分の摂取について 可 / 不可 / 不明 / 微量不可（同じ厨房での微量の混入も不可）のいずれか。記載がなければ空。食材ごとに違う場合は、いちばん多いものを書く","nonFood":["allergy に書いたもののうち、食品ではないもの（ハウスダスト、ダニ、花粉、猫や犬などの動物、そば枕、金属、薬など）"],"dishes":["allergy に書いたもののうち、食材ではなく料理名・メニュー名・加工食品名で、原材料が1つに決まらないもの（カレー、オムライス、ケーキなど）"],"broad":["allergy に書いたもののうち、1つの食材ではなく範囲の広い区分や、宗教・主義による食事制限を表す言葉（動物性食材、肉類全般、野菜全般、五葷、ビタミン類、添加物、ベジタリアン、ヴィーガン、ハラールなど）。えび・卵のような個別の食材や、甲殻類・ナッツ類のように対象の食材がはっきり決まっている区分は入れない"],"seibunEach":[{"item":"allergy に書いた食材名（程度や条件の（）は付けない）","value":"可 / 不可 / 不明 / 微量不可"}],"symptom":"アレルギーの症状（じんましん、かゆみ、呼吸困難、アナフィラキシーなど、資料に書かれていた内容だけ）。症状の記載がなければ「不明」","remark":"資料メモ：相手から届いた情報。エピペン所持・持参薬・通院中など応急処置や薬の情報と、備考欄などに書かれた保護者・学校からの補足（書かれていた内容だけ。なければ空。症状は symptom に書く）","memo":"確認メモ（社内向けの注意）：判読しにくい箇所、記載の食い違い、可能性にとどまる点など、読み取った側からの注意だけ。なければ空","choice":"その人について指定された食事の内容（例：チキンステーキ、通常コース、お持ち込み）。資料の表記のまま。指定がなければ空"}]}
 party は、資料に利用人数（クラスごとの男女の人数、引率などの人数）が書かれているときだけ書く。書かれていない区分は空にし、まったく書かれていなければ classes を空の配列にする。
 unclear には、文字がつぶれている・かすれている・手書きで判読しにくい・複数の読み方ができる・記載が食い違っている・推し量って書いた、のいずれかに当たる項目の名前を入れる。はっきり読めた項目は入れない。空欄をそのまま空にした項目も入れない。
 seibunEach は、食材ごとに可否が分けて書かれているとき（例：A…成分可、B…成分不可、C…微量混入不可）だけ、その食材ぶんを書く。全部同じ、または記載がなければ空の配列にする。
@@ -1811,7 +1823,7 @@ async function runAi(textData, images, add, msgEl, maxImg) {
     try {
       const res = await sample.json(AI_PROMPT + intro, { signal: aiCtl.signal, ...(ch ? { images: ch } : {}) });
       for (const p of res && Array.isArray(res.people) ? res.people : []) {
-        const q = { year: String(p.year || "").trim(), kumi: String(p.kumi || ""), sex: normSex(String(p.sex || "")), name: String(p.name || ""), allergy: String(p.allergy || ""), seibun: SEIBUN.includes(p.seibun) ? p.seibun : "", sbMap: sbMapFrom(String(p.allergy || ""), p.seibunEach), kindMap: kindMapFrom(String(p.allergy || ""), p.nonFood, p.dishes), unclear: Array.isArray(p.unclear) ? p.unclear.map(String) : [], symptom: String(p.symptom || "").trim() || "不明", remark: String(p.remark || ""), memo: String(p.memo || ""), choice: String(p.choice || "").trim() };
+        const q = { year: String(p.year || "").trim(), kumi: String(p.kumi || ""), sex: normSex(String(p.sex || "")), name: String(p.name || ""), allergy: String(p.allergy || ""), seibun: SEIBUN.includes(p.seibun) ? p.seibun : "", sbMap: sbMapFrom(String(p.allergy || ""), p.seibunEach), kindMap: kindMapFrom(String(p.allergy || ""), p.nonFood, p.dishes, p.broad), unclear: Array.isArray(p.unclear) ? p.unclear.map(String) : [], symptom: String(p.symptom || "").trim() || "不明", remark: String(p.remark || ""), memo: String(p.memo || ""), choice: String(p.choice || "").trim() };
         if (q.name || q.allergy) people.push(q);
       }
       if (!group && res && res.groupName) group = String(res.groupName);
@@ -1844,6 +1856,23 @@ function partyFromAi(a) {
   if (!p.classes.length) p.classes.push({ id: uid("k"), year: "", kumi: "", m: "", f: "" });
   return p;
 }
+/** アレルギー欄の文を、（）の中では切らずに「、」で分ける。 */
+function splitAllergy(text) { const out = []; let cur = "", d = 0; for (const ch of String(text || "")) { if (/[（(]/.test(ch)) d++; else if (/[）)]/.test(ch)) d = Math.max(0, d - 1); if (!d && /[、,，\n]/.test(ch)) { if (cur.trim()) out.push(cur.trim()); cur = ""; } else cur += ch; } if (cur.trim()) out.push(cur.trim()); return out; }
+/** 登録済みの人（row）に、新しく届いた内容（p）のうち、まだ入っていない食材を挙げる。 */
+function newAllergyParts(row, p) { const have = new Set(parseTags(row.allergy).map(norm)); return splitAllergy(p.allergy).filter((seg) => parseTags(seg).some((t) => !have.has(norm(t)))); }
+/** 登録済みの人に、新しく届いた内容を足す（食材・成分可否・症状・資料メモ・確認メモ・食事の指定）。すでにある内容は消さない。 */
+function mergePerson(row, p) {
+  const parts = newAllergyParts(row, p), had = new Set(parseTags(row.allergy).map(norm));
+  if (parts.length) row.allergy = [String(row.allergy || "").trim(), ...parts].filter(Boolean).join("、");
+  for (const t of parseTags(parts.join("、"))) { if (had.has(norm(t))) continue;
+    const v = (p.sbMap && p.sbMap[t]) || p.seibun || ""; if (v && v !== (row.seibun || "")) { if (!row.seibun && !had.size) row.seibun = v; else row.sbMap = { ...(row.sbMap || {}), [t]: v }; }
+    if (p.kindMap && p.kindMap[t]) row.kindMap = { ...(row.kindMap || {}), [t]: p.kindMap[t] }; }
+  if ((!row.symptom || row.symptom === "不明") && p.symptom && p.symptom !== "不明") row.symptom = p.symptom;
+  for (const k of ["remark", "memo"]) { const v = String(p[k] || "").trim(); if (v && !String(row[k] || "").includes(v)) row[k] = [String(row[k] || "").trim(), v].filter(Boolean).join("\n"); }
+  if (p.choice) row.choice = p.choice;
+  if (parts.length) { row.ai = true; delete row.okSig; } // 足した内容は、原本との照合をやり直す
+  return parts;
+}
 function reviewDialog(people, add, groupName, warn, meta) {
   meta = meta || { unclear: [] };
   const dlg = $("#dlg");
@@ -1852,7 +1881,10 @@ function reviewDialog(people, add, groupName, warn, meta) {
   const same = people.map((p) => (nameKey(p.name) && have.has(nameKey(p.name)) ? draft.rows.filter((r) => nameKey(r.name) === nameKey(p.name)) : []));
   const dup = same.map((l) => l.length > 0), on = people.map((_, i) => !dup[i]);
   // 登録済みの人について、食事の指定（「○○はチキンステーキ」）だけが届いたときは、その人の最終的な対応へ反映する
-  const fin = people.map((p, i) => dup[i] && !!p.choice && !!draft);
+  // 登録済みの人について新しい内容が届いたときは、その人に足せるようにする（食材の追加、資料メモ、食事の指定など）
+  const pick = (p, i) => same[i].find((x) => norm(x.kumi) === norm(p.kumi) && half(x.year || "") === half(p.year || "")) || same[i].find((x) => norm(x.kumi) === norm(p.kumi)) || same[i][0];
+  const hasNew = (p, i) => !!(newAllergyParts(pick(p, i), p).length || p.choice || (String(p.remark || "").trim() && !String(pick(p, i).remark || "").includes(String(p.remark).trim())));
+  const fin = people.map((p, i) => dup[i] && !!draft && hasNew(p, i));
   const oldLine = (r) => [[r.year ? half(r.year) + "年" : "", r.kumi || ""].join(""), r.sex || "", r.name || "", "／ " + (r.allergy || "（アレルギーの記載なし）"), r.seibun ? "／ 成分" + r.seibun : ""].filter(Boolean).join(" ");
   const hasMeta = !!(draft && (meta.visit || meta.store || meta.party)), isLay = !!(draft && draft.kind === "layout"); // レイアウトだけ作るときは、コースを選ばない
   // 読み取りに自信がない項目は黄色にする。人が直したら色を消す。
@@ -1871,7 +1903,7 @@ function reviewDialog(people, add, groupName, warn, meta) {
     field("店舗", h("div", {}, un(meta.unclear, "storeName", h("input", { id: "rv-store", list: "rv-stores", value: hd.store, placeholder: "店舗名を入力、または候補から選択", autocomplete: "off", oninput: (e) => { hd.store = e.target.value; } })),
       h("datalist", { id: "rv-stores" }, ...stores.map((x) => h("option", { value: x.name }))))),
     field("ご利用日", un(meta.unclear, "visitDate", h("input", { id: "rv-visit", type: "date", value: hd.visit, oninput: (e) => { hd.visit = e.target.value; } }))),
-    isLay ? null : field("コース（必須）", h("div", {}, sel([...(hd.course === "__" ? [["__", "コースを選択してください"]] : []), ...[...S.courses.values()].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja")).map((x) => [x.id, (x.name || "（名称未入力）") + (x.approved ? "【上長承認済】" : "")]), ["", "指定なし（共通設定の内容で作成）"]], hd.course, (v) => { hd.course = v; courseHint(); }, { id: "rv-course" }),
+    isLay ? null : field("コース（必須）", h("div", {}, sel([...(hd.course === "__" ? [["__", "コースを選択してください"]] : []), ...[...S.courses.values()].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja")).map((x) => [x.id, (x.name || "（名称未入力）") + (x.approved ? "【上長承認済】" : "")]), ["", "指定なし（共通設定の内容で作成）"]], hd.course, (v) => { hd.course = v; courseHint(); judgeAll(); }, { id: "rv-course" }),
       h("div", { class: "small", id: "rv-course-hint", style: "margin-top:4px" })))) : null;
   // コースを選ぶと、そのコースの成分表で注意文と対応を作る。未選択のままだと【要確認】が多くなるので、取り込む前に必ず選んでもらう。
   const courseHint = () => {
@@ -1880,6 +1912,18 @@ function reviewDialog(people, add, groupName, warn, meta) {
     el.textContent = hd.course === "__" ? "コースを選ぶと、そのコースの成分表で注意文と対応を作成します。" : hd.course ? "このコースの成分表で注意文と対応を作成します。" : "コースの成分表を使わないため、成分表にない食材は【要確認】になります。";
     if (ok) ok.disabled = people.length ? !isLay && hd.course === "__" : !hasMeta; // 人数や利用日だけの資料は、コースを選ばなくても取り込める
   };
+  // アレルゲンの要素（コースの成分表と照合した結果）を、取り込む前にこの画面で見られるようにする。登録済みの人に反映するときは、足した後の内容で出す。
+  const judge = (i) => {
+    const el = document.getElementById("rv-judge-" + i); if (!el) return; const p = people[i];
+    if (hd.course === "__") return el.replaceChildren(h("span", { class: "muted small", text: "アレルゲンの要素：コースを選ぶと表示します。" }));
+    const m = M(hd.course || ""); let row, adds = null;
+    if (fin[i]) { row = clone(pick(p, i)); adds = mergePerson(row, p); row.elementAuto = true; }
+    else row = newRow({ ...p, unclear: undefined });
+    const text = String(p.allergy || "").trim() || fin[i] ? genElement(row, m) : "";
+    el.replaceChildren(...[fin[i] ? h("div", { class: "small", style: "margin-bottom:3px" }, h("strong", { text: "反映する内容：" }), [adds.length ? "アレルギーに追加 → " + adds.join("、") : "", p.choice ? "最終的な対応 → " + p.choice : "", String(p.remark || "").trim() ? "資料メモに追記" : "", String(p.memo || "").trim() ? "確認メモに追記" : ""].filter(Boolean).join("　／　") || "追加する内容はありません", h("span", { class: "muted", text: `　（反映後のアレルギー：${row.allergy || "なし"}）` })) : null,
+      h("div", { class: "small", style: "white-space:pre-wrap" }, h("strong", { text: "アレルゲンの要素：" }), text || "（アレルギーの記載なし）")].filter(Boolean));
+  };
+  const judgeAll = () => people.forEach((_, i) => judge(i));
   const applyHead = () => {
     if (!head || !draft) return;
     const name = hd.store.trim(), hit = stores.find((x) => norm(x.name) === norm(name));
@@ -1889,7 +1933,7 @@ function reviewDialog(people, add, groupName, warn, meta) {
     if (!isLay) { draft.courseId = hd.course === "__" ? "" : hd.course; const m = M(draft.courseId); draft.rows.forEach((r) => regen(r, m)); }
   };
   const count = h("strong", {});
-  const upd = () => { const k = on.filter(Boolean).length, f = fin.filter(Boolean).length; count.textContent = k || f ? [k ? `${k}名を取り込みます` : "", f ? `${f}名の最終的な対応を反映します` : ""].filter(Boolean).join("、") : hasMeta ? "店舗・ご利用日・利用人数だけを取り込みます" : "0名を取り込みます"; };
+  const upd = () => { const k = on.filter(Boolean).length, f = fin.filter(Boolean).length; count.textContent = k || f ? [k ? `${k}名を取り込みます` : "", f ? `${f}名は登録済みの人に反映します` : ""].filter(Boolean).join("、") : hasMeta ? "店舗・ご利用日・利用人数だけを取り込みます" : "0名を取り込みます"; };
   dlg.replaceChildren(h("div", { class: "dlg" },
     h("h3", { text: "読み取り結果の確認" }),
     h("div", { class: "banner warn", text: "AIによる読み取りです。読み違いがあり得ますので、原本と照合し、この画面で直接修正してから取り込んでください。取り込んだ行には「AI読取」の印が付きます。" }),
@@ -1903,27 +1947,28 @@ function reviewDialog(people, add, groupName, warn, meta) {
     people.length ? h("div", { class: "scroll", style: "max-height:52vh;overflow-y:auto" }, h("table", { class: "prev rv" },
       h("thead", {}, h("tr", {}, ...["", "年", "組", "性別", "氏名", "アレルギー", "成分可否", "症状", "最終的な対応（資料の記載）", "資料メモ（PDF反映あり）", "確認メモ（社内用・PDF反映なし）"].map((t) => h("th", { text: t })))),
       h("tbody", {}, ...people.flatMap((p, i) => [h("tr", { class: dup[i] ? "rv-dup" : "" }, h("td", { style: "min-width:0" }, dup[i]
-          ? sel([...(p.choice ? [["2", "対応だけ反映する"]] : []), ["0", "取り込まない"], ["1", "別人として取り込む"]], fin[i] ? "2" : "0", (v) => { on[i] = v === "1"; fin[i] = v === "2"; upd(); }, { id: "rv-" + i, "aria-label": "同じ氏名の人の扱い", style: "min-width:132px" })
+          ? sel([["2", "登録済みの人に反映する"], ["0", "取り込まない"], ["1", "別人として取り込む"]], fin[i] ? "2" : "0", (v) => { on[i] = v === "1"; fin[i] = v === "2"; upd(); judge(i); }, { id: "rv-" + i, "aria-label": "同じ氏名の人の扱い", style: "min-width:150px" })
           : h("input", { id: "rv-" + i, type: "checkbox", style: "width:auto", checked: true, onchange: (e) => { on[i] = e.target.checked; upd(); } })),
 
         h("td", {}, un(p.unclear, "year", h("input", { id: `rv-${i}-year`, "aria-label": "年", value: p.year || "", oninput: (e) => { p.year = e.target.value; } }))),
         h("td", {}, un(p.unclear, "kumi", h("input", { id: `rv-${i}-kumi`, "aria-label": "組", value: p.kumi, oninput: (e) => { p.kumi = e.target.value; } }))),
         h("td", {}, un(p.unclear, "sex", sel([["", ""], "男", "女"], p.sex, (v) => { p.sex = v; }, { id: `rv-${i}-sex`, "aria-label": "性別" }))),
         h("td", {}, un(p.unclear, "name", h("input", { id: `rv-${i}-name`, "aria-label": "氏名", value: p.name, oninput: (e) => { p.name = e.target.value; } }))),
-        h("td", {}, un(p.unclear, "allergy", h("textarea", { id: `rv-${i}-al`, "aria-label": "アレルギー", rows: 2, value: p.allergy, oninput: (e) => { p.allergy = e.target.value; } }))),
-        h("td", {}, un(p.unclear, "seibun", sel([["", ""], ...SEIBUN], p.seibun, (v) => { p.seibun = v; }, { id: `rv-${i}-sb`, "aria-label": "成分可否" }))),
+        h("td", {}, un(p.unclear, "allergy", h("textarea", { id: `rv-${i}-al`, "aria-label": "アレルギー", rows: 2, value: p.allergy, oninput: (e) => { p.allergy = e.target.value; judge(i); } }))),
+        h("td", {}, un(p.unclear, "seibun", sel([["", ""], ...SEIBUN], p.seibun, (v) => { p.seibun = v; judge(i); }, { id: `rv-${i}-sb`, "aria-label": "成分可否" }))),
         h("td", {}, un(p.unclear, "symptom", h("textarea", { id: `rv-${i}-sy`, "aria-label": "症状", rows: 1, value: p.symptom || "不明", oninput: (e) => { p.symptom = e.target.value; } }))),
         h("td", {}, h("input", { id: `rv-${i}-ch`, "aria-label": "最終的な対応（資料の記載）", placeholder: "例：チキンステーキ", value: p.choice || "", oninput: (e) => { p.choice = e.target.value.trim(); } })),
         h("td", {}, un(p.unclear, "remark", h("textarea", { id: `rv-${i}-rm`, "aria-label": "資料メモ", rows: 2, placeholder: "エピペン所持、保護者からの補足など", value: p.remark, oninput: (e) => { p.remark = e.target.value; } }))),
         h("td", {}, h("textarea", { id: `rv-${i}-mm`, "aria-label": "確認メモ", rows: 2, placeholder: "判読不明、要確認の点など", value: p.memo || "", oninput: (e) => { p.memo = e.target.value; } }))),
-        dup[i] ? h("tr", { class: "rv-old", id: "rv-old-" + i }, h("td", {}), h("td", { colspan: "10" }, h("span", { class: "pill warn", style: "margin-right:8px", text: "同じ氏名の人が登録済み" }), ...same[i].map((r, k) => h("div", { class: "small", style: "display:inline-block;margin-right:14px", text: (same[i].length > 1 ? `(${k + 1}) ` : "") + oldLine(r) })))) : null].filter(Boolean))))) : h("div", { class: "empty", text: hasMeta ? "この資料にアレルギー対応者の記載はありませんでした。上の店舗・ご利用日・利用人数だけを取り込めます。" : "アレルギーの記載を読み取れませんでした。" }),
-    dup.some(Boolean) ? h("div", { class: "small", id: "rv-dup-note", style: "color:var(--warn)", text: `同じ氏名の人がこの案件にすでにいる${dup.filter(Boolean).length}名は、登録済みの内容を下に表示しています。「取り込まない」か「別人として取り込む」を選んでください（初めは「取り込まない」）。食事の指定が書かれていた人は「対応だけ反映する」が選ばれ、登録済みの人の「最終的な対応」に入ります。そのほかの内容が変わった場合は、案件の画面でその人の行を直してください。` }) : null,
+        dup[i] ? h("tr", { class: "rv-old", id: "rv-old-" + i }, h("td", {}), h("td", { colspan: "10" }, h("span", { class: "pill warn", style: "margin-right:8px", text: "同じ氏名の人が登録済み" }), ...same[i].map((r, k) => h("div", { class: "small", style: "display:inline-block;margin-right:14px", text: (same[i].length > 1 ? `(${k + 1}) ` : "") + oldLine(r) })))) : null,
+        isLay ? null : h("tr", { class: "rv-judge" + (dup[i] ? " rv-dup" : "") }, h("td", {}), h("td", { colspan: "10", id: "rv-judge-" + i }))].filter(Boolean))))) : h("div", { class: "empty", text: hasMeta ? "この資料にアレルギー対応者の記載はありませんでした。上の店舗・ご利用日・利用人数だけを取り込めます。" : "アレルギーの記載を読み取れませんでした。" }),
+    dup.some(Boolean) ? h("div", { class: "small", id: "rv-dup-note", style: "color:var(--warn)", text: `同じ氏名の人がこの案件にすでにいる${dup.filter(Boolean).length}名は、登録済みの内容を下に表示しています。新しい食材・資料メモ・食事の指定が届いた人は、初めに「登録済みの人に反映する」が選ばれています（登録済みの内容は消さずに足します）。同姓同名の別の人であれば「別人として取り込む」、取り込まないときは「取り込まない」を選んでください。` }) : null,
     h("div", { class: "row" }, count, h("span", { style: "margin-left:auto" }),
       h("button", { type: "button", class: "btn", text: "やめる", onclick: () => dlg.close() }),
-      h("button", { type: "button", class: "btn primary", id: "rv-ok", text: "取り込む", disabled: !(people.length || hasMeta) || (!isLay && people.length > 0 && hd.course === "__"), onclick: () => { const list = people.filter((_, i) => on[i]).map((p) => { const q = { ...p }; delete q.unclear; return q; }); const fins = people.map((p, i) => (fin[i] && p.choice ? [p, same[i]] : null)).filter(Boolean); dlg.close(); if (list.length || hasMeta || fins.length) { if (groupName && draft && !draft.groupName) draft.groupName = groupName; if (list.length) add(list, true);
+      h("button", { type: "button", class: "btn primary", id: "rv-ok", text: "取り込む", disabled: !(people.length || hasMeta) || (!isLay && people.length > 0 && hd.course === "__"), onclick: () => { const list = people.filter((_, i) => on[i]).map((p) => { const q = { ...p }; delete q.unclear; return q; }); const fins = people.map((p, i) => (fin[i] ? [p, same[i]] : null)).filter(Boolean); dlg.close(); if (list.length || hasMeta || fins.length) { if (groupName && draft && !draft.groupName) draft.groupName = groupName; if (list.length) add(list, true);
         // 同じ氏名が複数いるときは、年・組が合う人へ。合う人がいなければ最初の人へ
-        const done = []; for (const [p, rs] of fins) { const r = rs.find((x) => norm(x.kumi) === norm(p.kumi) && half(x.year || "") === half(p.year || "")) || rs.find((x) => norm(x.kumi) === norm(p.kumi)) || rs[0]; r.choice = p.choice; done.push(r); }
-        applyHead(); if (done.length) { const m = M(draft.courseId); done.forEach((r) => regen(r, m)); } caseSaver.touch(); render(); if (!list.length) toast(fins.length ? `${fins.length}名の最終的な対応を反映しました` : "店舗・ご利用日・利用人数を取り込みました"); } } }))));
+        const done = []; for (const [p, rs] of fins) { const r = rs.find((x) => norm(x.kumi) === norm(p.kumi) && half(x.year || "") === half(p.year || "")) || rs.find((x) => norm(x.kumi) === norm(p.kumi)) || rs[0]; mergePerson(r, p); done.push(r); }
+        applyHead(); if (done.length) { const m = M(draft.courseId); done.forEach((r) => regen(r, m)); } caseSaver.touch(); render(); if (!list.length) toast(fins.length ? `${fins.length}名の登録済みの内容に反映しました` : "店舗・ご利用日・利用人数を取り込みました"); } } }))));
   // 横幅は通常の約1.5倍。右端のつまみをドラッグすると変えられ、閉じるまで（次に開くときも）その幅を保つ。
   const grip = h("div", { class: "dlg-grip", id: "rv-grip", title: "ドラッグして横幅を変更" });
   const clampW = (w) => Math.max(Math.min(640, window.innerWidth - 32), Math.min(window.innerWidth - 32, w));
@@ -1935,7 +1980,7 @@ function reviewDialog(people, add, groupName, warn, meta) {
   });
   dlg.firstElementChild.append(grip); dlg.firstElementChild.style.position = "relative";
   dlg.style.width = clampW(rvWidth || 1500) + "px"; dlg.addEventListener("close", () => (dlg.style.width = ""), { once: true });
-  upd(); if (!dlg.open) dlg.showModal(); fitAll(dlg); courseHint();
+  upd(); if (!dlg.open) dlg.showModal(); fitAll(dlg); courseHint(); judgeAll();
 }
 let rvWidth = 0;
 const isTable = (f) => /\.(xlsx|xls|csv|tsv|txt)$/i.test(f.name), isPdf = (f) => /pdf$/i.test(f.type) || /\.pdf$/i.test(f.name);
@@ -2529,7 +2574,9 @@ function viewSettings() {
         return field(label, h("div", { class: "stack", style: "gap:6px" }, h("input", { type: "file", id: "set-" + k, accept: "image/*", onchange: async (e) => { const f = e.target.files[0]; e.target.value = ""; if (!f) return; try { const bm = await createImageBitmap(f), k2 = Math.min(1, max / Math.max(bm.width, bm.height)), cv = h("canvas", { width: Math.round(bm.width * k2), height: Math.round(bm.height * k2) }); const cx = cv.getContext("2d"); cx.drawImage(bm, 0, 0, cv.width, cv.height); if (k === "invSeal") pjSealClean(cx, cv.width, cv.height); s[k] = cv.toDataURL("image/png"); ch(); drawPv(); } catch (_) { toast("画像を読み込めませんでした"); } } }), pv)); }))),
     h("div", { class: "panel stack", id: "wordkinds" }, h("h3", { text: "食品以外のアレルギー・料理名の扱い" }),
       h("div", { class: "muted small", text: "申告にこれらの言葉があると、食材としては判定しません。食品以外は「食品ではないため、当店では判断ができません」と書き、対応は通常コースを含む選択肢になります（ほかに該当する食材がない場合）。料理名は「原材料が特定できないため、当店では判断ができません」と書き、通常コースを含まない選択肢になります。コースに同じ名前の料理があるときは「該当あり」として扱います。" }),
-      field("食品以外として扱う言葉（「、」で区切る）", ta("nonFood", 3)), field("料理名として扱う言葉（「、」で区切る）", ta("dishNames", 3))),
+      field("食品以外として扱う言葉（「、」で区切る）", ta("nonFood", 3)), field("料理名として扱う言葉（「、」で区切る）", ta("dishNames", 3)),
+      field("範囲の広い言葉（宗教上の制限・動物性食材・野菜全般・ビタミン類など。「、」で区切る）", ta("broadWords", 3)),
+      h("div", { class: "muted small", text: "範囲の広い言葉は、成分表では1つずつ判定しません。資料には「" + "「○○」" + BROAD_TEXT + "」と書き、最終的な対応は「お持込み」が初めに選ばれます。成分表や辞書に登録のある言葉は、そちらの判定を優先します。" })),
     h("div", { class: "panel stack" }, h("h3", { text: "コース成分表のPDFに印字する内容" }),
       field("表題の下の注記", inp("courseSub")), field("注意事項", ta("courseNotes", 8)), field("アレルギー対応方針（※で始まる行は太字になります）", ta("coursePolicy", 7)),
       h("div", { class: "muted small", text: "会社名・TEL・FAXは下の「帳票に印字する内容」と共通です。" })),
