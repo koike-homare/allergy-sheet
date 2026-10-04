@@ -353,14 +353,16 @@ div.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute
 .lay-pin:active{cursor:grabbing}
 .pt-body{display:grid;grid-template-columns:minmax(560px,auto) minmax(0,1fr);gap:16px;align-items:stretch}
 @media (max-width:1300px){.pt-body{grid-template-columns:1fr}}
-.lay-prev{position:relative;border:1px solid var(--line);border-radius:6px;background:#fff;min-height:280px;max-height:420px;padding:6px;overflow:hidden;cursor:pointer;display:flex;align-items:flex-start;justify-content:center;font:inherit}
-.lay-prev:hover{border-color:var(--accent)}
+.lay-prev{border:1px solid var(--line);border-radius:6px;background:#fff;min-height:300px;max-height:460px;display:flex;flex-direction:column;overflow:hidden}
+.lay-prev-bar{padding:4px 6px;gap:6px;border-bottom:1px solid var(--line);background:var(--surface)}
+.lay-prev-view{flex:1;min-height:0;overflow:auto;padding:4px;cursor:grab;touch-action:none}
+.lay-prev-view:active{cursor:grabbing}
 .lay-prev table{border-collapse:collapse;table-layout:fixed;background:#fff;color:#000}
 .lay-prev td{padding:0;overflow:hidden;position:relative}
 .lay-prev td>div{overflow:hidden;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.15;white-space:pre-wrap;word-break:break-all}
-.lay-prev-n{position:absolute;right:8px;bottom:6px;font-size:11px;color:#555;background:rgba(255,255,255,.85);padding:1px 6px;border-radius:4px}
 .lay-chip{border-radius:999px;padding:2px 10px;font-size:12px;color:#000;border:1px solid rgba(0,0,0,.2)}
 .pt-row{gap:6px;align-items:center}
+.pt-del{display:inline-flex;align-items:center;padding:4px 6px}
 .lay-wrap td{padding:0;overflow:hidden;position:relative}
 .lay-wrap td>div{overflow:hidden;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.15;white-space:pre-wrap;word-break:break-all}
 .lay-wrap td.sel::after{content:"";position:absolute;inset:0;background:rgba(31,78,140,.2);pointer-events:none}
@@ -2676,10 +2678,26 @@ function applySeating(lay, fl, tables, plan, groups, rows) {
   }
   return lost;
 }
-/** 案件画面に出す、レイアウトの縮小プレビュー（見るだけ）。box の大きさに収まるように縮める。 */
+/** レイアウトの卓に書かれた人数を、区分（「1年2組 男子」など）ごとに数える。手で直した表記もそのまま数える。 */
+function layoutCounts(lay) {
+  const out = new Map();
+  for (const fl of (lay && lay.floors) || []) for (const x of Object.values(fl.cells || {})) {
+    if (!x.v || !/\d\s*名/.test(x.v)) continue;
+    let buf = [];
+    for (const line of String(x.v).split("\n").map((t) => half(t).replace(/\s+/g, " ").trim()).filter(Boolean)) {
+      const m = /^(.*?)(\d+)\s*名$/.exec(line);
+      if (!m) { buf.push(line); continue; }
+      if (m[1].trim()) buf.push(m[1].trim());
+      const label = buf.join(" "); out.set(label, (out.get(label) || 0) + (+m[2])); buf = [];
+    }
+  }
+  return out;
+}
+/** 案件画面に出す、レイアウトのプレビュー（見るだけ）。最初は枠に収まる大きさで、＋／−やCtrl+ホイールで拡大・縮小できる。 */
 function layoutPreview(lay, onOpen) {
   const floors = (lay && lay.floors) || [], fl = floors.find((x) => Object.keys((lay.orig || {})).some((k) => k.startsWith(x.id + ":"))) || floors[0];
-  const box = h("button", { type: "button", class: "lay-prev", id: "lay-prev", title: "クリックでレイアウトを開く", "aria-label": "レイアウトのプレビュー。クリックで開く", onclick: onOpen });
+  const view = h("div", { class: "lay-prev-view", id: "lay-prev-view", title: "ダブルクリックでレイアウトを開く" }), pct = h("span", { class: "small muted", id: "lay-prev-pct", style: "min-width:44px;text-align:center" });
+  const box = h("div", { class: "lay-prev", id: "lay-prev" });
   if (!fl) return box;
   const { table } = layTableEl(fl, false), W = fl.cw.reduce((n, w) => n + w, 0), H = fl.rh.reduce((n, w) => n + w, 0);
   table.style.width = W + "px";
@@ -2695,37 +2713,60 @@ function layoutPreview(lay, onOpen) {
     }
     inner.append(layer);
   }
-  box.append(inner); if (floors.length > 1) box.append(h("span", { class: "lay-prev-n", text: `${fl.name || "1F"}（全${floors.length}階）` }));
-  const fit = () => { const bw = box.clientWidth - 12, bh = box.clientHeight - 12; if (bw <= 0 || bh <= 0) return; inner.style.zoom = Math.min(1, bw / W, bh / H); };
-  queueMicrotask(fit); requestAnimationFrame(fit); if (window.ResizeObserver) new ResizeObserver(fit).observe(box);
+  view.append(inner);
+  let zoom = 0, fitZ = 1; // zoom=0 は「枠に合わせる」
+  const apply = () => { const z = zoom || fitZ; inner.style.zoom = z; pct.textContent = Math.round(z * 100) + "%"; };
+  const fit = () => { const bw = view.clientWidth - 8, bh = view.clientHeight - 8; if (bw <= 0 || bh <= 0) return; fitZ = Math.min(1, bw / W, bh / H); apply(); };
+  const step = (k) => { zoom = Math.max(0.1, Math.min(3, Math.round((zoom || fitZ) * k * 100) / 100)); apply(); };
+  const b = (text, title, id, fn) => h("button", { type: "button", class: "btn sm", text, title, id, "aria-label": title, onclick: fn });
+  view.addEventListener("wheel", (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); step(e.deltaY < 0 ? 1.15 : 1 / 1.15); }, { passive: false });
+  view.addEventListener("dblclick", onOpen);
+  // ドラッグで見たい場所へ動かす
+  view.addEventListener("pointerdown", (e) => { const sx = e.clientX, sy = e.clientY, l = view.scrollLeft, t = view.scrollTop; view.setPointerCapture(e.pointerId); const mv = (ev) => { view.scrollLeft = l - (ev.clientX - sx); view.scrollTop = t - (ev.clientY - sy); }; const up = () => { view.removeEventListener("pointermove", mv); view.removeEventListener("pointerup", up); view.removeEventListener("pointercancel", up); }; view.addEventListener("pointermove", mv); view.addEventListener("pointerup", up); view.addEventListener("pointercancel", up); });
+  box.append(h("div", { class: "row lay-prev-bar" },
+    floors.length > 1 ? h("span", { class: "small muted", text: `${fl.name || "1F"}（全${floors.length}階）` }) : null, h("span", { style: "margin-left:auto" }),
+    b("−", "縮小", "lay-prev-out", () => step(1 / 1.25)), pct, b("＋", "拡大", "lay-prev-in", () => step(1.25)), b("全体", "枠に合わせて全体を表示", "lay-prev-fit", () => { zoom = 0; fit(); view.scrollLeft = view.scrollTop = 0; })), view);
+  queueMicrotask(fit); requestAnimationFrame(fit); if (window.ResizeObserver) new ResizeObserver(() => { if (!zoom) fit(); }).observe(view);
   return box;
 }
 /** 案件画面の「利用人数」欄。 */
 function partyPanel(c, ch) {
   if (!c.party) c.party = newParty();
   const p = c.party; p.staff = p.staff || {}; p.others = p.others || []; p.classes = p.classes || [];
-  const total = h("strong", { id: "pt-total" }), upd = () => { total.textContent = `合計 ${partyTotal(p)}名`; };
+  const total = h("strong", { id: "pt-total" }), allSt = h("span", { class: "pill", id: "pt-match", hidden: true });
+  // レイアウトに書かれた人数と、利用人数が合っているか（レイアウトを作っていない案件では出さない）
+  const mark = (el, ok) => { el.hidden = false; el.className = "pill " + (ok ? "ok" : "bad"); el.textContent = ok ? "レイアウト人数 一致" : "レイアウト人数 不一致"; };
+  const upd = () => {
+    total.textContent = `合計 ${partyTotal(p)}名`;
+    if (!c.layout) { allSt.hidden = true; return; }
+    const cnt = layoutCounts(c.layout), gs = partyGroups(p), want = new Map(gs.map((g) => [g.label, g.n]));
+    p.classes.forEach((k, i) => { const el = $("#pt-" + i + "-st"); if (!el) return; const mine = gs.filter((g) => g.key === `c${i + 1}m` || g.key === `c${i + 1}f`); if (!mine.length) { el.hidden = true; return; } mark(el, mine.every((g) => (cnt.get(g.label) || 0) === g.n)); });
+    mark(allSt, gs.length > 0 && gs.every((g) => (cnt.get(g.label) || 0) === g.n) && [...cnt.keys()].every((l) => want.has(l)));
+  };
   const n = (obj, key, id, label) => h("input", { id, type: "text", inputmode: "numeric", value: obj[key] || "", "aria-label": label, style: "width:56px;text-align:right", oninput: (e) => { obj[key] = e.target.value; upd(); ch(); } });
   const list = h("div", { class: "stack", style: "gap:6px" }), others = h("div", { class: "stack", style: "gap:6px" });
+  // 行を消すボタン（ゴミ箱のアイコン）
+  const trash = (id, fn) => { const b = h("button", { type: "button", class: "x pt-del", id, title: "この行を削除", "aria-label": "この行を削除", onclick: fn }); b.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>'; return b; };
   const drawC = () => list.replaceChildren(...p.classes.map((k, i) => h("div", { class: "row pt-row" },
     n(k, "year", `pt-${i}-y`, "年"), h("span", { text: "年" }), n(k, "kumi", `pt-${i}-k`, "組"), h("span", { text: "組" }),
     h("span", { class: "muted small", style: "margin-left:8px", text: "男子" }), n(k, "m", `pt-${i}-m`, "男子の人数"), h("span", { text: "人" }),
     h("span", { class: "muted small", style: "margin-left:8px", text: "女子" }), n(k, "f", `pt-${i}-f`, "女子の人数"), h("span", { text: "人" }),
-    p.classes.length > 1 ? h("button", { type: "button", class: "x", text: "×", title: "この行を消す", "aria-label": "この行を消す", onclick: () => { p.classes.splice(i, 1); drawC(); upd(); ch(); } }) : null)));
+    p.classes.length > 1 ? trash(`pt-${i}-del`, () => { p.classes.splice(i, 1); drawC(); upd(); ch(); }) : null,
+    h("span", { class: "pill", id: `pt-${i}-st`, style: "margin-left:8px", hidden: true }))));
   const drawO = () => others.replaceChildren(...p.others.map((o, i) => h("div", { class: "row pt-row" },
     h("input", { id: `pt-o${i}-n`, value: o.name || "", placeholder: "区分名（例：保護者）", "aria-label": "その他の区分名", style: "width:180px", oninput: (e) => { o.name = e.target.value; ch(); } }),
     n(o, "n", `pt-o${i}-c`, "人数"), h("span", { text: "人" }),
-    h("button", { type: "button", class: "x", text: "×", title: "この行を消す", "aria-label": "この行を消す", onclick: () => { p.others.splice(i, 1); drawO(); upd(); ch(); } }))));
-  drawC(); drawO(); upd();
+    trash(`pt-o${i}-del`, () => { p.others.splice(i, 1); drawO(); upd(); ch(); }))));
+  drawC(); drawO(); queueMicrotask(upd);
   const lay = S.layouts.get(c.storeId), has = !!(lay && (lay.floors || []).length) || !!c.layout;
   const open = () => go({ name: "clayout", id: c.id });
   const prev = has ? layoutPreview(c.layout || lay, open) : null;
   return h("div", { class: "panel stack", id: "party" },
-    h("div", { class: "row" }, h("h3", { text: "利用人数" }), total, h("span", { style: "margin-left:auto" }),
+    h("div", { class: "row" }, h("h3", { text: "利用人数" }), total, allSt, h("span", { style: "margin-left:auto" }),
       h("button", { type: "button", class: "btn primary", id: "btn-layout", disabled: !has, text: c.layout ? "レイアウトを開く" : "レイアウト作成", onclick: open })),
     has ? null : h("div", { class: "small muted", text: c.storeId ? "この店舗にはレイアウトが登録されていません。店舗マスタの「レイアウト」で登録すると、ここから配席を作成できます。" : "店舗マスタに登録済みの店舗を選ぶと、その店舗のレイアウトで配席を作成できます。" }),
     h("div", { class: "pt-body" }, h("div", { class: "stack" },
-      list, h("div", {}, h("button", { type: "button", class: "btn sm", id: "pt-add", text: "＋ クラスを追加", onclick: () => { p.classes.push({ id: uid("k"), year: "", kumi: "", m: "", f: "" }); drawC(); ch(); } })),
+      list, h("div", {}, h("button", { type: "button", class: "btn sm", id: "pt-add", text: "＋ クラスを追加", onclick: () => { p.classes.push({ id: uid("k"), year: "", kumi: "", m: "", f: "" }); drawC(); upd(); ch(); } })),
       h("div", { class: "row", style: "gap:6px 18px" }, ...STAFF.map(([id, label]) => h("label", { class: "row small", style: "gap:6px" }, label, n(p.staff, id, "pt-" + id, label), "人"))),
       others, h("div", {}, h("button", { type: "button", class: "btn sm", id: "pt-other", text: "＋ その他を追加", onclick: () => { p.others.push({ id: uid("o"), name: "", n: "" }); drawO(); ch(); } }))),
       prev));
