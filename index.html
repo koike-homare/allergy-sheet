@@ -462,7 +462,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <span id="save"></span>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 119</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 121</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -4462,13 +4462,17 @@ function viewCaseLayout() {
   const areaOf = () => { const l = lay.areas.filter((a) => a.fid === ed.api.floor().id); return l.length ? l : null; };
   const areaInfo = h("span", { class: "small muted", id: "seat-area" });
   const info = () => { const fl = ed.api.floor(); if (!fl) return; const ts = layTables(fl, areaOf()), cap = ts.reduce((n, t) => n + t.cap, 0); areaInfo.textContent = `${areaOf() ? `指定したエリア（${areaOf().length}か所）` : "この階の全体"}：卓 ${ts.length}・席 ${cap}　／　利用人数 ${partyTotal(c.party)}名`; };
+  const SEAT_SHORT = "席数が足りません。配席エリアを追加してください。";
+  let keep = null; // 「配席を作成」を押す前の状態。作成できなかったときに戻す
+  const restore = () => { if (!keep) return; lay.floors.forEach((f, i) => { if (keep.floors[i]) f.cells = keep.floors[i]; }); lay.orig = keep.orig; lay.notes = keep.notes; keep = null; };
   const finish = (fl, tables, plan, note, gs0 = groups) => {
     if (lay.opts.includes("wide")) spreadPlan(tables, plan);
-    const lost = applySeating(lay, fl, tables, plan, gs0, c.rows || []);
     const seated = new Map(); for (const gs of plan.values()) for (const g of gs) seated.set(g.key, (seated.get(g.key) || 0) + g.count);
     const short = gs0.filter((g) => (seated.get(g.key) || 0) < g.n).map((g) => `${g.ai || g.label} ${g.n - (seated.get(g.key) || 0)}名`);
+    if (short.length) { restore(); ed.api.redraw(); info(); return say(`${SEAT_SHORT}\n指定の条件で席を分けると、入りきらない人がいます：${short.join("、")}`, true); } // 足りないときは配席しない（押す前の状態に戻す）
+    const lost = applySeating(lay, fl, tables, plan, gs0, c.rows || []);
     ch(); ed.api.redraw(); info();
-    say([short.length ? `席が足りず、配席できなかった人がいます：${short.join("、")}` : "配席を作成しました。", lost.length ? `席を特定できなかったアレルギー対応者：${lost.join("、")}（色違いの吹き出しを上の余白に置きました。線の先の●を席の上まで動かすと、その席と結び付きます）` : "", note || ""].filter(Boolean).join("\n"), short.length || lost.length);
+    say(["配席を作成しました。", lost.length ? `席を特定できなかったアレルギー対応者：${lost.join("、")}（色違いの吹き出しを上の余白に置きました。線の先の●を席の上まで動かすと、その席と結び付きます）` : "", note || ""].filter(Boolean).join("\n"), lost.length);
   };
   /** アレルギー対応者のうち、年・組・性別が利用人数のどの区分にも当たらない人（このまま作ると、吹き出しが席と結び付かない）。 */
   const mismatches = () => (c.rows || []).filter((r) => (r.name || "").trim() && (r.allergy || "").trim() && !groupOfRow(r, groups)).map((r) => {
@@ -4490,12 +4494,14 @@ function viewCaseLayout() {
           h("button", { type: "button", class: "btn sm", id: "seat-stop", text: "やめる", onclick: () => msg.replaceChildren() }))));
       return;
     }
+    keep = clone({ floors: lay.floors.map((f) => f.cells), orig: lay.orig || {}, notes: lay.notes || [] });
     ed.api.snapshot(); clearSeating(lay); // 前回の配席を消してから卓を探す
-    const tables = orderTables(layTables(fl, areaOf()), lay.opts), multiA = new Set(tables.map((x) => x.ai || 0)).size > 1; if (!tables.length) { ed.api.redraw(); return say("卓が見つかりません。卓（四角）の隣に席の印（○）があるレイアウトで、配席エリアを確かめてください。", true); }
+    const tables = orderTables(layTables(fl, areaOf()), lay.opts), multiA = new Set(tables.map((x) => x.ai || 0)).size > 1; if (!tables.length) { restore(); ed.api.redraw(); return say("卓が見つかりません。卓（四角）の隣に席の印（○）があるレイアウトで、配席エリアを確かめてください。", true); }
+    { const cap = tables.reduce((n, t) => n + t.cap, 0), need = groups.reduce((n, g) => n + g.n, 0); if (need > cap) { restore(); ed.api.redraw(); return say(`${SEAT_SHORT}\n利用人数 ${need}名 に対して、${areaOf() ? "配席エリア内の席" : "この階の席"}は ${cap}席です（${need - cap}席 不足）。`, true); } }
     const text = instruction(); remember();
     if (!text) return finish(fl, tables, seatDefault(tables, groups, lay.opts.includes("wide")).plan, "条件が選ばれていないため、標準の並べ方（クラス・男女ごとに卓を分け、職員等は最後）で作成しました。");
     const gs = seatGroups();
-    if (!sample) { ed.api.redraw(); return say("この表示環境ではAIが使えません。条件のチェックと依頼文を空にすると、標準の並べ方で作成できます。", true); }
+    if (!sample) { restore(); ed.api.redraw(); return say("この表示環境ではAIが使えません。条件のチェックと依頼文を空にすると、標準の並べ方で作成できます。", true); }
     btn.disabled = true; say("AIが配席を考えています…（1分ほどかかることがあります）");
     try {
       const allergy = lay.opts.includes("altogether") ? [] : (c.rows || []).filter((r) => (r.name || "").trim() && (r.allergy || "").trim()).map((r) => { const g = groupOfRow(r, groups); return g ? `${g.key}に1名` : ""; }).filter(Boolean);
@@ -4512,7 +4518,7 @@ ${text}
         for (const g of Array.isArray(t.groups) ? t.groups : []) { const k = Math.min(free, num(g.count), leftG.get(g.key) || 0); if (k > 0) { plan.get(t.id).push({ key: g.key, count: k }); free -= k; leftG.set(g.key, leftG.get(g.key) - k); } }
       }
       finish(fl, tables, plan, res.comment ? "AIから：" + String(res.comment).slice(0, 200) : "", gs);
-    } catch (e) { ed.api.redraw(); say(AI_ERR[e && e.code] || "AIで配席を作成できませんでした。もう一度お試しください。", true); }
+    } catch (e) { restore(); ed.api.redraw(); say(AI_ERR[e && e.code] || "AIで配席を作成できませんでした。もう一度お試しください。", true); }
     btn.disabled = false;
   };
   const moved = c.layout.storeId !== c.storeId && base && (base.floors || []).length;
