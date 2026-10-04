@@ -3184,17 +3184,51 @@ function clearSeating(lay) {
   lay.orig = {}; lay.notes = (lay.notes || []).filter((n) => !n.auto);
 }
 /** 指示がないときの標準の配席：クラス・男女ごとに卓を分け、職員等は最後にまとめる。卓が足りないときだけ相席にする。 */
-function seatDefault(tables, groups) {
-  const run = (mix) => {
+function seatDefault(tables, groups, wide) {
+  const areas = [...new Set(tables.map((t) => t.ai || 0))];
+  // wide（広く使う）：6名以上の区分は、1卓に定員より1名少ない人数までにして、卓を多めに使う
+  const run = (mix, wd) => {
+    const lim = (g, t) => (wd && g.n >= WIDE_MIN && !mix ? Math.max(1, t.cap - 1) : t.cap);
     const plan = new Map(tables.map((t) => [t.id, []])), left = new Map(tables.map((t) => [t.id, t.cap])); let rest = 0;
+    const usable = (t) => left.get(t.id) > 0 && (mix || !plan.get(t.id).length);
     for (const g of groups) {
       let n = g.n;
-      for (const t of tables) { if (!n) break; const free = left.get(t.id); if (!free || (!mix && plan.get(t.id).length)) continue; const k = Math.min(free, n); plan.get(t.id).push({ key: g.key, count: k }); left.set(t.id, free - k); n -= k; }
+      // エリアが複数あるとき：前のエリアから順に、その区分がまるごと入るエリアを探す。どこにも入り切らなければ、前から順に使う。
+      const pref = areas.find((a) => tables.filter((t) => (t.ai || 0) === a && usable(t)).reduce((s, t) => s + Math.min(left.get(t.id), lim(g, t)), 0) >= n);
+      const order = pref == null ? tables : [...tables.filter((t) => (t.ai || 0) === pref), ...tables.filter((t) => (t.ai || 0) !== pref)];
+      for (const t of order) { if (!n) break; if (!usable(t)) continue; const free = left.get(t.id), k = Math.min(free, n, lim(g, t)); plan.get(t.id).push({ key: g.key, count: k }); left.set(t.id, free - k); n -= k; }
       rest += n;
     }
     return { plan, rest };
   };
-  const a = run(false); return a.rest ? run(true) : a;
+  if (wide) { const w = run(false, true); if (!w.rest) return w; } // 卓が足りないときは、定員まで使う並べ方に戻す
+  const a = run(false, false); return a.rest ? run(true, false) : a;
+}
+const WIDE_MIN = 6; // この人数以上の区分だけ、卓を分けて広く使う
+/** 「広く使う」：6名以上の区分は、1卓を定員より1名少ない人数までにして卓を分け、人数をならす（6名卓なら 6名→3＋3、9名→5＋4、12名→4＋4＋4）。
+    6名未満の区分は分けない（1卓にまとめる）。相席の卓は触らない。卓が足りないときは定員まで使う。 */
+function spreadPlan(tables, plan) {
+  const keys = new Set(); for (const gs of plan.values()) if (gs.length === 1) keys.add(gs[0].key);
+  const idx = new Map(tables.map((t, i) => [t.id, i]));
+  for (const key of keys) {
+    let T = tables.filter((t) => { const gs = plan.get(t.id) || []; return gs.length === 1 && gs[0].key === key && gs[0].count > 0; }); if (!T.length) continue;
+    const n = T.reduce((s, t) => s + plan.get(t.id)[0].count, 0), wideG = n >= WIDE_MIN;
+    let lim = (t) => (wideG ? Math.max(1, t.cap - 1) : t.cap);
+    const need = (list) => { let k = 0, sum = 0; while (k < list.length && sum < n) sum += lim(list[k++]); return sum >= n ? k : -1; };
+    let k = need(T);
+    if (k < 0) { // 広く使うには卓が足りない：近くの空いている卓（同じエリアを優先）を足す。それでも足りなければ定員まで使う
+      const last = idx.get(T[T.length - 1].id), ai = T[0].ai || 0;
+      const empty = tables.filter((t) => !(plan.get(t.id) || []).length).sort((x, y) => ((x.ai || 0) !== ai) - ((y.ai || 0) !== ai) || Math.abs(idx.get(x.id) - last) - Math.abs(idx.get(y.id) - last));
+      const ext = T.slice(); for (const e of empty) { ext.push(e); if (need(ext) > 0) break; }
+      if (need(ext) > 0) { T = ext.sort((x, y) => idx.get(x.id) - idx.get(y.id)); k = need(T); } else { lim = (t) => t.cap; k = need(T); if (k < 0) k = T.length; }
+    }
+    const use = T.slice(0, k), sum = use.reduce((s, t) => s + lim(t), 0), give = use.map((t) => Math.min(lim(t), Math.floor((n * lim(t)) / sum))); let rem = n - give.reduce((s, x) => s + x, 0);
+    // 端数は、割り算の余りが大きい卓から1名ずつ足す（同じなら前の卓から）
+    const order = use.map((t, i) => ({ i, f: (n * lim(t)) / sum - Math.floor((n * lim(t)) / sum) })).sort((x, y) => y.f - x.f || x.i - y.i).map((x) => x.i);
+    for (let j = 0, guard = 0; rem > 0 && guard < 1000; j = (j + 1) % order.length, guard++) { const i = order[j]; if (give[i] < use[i].cap) { give[i]++; rem--; } }
+    use.forEach((t, i) => plan.set(t.id, [{ key, count: give[i] }])); T.slice(k).forEach((t) => plan.set(t.id, []));
+  }
+  return plan;
 }
 /** 案件の人の「年」「組」「性別」から、利用人数のどの区分に当たるかを探す。
     年が書かれていなければ組だけで選ぶ（同じ組が複数の学年にあるときは最初のもの）。 */
@@ -3458,16 +3492,18 @@ function viewCaseLayout() {
     ["tourcrew", "添乗員、乗務員は固める", "添乗員と乗務員は同じ卓、入り切らなければ隣り合う卓に固める"], ["camnurse", "カメラ、看護師は固める", "カメラと看護師は同じ卓、入り切らなければ隣り合う卓に固める"],
     ["altogether", "アレルギー対応者を固める", "区分名に「アレルギー対応」と付く人は、クラスや男女が違っても同じ卓、入り切らなければ隣り合う卓に固める"]];
   // 初期値：「アレルギー対応者を固める」以外はすべてチェック。依頼文は前回のものを引き継ぐ。
-  if (!Array.isArray(lay.opts)) { lay.opts = OPTS.map((o) => o[0]).filter((k) => k !== "altogether"); try { const d = JSON.parse(localStorage.getItem("seatPrompt") || "null"); if (d && !lay.ai) lay.ai = String(d.ai || ""); } catch (_) {} }
+  if (Array.isArray(lay.opts) && !lay.wideInit) { lay.opts.push("wide"); } lay.wideInit = 1; // 「広く使う」は初期状態でチェックあり（以前に作ったレイアウトにも一度だけ入れる）
+  if (!Array.isArray(lay.opts)) { lay.opts = [...OPTS.map((o) => o[0]).filter((k) => k !== "altogether"), "wide"]; try { const d = JSON.parse(localStorage.getItem("seatPrompt") || "null"); if (d && !lay.ai) lay.ai = String(d.ai || ""); } catch (_) {} }
   const remember = () => { try { localStorage.setItem("seatPrompt", JSON.stringify({ opts: lay.opts, ai: lay.ai || "" })); } catch (_) {} };
   // 詰め方：左右・上下・向きは、それぞれどちらか一方だけ選べる。選んだ組み合わせを1つの文にして指示に入れ、卓もその順に並べて渡す。
-  const DIRS = [["fromL", "左から詰める", "fromR"], ["fromR", "右から詰める", "fromL"], ["fromT", "上から詰める", "fromB"], ["fromB", "下から詰める", "fromT"], ["dirH", "横向きに詰める", "dirV"], ["dirV", "縦向きに詰める", "dirH"]];
+  const DIRS = [["wide", "広く使う", ""], ["fromL", "左から詰める", "fromR"], ["fromR", "右から詰める", "fromL"], ["fromT", "上から詰める", "fromB"], ["fromB", "下から詰める", "fromT"], ["dirH", "横向きに詰める", "dirV"], ["dirV", "縦向きに詰める", "dirH"]];
   const dirText = () => {
-    if (!DIRS.some((d) => lay.opts.includes(d[0]))) return "";
+    if (!DIRS.some((d) => d[2] && lay.opts.includes(d[0]))) return "";
     const hz = lay.opts.includes("fromR") ? "右" : "左", vt = lay.opts.includes("fromB") ? "下" : "上", oh = hz === "左" ? "右" : "左", ov = vt === "上" ? "下" : "上";
     return lay.opts.includes("dirV") ? `卓は${hz}${vt}の角から始め、縦向き（${vt}から${ov}へ）に詰める。1列が埋まったら${oh}隣の列へ進む` : `卓は${hz}${vt}の角から始め、横向き（${hz}から${oh}へ）に詰める。1行が埋まったら${ov}の行へ進む`;
   };
-  const instruction = () => [...OPTS.filter((o) => lay.opts.includes(o[0])).map((o) => "・" + o[2]), dirText() ? "・" + dirText() : "", (lay.ai || "").trim() ? "・" + lay.ai.trim() : ""].filter(Boolean).join("\n");
+  const instruction = () => [...OPTS.filter((o) => lay.opts.includes(o[0])).map((o) => "・" + o[2]), dirText() ? "・" + dirText() : "",
+    lay.opts.includes("wide") && OPTS.concat(DIRS.filter((d) => d[2])).some((o) => lay.opts.includes(o[0])) ? "・6名以上の区分は席を広く使う：1つの卓に定員いっぱいまで座らせず、定員より1名少ない人数まで（6名卓なら最大5名）にして卓を分け、人数をできるだけ均等にする（例：6名は3名＋3名、9名は5名＋4名、12名は4名＋4名＋4名）。6名未満の区分は分けずに1卓にまとめる。卓が足りないときだけ、定員まで使ってよい" : "", (lay.ai || "").trim() ? "・" + lay.ai.trim() : ""].filter(Boolean).join("\n");
   const preview = h("div", { class: "small muted", id: "seat-prompt", style: "white-space:pre-wrap" });
   const showPrompt = () => { const t = instruction(); preview.textContent = t ? "AIへ送る指示：\n" + t : "条件が選ばれていないため、AIを使わず標準の並べ方（クラス・男女ごとに卓を分け、職員等は最後）で作成します。"; };
   /** 「アレルギー対応者を固める」のときは、対応者を元の区分から切り出して別の区分にする。 */
@@ -3487,6 +3523,7 @@ function viewCaseLayout() {
   const areaInfo = h("span", { class: "small muted", id: "seat-area" });
   const info = () => { const fl = ed.api.floor(); if (!fl) return; const ts = layTables(fl, areaOf()), cap = ts.reduce((n, t) => n + t.cap, 0); areaInfo.textContent = `${areaOf() ? `指定したエリア（${areaOf().length}か所）` : "この階の全体"}：卓 ${ts.length}・席 ${cap}　／　利用人数 ${partyTotal(c.party)}名`; };
   const finish = (fl, tables, plan, note, gs0 = groups) => {
+    if (lay.opts.includes("wide")) spreadPlan(tables, plan);
     const lost = applySeating(lay, fl, tables, plan, gs0, c.rows || []);
     const seated = new Map(); for (const gs of plan.values()) for (const g of gs) seated.set(g.key, (seated.get(g.key) || 0) + g.count);
     const short = gs0.filter((g) => (seated.get(g.key) || 0) < g.n).map((g) => `${g.ai || g.label} ${g.n - (seated.get(g.key) || 0)}名`);
@@ -3514,9 +3551,9 @@ function viewCaseLayout() {
       return;
     }
     ed.api.snapshot(); clearSeating(lay); // 前回の配席を消してから卓を探す
-    const tables = orderTables(layTables(fl, areaOf()), lay.opts); if (!tables.length) { ed.api.redraw(); return say("卓が見つかりません。卓（四角）の隣に席の印（○）があるレイアウトで、配席エリアを確かめてください。", true); }
+    const tables = orderTables(layTables(fl, areaOf()), lay.opts), multiA = new Set(tables.map((x) => x.ai || 0)).size > 1; if (!tables.length) { ed.api.redraw(); return say("卓が見つかりません。卓（四角）の隣に席の印（○）があるレイアウトで、配席エリアを確かめてください。", true); }
     const text = instruction(); remember();
-    if (!text) return finish(fl, tables, seatDefault(tables, groups).plan, "条件が選ばれていないため、標準の並べ方（クラス・男女ごとに卓を分け、職員等は最後）で作成しました。");
+    if (!text) return finish(fl, tables, seatDefault(tables, groups, lay.opts.includes("wide")).plan, "条件が選ばれていないため、標準の並べ方（クラス・男女ごとに卓を分け、職員等は最後）で作成しました。");
     const gs = seatGroups();
     if (!sample) { ed.api.redraw(); return say("この表示環境ではAIが使えません。条件のチェックと依頼文を空にすると、標準の並べ方で作成できます。", true); }
     btn.disabled = true; say("AIが配席を考えています…（1分ほどかかることがあります）");
@@ -3524,7 +3561,7 @@ function viewCaseLayout() {
       const allergy = lay.opts.includes("altogether") ? [] : (c.rows || []).filter((r) => (r.name || "").trim() && (r.allergy || "").trim()).map((r) => { const g = groupOfRow(r, groups); return g ? `${g.key}に1名` : ""; }).filter(Boolean);
       const res = await sample.json(`飲食店の団体予約の配席を作ります。卓の一覧と、座る人の区分ごとの人数、担当者からの指示を渡します。指示に従って、どの卓にどの区分を何名座らせるかを決めてください。
 規則：各卓の人数は定員（cap）以内。各区分の合計は、渡した人数とちょうど同じにする（席が足りない場合だけ、入り切らない分を残してよい）。指示にないことは、同じ区分を近い卓にまとめ、できるだけ1つの卓に1つの区分にする。卓の一覧は、使う順（詰める順）に並べてある。詰め方の指示があるときは、この並び順のとおりに前から卓を使う。卓の位置は row（上からの行）と col（左からの列）で、数字が近いほど近くにある。
-卓：${JSON.stringify(tables.map((t) => ({ id: t.id, cap: t.cap, row: t.r1 + 1, col: t.c1 + 1 })))}
+${multiA ? "卓には area（配席エリアの番号）がある。エリア1から優先して使い、エリア1に収まらない分だけエリア2（その次はエリア3…）を使う。同じ区分は、できるだけ同じエリアの中にまとめる。エリアをまたいで分けてよいのは、その区分がどのエリアにも入り切らないときだけ。\n" : ""}卓：${JSON.stringify(tables.map((t) => ({ id: t.id, cap: t.cap, row: t.r1 + 1, col: t.c1 + 1, ...(multiA ? { area: (t.ai || 0) + 1 } : {}) })))}
 区分：${JSON.stringify(gs.map((g) => ({ key: g.key, name: g.ai || g.label, count: g.n })))}
 ${allergy.length ? "食物アレルギー対応者のいる区分：" + allergy.join("、") + "\n" : ""}担当者からの指示：
 ${text}
