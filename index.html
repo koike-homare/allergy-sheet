@@ -187,6 +187,7 @@ body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14p
 header.top{display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;padding-block:14px;border-bottom:1px solid var(--line);margin-bottom:20px}
 header.top h1{font-family:var(--display);font-size:18px;font-weight:700;margin:0;letter-spacing:.02em}
 h1.logo{display:flex;align-items:center;gap:10px;font-family:"Segoe UI","Helvetica Neue",Arial,sans-serif !important;font-size:22px !important;font-weight:800 !important;letter-spacing:.06em !important;line-height:1}
+.nav-sep{border:0;border-top:1px solid var(--line);margin:6px 0;width:100%;align-self:stretch}
 h1.logo svg{flex:none} .lg-m{fill:#16335a} .lg-t{fill:#fff}
 nav{display:flex;gap:4px;flex-wrap:wrap}
 nav button{background:none;border:0;border-radius:var(--r);padding:6px 12px;font:inherit;color:var(--muted);cursor:pointer}
@@ -196,6 +197,7 @@ nav button[aria-current="page"]{background:var(--accent-soft);color:var(--accent
   .wrap:has(#nav:not([hidden])){max-width:none;padding-inline:0 24px;display:grid;grid-template-columns:212px minmax(0,1fr);gap:0 28px;align-items:start}
   .wrap:has(#nav:not([hidden])) header.top{position:sticky;top:0;height:100vh;box-sizing:border-box;flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:6px;padding:22px 12px 20px;margin:0;border:0;overflow-y:auto;background:#16335a;color:#fff}
   .wrap:has(#nav:not([hidden])) header.top h1{margin:0 0 16px;padding-inline:12px;color:#fff}
+  .wrap:has(#nav:not([hidden])) .nav-sep{border-top-color:rgba(255,255,255,.22);margin:8px 6px;width:auto}
   .wrap:has(#nav:not([hidden])) .lg-m{fill:#fff} .wrap:has(#nav:not([hidden])) .lg-t{fill:#16335a}
   .wrap:has(#nav:not([hidden])) #bell{margin:0 0 12px;border-radius:var(--r);padding:8px 12px;justify-content:flex-start}
   .wrap:has(#nav:not([hidden])) #bell:not(.on){color:#c9d6e8;border-color:transparent}
@@ -358,6 +360,8 @@ div.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute
 .lay-pin:active{cursor:grabbing}
 .lay-guide{position:absolute;border-left:2px solid #e11d2a;border-top:2px solid #e11d2a;margin:-1px 0 0 -1px;pointer-events:none;z-index:3}
 .lay-wrap.pen table,.lay-wrap.pen td{cursor:crosshair} .lay-bar .lay-ico.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+table.pj td{vertical-align:top;padding:3px} table.pj textarea{min-height:30px;font-size:12.5px} table.pj tr.pj-sec td{background:#fbe4e4} table.pj tr.pj-own td{background:#fffbd6}
+table.pj th:nth-child(1),table.pj th:nth-child(2){min-width:230px} table.pj th:nth-child(4),table.pj th:nth-child(5){min-width:150px} .pj-tools{white-space:nowrap} .pj-tools .x{padding:2px 5px}
 .resp-warn{margin-top:4px;font-size:12px;line-height:1.45;color:var(--bad,#c00000);background:#fff4f2;border:1px solid var(--bad,#c00000);border-radius:6px;padding:5px 8px}
 .srow select.chosen{font-weight:700}
 .resp-sel>summary{cursor:pointer;font-size:11px;color:var(--muted);margin-bottom:4px} .resp-cards{display:grid;gap:6px;margin-bottom:4px}
@@ -444,6 +448,8 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
       <button type="button" data-v="stores">店舗マスタ</button>
       <button type="button" data-v="courses">コース成分表</button>
       <button type="button" data-v="spec">特定原材料</button>
+      <hr class="nav-sep">
+      <button type="button" data-v="pj">PJ管理</button>
     </nav>
     <span id="save"></span>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
@@ -1021,7 +1027,7 @@ function startData() {
     S.got.cases = true;
     if (first) render();
     else if (view.name === "list") renderListBody();
-    else if (view.name === "layouts") render();
+    else if (view.name === "layouts" || view.name === "pj") render();
     else if (view.name === "case" && draft) {
       const r = S.cases.get(draft.id);
       if (r && r.editedBy !== clientId && r.updatedAt !== draft.updatedAt && !caseSaver.busy) { draft = clone(r); render(); toast("他の方の変更を反映しました"); }
@@ -1168,8 +1174,8 @@ $("#open-settings").addEventListener("click", async () => {
 });
 function render() {
   // 「レイアウト作成」で作ったもの（kind:"layout"）は、案件と同じ仕組みで保存するが、メニューは別にする
-  const isLayCase = (view.name === "case" || view.name === "clayout") && ((draft && draft.id === view.id ? draft : S.cases.get(view.id)) || {}).kind === "layout";
-  const cur = view.name === "case" || view.name === "clayout" ? (isLayCase ? "layouts" : "list") : view.name === "layout" ? "stores" : view.name;
+  const curKind = view.name === "case" || view.name === "clayout" ? ((draft && draft.id === view.id ? draft : S.cases.get(view.id)) || {}).kind : "";
+  const cur = view.name === "case" || view.name === "clayout" ? (curKind === "layout" ? "layouts" : curKind === "pj" ? "pj" : "list") : view.name === "layout" ? "stores" : view.name;
   for (const b of $("#nav").children) { if (b.dataset.v === cur) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); }
   const app = $("#app");
   $("#nav").hidden = authState !== "open"; $("#logout").hidden = authState !== "open" || !dataKey;
@@ -1181,6 +1187,7 @@ function render() {
     : readOnly ? [h("div", { class: "banner info", text: "閲覧専用で共有されています。内容の確認とPDFの出力はできますが、ここで入力・変更した内容は保存されません。編集するには、このページの持ち主に「編集」の権限で共有してもらってください。" })] : [];
   if (view.name === "list") app.replaceChildren(...top, ...viewList());
   else if (view.name === "layouts") app.replaceChildren(...top, ...viewLayouts());
+  else if (view.name === "pj") app.replaceChildren(...top, ...viewPj());
   else if (view.name === "case") app.replaceChildren(...top, ...viewCase());
   else if (view.name === "stores") app.replaceChildren(...top, ...viewStores());
   else if (view.name === "courses") app.replaceChildren(...top, ...viewCourses());
@@ -1211,10 +1218,10 @@ function caseNeeds(c) { const st = M(c.courseId); return (c.rows || []).filter((
 function renderListBody() {
   const box = $("#listbody"); if (!box) return;
   const q = norm(listQuery);
-  const list = [...S.cases.values()].filter((c) => c.kind !== "layout").filter((c) => !q || norm(c.groupName + (S.stores.get(c.storeId)?.name || "") + (c.storeName || "")).includes(q))
+  const list = [...S.cases.values()].filter((c) => !c.kind).filter((c) => !q || norm(c.groupName + (S.stores.get(c.storeId)?.name || "") + (c.storeName || "")).includes(q))
     .sort((a, b) => (b.visitDate || "9").localeCompare(a.visitDate || "9") || (b.updatedAt || "").localeCompare(a.updatedAt || ""));
   if (!list.length) {
-    box.replaceChildren(h("div", { class: "empty" }, [...S.cases.values()].some((c) => c.kind !== "layout") ? "該当する案件がありません。" : "まだ案件がありません。「新しい案件を作る」から、団体ごとの対応シートを作成します。"));
+    box.replaceChildren(h("div", { class: "empty" }, [...S.cases.values()].some((c) => !c.kind) ? "該当する案件がありません。" : "まだ案件がありません。「新しい案件を作る」から、団体ごとの対応シートを作成します。"));
     return;
   }
   const tb = h("tbody");
@@ -1319,6 +1326,7 @@ function viewLayoutCase(c) {
 function viewCase() {
   if (!draft) { const c = S.cases.get(view.id); if (!c) return [h("div", { class: "empty" }, "この案件は見つかりません。")]; if (c.locked) return [h("div", { class: "banner bad", text: "この案件は現在のパスワードの鍵では開けません。" })]; draft = clone(c); draft.rows ||= []; }
   if (draft.kind === "layout") return viewLayoutCase(draft);
+  if (draft.kind === "pj") return viewPjCase(draft);
   const c = draft, store = M(c.courseId), storeRec = S.stores.get(c.storeId);
   const bar = h("div", { class: "stack", id: "exportbar", style: "gap:6px" });
   const ch = () => { exportArmed = false; caseSaver.touch(); drawBar(); };
@@ -2469,6 +2477,11 @@ function viewSettings() {
       h("label", { class: "row" }, h("input", { id: "set-fruitMode", type: "checkbox", style: "width:auto", checked: s.fruitMode !== false, onchange: (e) => { s.fruitMode = e.target.checked; ch(); } }), "ソース類の果物は種類を特定できないため、果物はすべて「果物」の成分ありとして扱う"),
       h("div", { class: "muted small", text: "コースを指定した案件に適用されます。果物の申告は、調味料・ソース・調理油の成分を「果物」と表記して「該当あり」と判定します。成分表にない果物（パイナップルなど）は、現物は使用なしとして扱います。" }),
       field("果物として扱う食材（「、」で区切る。特定原材料の「別の呼び方」も含まれます）", ta("fruits", 4))),
+    h("div", { class: "panel stack", id: "gdrive" }, h("h3", { text: "Googleドライブ連携（PJ管理）" }),
+      h("div", { class: "muted small", text: "PJ管理の案件から、Googleドライブにフォルダとスプレッドシートを作るための設定です。操作する人が自分の Google アカウントでログインし、その人の権限で、下の保存先フォルダの中に作ります。クライアントIDは Google Cloud の「OAuth クライアントID（ウェブ アプリケーション）」で、パスワードのような秘密の値ではありません。" }),
+      h("div", { class: "fields" },
+        field("OAuth クライアントID", h("input", { id: "set-gClientId", value: s.gClientId || "", placeholder: "例：1234567890-xxxxxxxx.apps.googleusercontent.com", autocomplete: "off", oninput: (e) => { s.gClientId = e.target.value.trim(); ch(); } })),
+        field("保存先フォルダ（フォルダのURL、またはID）", h("input", { id: "set-gFolderId", value: s.gFolderId || "", placeholder: "例：https://drive.google.com/drive/folders/xxxxxxxx", autocomplete: "off", oninput: (e) => { s.gFolderId = e.target.value.trim(); ch(); } })))),
     h("div", { class: "panel stack", id: "wordkinds" }, h("h3", { text: "食品以外のアレルギー・料理名の扱い" }),
       h("div", { class: "muted small", text: "申告にこれらの言葉があると、食材としては判定しません。食品以外は「食品ではないため、当店では判断ができません」と書き、対応は通常コースを含む選択肢になります（ほかに該当する食材がない場合）。料理名は「原材料が特定できないため、当店では判断ができません」と書き、通常コースを含まない選択肢になります。コースに同じ名前の料理があるときは「該当あり」として扱います。" }),
       field("食品以外として扱う言葉（「、」で区切る）", ta("nonFood", 3)), field("料理名として扱う言葉（「、」で区切る）", ta("dishNames", 3))),
@@ -2588,6 +2601,242 @@ function pwPanel() {
     h("div", { class: "muted small", text: "全員共通のパスワードです。変更したら利用者に新しいパスワードを伝えてください。忘れると保存済みの案件を開けなくなります。" }),
     h("div", { class: "fields" }, field("現在のパスワード", withEye(cur)), field("新しいパスワード（8文字以上）", withEye(n1)), field("もう一度入力", withEye(n2))),
     h("div", { class: "row" }, h("button", { type: "submit", class: "btn", text: "変更する" }), msg));
+}
+
+/* ---------- PJ管理（プライベートジェットのケータリング依頼） ----------
+   依頼のファイルを読み込み、AIで和訳・注意の抽出・梱包容器・数量変更を加えて案件にする。
+   案件は cases に kind:"pj" で保存する（暗号化・同期は案件と同じ仕組み）。
+   items = [{ id, sec:見出しなら true, en, ja, qty, instr, instrJa, pack, pj:PJ様ご用意 }] */
+const pjDate = (iso) => { const m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(iso || ""); return m ? `${+m[1]}.${+m[2]}.${+m[3]}` : ""; };
+const PJ_AREA = { KANSAI: "関西", KIX: "関西", HANEDA: "羽田", HND: "羽田", NARITA: "成田", NRT: "成田", CHUBU: "中部", NGO: "中部", FUKUOKA: "福岡", FUK: "福岡", CHITOSE: "新千歳", CTS: "新千歳", NAHA: "那覇", OKA: "那覇", KOBE: "神戸", ITAMI: "伊丹" };
+/** フォルダ・ファイルの名前：「2026.10.6 A7CGH - Aeroworks1 関西」の形（オーダーナンバーの先頭の「JAPAN-」は省く）。 */
+const pjName = (c) => [pjDate(c.visitDate), String(c.flight || "").replace(/\s*[（(].*$/, ""), c.orderNo ? "- " + String(c.orderNo).replace(/^JAPAN\s*-\s*/i, "") : "", PJ_AREA[String(c.area || "").trim().toUpperCase()] || c.area].filter(Boolean).join(" ") || "PJ案件";
+const PJ_PACKS = ["オーブン対応容器", "電子レンジ対応容器"];
+function viewPj() {
+  const list = [...S.cases.values()].filter((c) => c.kind === "pj").sort((a, b) => (b.visitDate || "9").localeCompare(a.visitDate || "9") || (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+  const file = h("input", { type: "file", id: "pj-file", accept: ".pdf,.xlsx,.xls,.csv,.tsv,.txt,image/*", multiple: true, hidden: true, onchange: (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) pjImport(fs); } });
+  const tb = h("tbody");
+  for (const c of list) tb.append(h("tr", { class: "click", onclick: () => go({ name: "case", id: c.id }) },
+    h("td", { text: c.visitDate ? c.visitDate.replace(/-/g, "/") : "—" }), h("td", {}, h("strong", { text: c.locked ? c.groupName : c.flight || "—" })), h("td", { text: c.orderNo || "—" }),
+    h("td", { text: c.area || "—" }), h("td", { text: c.time || "—" }),
+    h("td", {}, c.drive && c.drive.sheetUrl ? h("a", { href: c.drive.sheetUrl, target: "_blank", rel: "noopener", text: "スプレッドシート", onclick: (e) => e.stopPropagation() }) : h("span", { class: "pill plain", text: "未作成" })),
+    h("td", { class: "muted small", text: c.updatedAt ? c.updatedAt.slice(0, 10).replace(/-/g, "/") : "" })));
+  return [
+    h("div", { class: "row" }, h("h2", { text: "PJ管理" }), h("span", { style: "margin-left:auto" }),
+      h("button", { type: "button", class: "btn", id: "pj-blank", text: "空の案件を作る", onclick: () => pjOpen({}) }),
+      h("button", { type: "button", class: "btn primary", id: "pj-new", text: "依頼を読み込む", onclick: () => file.click() }), file),
+    h("div", { class: "muted small", style: "max-width:92ch", text: "届いた依頼（Excel・PDF・画像）を読み込むと、AIが利用日・フライトナンバー・オーダーナンバー・配達エリア・配達時間を読み取り、品目の和訳、特記事項の抽出、梱包容器、数量の変更を加えて案件を立ち上げます。" }),
+    h("div", { class: "panel drop scroll", id: "pjlist", style: "padding:4px 8px",
+      ondragover: (e) => { e.preventDefault(); e.currentTarget.classList.add("over"); }, ondragleave: (e) => e.currentTarget.classList.remove("over"),
+      ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove("over"); const fs = [...(e.dataTransfer?.files || [])]; if (fs.length) pjImport(fs); } }, list.length
+      ? h("table", { class: "list" }, h("thead", {}, h("tr", {}, ...["利用日", "フライトナンバー", "オーダーナンバー", "配達エリア", "配達時間", "Googleドライブ", "更新"].map((x) => h("th", { text: x })))), tb)
+      : h("div", { class: "empty", text: "まだ案件がありません。「依頼を読み込む」から、届いた依頼のファイルを選ぶか、ここにドロップしてください。" })),
+  ];
+}
+function pjOpen(p) {
+  const id = uid("c");
+  view = { name: "case", id }; draft = { id, kind: "pj", groupName: "", visitDate: "", flight: "", orderNo: "", area: "", time: "", notesEn: "", notesJa: "", extra: "", place: "", contact: "", phone: "", items: [], rows: [], createdDate: today(), ...p };
+  draft.groupName = pjName(draft); try { location.hash = "case-" + id; } catch (_) {}
+  render(); if (Object.keys(p).length) caseSaver.touch();
+}
+/** 依頼のExcelを、上の見出し部分（top）と品目の行（rows）に分ける。「Catering Item」の行より上が見出し部分。 */
+function pjParseGrid(grid) {
+  const txt = (v) => String(v == null ? "" : v).replace(/\r/g, "").trim();
+  const hi = grid.findIndex((r) => /catering\s*item/i.test(txt(r[0])));
+  const top = grid.slice(0, hi < 0 ? 0 : hi).map((r) => r.map(txt).filter(Boolean).join(" | ")).filter(Boolean).join("\n");
+  const rows = [], foot = []; let done = false;
+  for (const r of grid.slice(hi + 1)) {
+    const a = txt(r[0]), b = txt(r[1]), c = txt(r[2]); if (!a && !b && !c) continue;
+    if (/^total\b/i.test(a)) { done = true; continue; }
+    if (done) { if (a) foot.push(a); continue; } // 合計より下は補足（例：OVEN TIN）
+    if (!a) continue;
+    if (/^qty$/i.test(b) || (!b && !c)) rows.push({ sec: true, en: a }); else rows.push({ en: a, qty: b, instr: /^unit$/i.test(c) ? "" : c });
+  }
+  return { top, rows, foot: foot.join("\n") };
+}
+async function pjImport(files) {
+  if (!sample) return toast("この表示環境ではAIの読み取りが使えません。「空の案件を作る」から手で入力できます");
+  const dlg = $("#dlg"), msg = h("div", { style: "white-space:pre-wrap", text: "ファイルを準備しています…" }); aiCtl = new AbortController();
+  dlg.replaceChildren(h("div", { class: "dlg" }, h("h3", { text: "依頼を読み取っています" }), msg, h("div", { class: "row" }, h("button", { type: "button", class: "btn", text: "中止", onclick: () => { aiCtl.abort(); dlg.close(); } }))));
+  if (!dlg.open) dlg.showModal();
+  const say = (t) => { msg.textContent = t; }, opt = () => ({ signal: aiCtl.signal });
+  try {
+    let top = "", rows = [], foot = ""; const texts = [], imgs = [];
+    for (const f of files) {
+      if (/\.(xlsx|xls)$/i.test(f.name)) {
+        await loadScript(LIB.xlsx); const wb = XLSX.read(await f.arrayBuffer(), { type: "array" });
+        const g = pjParseGrid(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: "" }));
+        if (g.rows.length) { top += g.top + "\n"; rows.push(...g.rows); foot += g.foot; } else texts.push(await tableText(f));
+      } else if (isTable(f)) texts.push(await tableText(f));
+      else if (isPdf(f)) {
+        await loadScript(LIB.pdf); await loadScript(LIB.pdfw);
+        const pdf = await pdfjsLib.getDocument({ data: await f.arrayBuffer(), isEvalSupported: false }).promise; let t = "";
+        for (let n = 1; n <= pdf.numPages; n++) { const tc = await (await pdf.getPage(n)).getTextContent(); t += tc.items.map((it) => it.str + (it.hasEOL ? "\n" : " ")).join("") + "\n"; }
+        if (t.replace(/\s/g, "").length > 40 * pdf.numPages) texts.push(t.slice(0, 60000));
+        else for (let n = 1; n <= Math.min(pdf.numPages, 4); n++) { const page = await pdf.getPage(n), base = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: Math.min(3, 2000 / Math.max(base.width, base.height)) }); const cv = h("canvas", { width: Math.round(vp.width), height: Math.round(vp.height) }); await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise; imgs.push(await new Promise((ok) => cv.toBlob(ok, "image/jpeg", 0.9))); }
+      } else if (/^image\//.test(f.type)) imgs.push(f);
+    }
+    // 表の形で読めなかった資料は、まずAIに品目の行へ整理させる（英語は原文のまま）
+    if (!rows.length) {
+      if (!texts.length && !imgs.length) { say("読み取れるファイルがありませんでした。Excel・PDF・画像を選んでください。"); return; }
+      say("AIが依頼の内容を整理しています…（1分ほどかかることがあります）");
+      const r = await sample.json(`プライベートジェットのケータリング依頼です。資料の内容を、見出し部分と品目の行に整理してください。原文の英語は訳さず、そのまま書き写します（日本語が併記されていても英語だけを書く）。
+返答はJSONだけ。形式：{"top":"日付・フライトナンバー・オーダーナンバー・配達先・配達時間・特記事項（SPECIAL NOTES）など、品目の表より上に書かれていること（原文のまま、改行区切り）","rows":[{"sec":true,"en":"区切りの見出し（例：BREAKFAST）"},{"en":"品目と、その品目に付いた説明（改行は \\n）","qty":"数量","instr":"Special Instructions や単位の欄の記載"}]}
+${texts.length ? "資料：\n" + texts.join("\n\n").slice(0, 60000) : "添付の画像が資料です。"}`, { ...opt(), ...(imgs.length ? { images: imgs.slice(0, 4) } : {}) });
+      top = String(r.top || ""); rows = (Array.isArray(r.rows) ? r.rows : []).map((x) => (x && x.sec ? { sec: true, en: String(x.en || "") } : { en: String((x && x.en) || ""), qty: String((x && x.qty) || ""), instr: String((x && x.instr) || "") })).filter((x) => x.en);
+    }
+    if (!rows.length) { say("品目を読み取れませんでした。"); return; }
+    say("AIが見出し（利用日・フライトナンバーなど）と特記事項を読み取っています…");
+    let hd = {};
+    try {
+      hd = await sample.json(`プライベートジェットのケータリング依頼の、見出し部分と品目の一部です。次の項目を読み取ってください。書かれていない項目は空文字にし、推測で補わない。
+返答はJSONだけ。形式：{"date":"利用日を YYYY-MM-DD で","flight":"フライトナンバー（機体記号を含む。例：HRT389 (C-FGGH)）","orderNo":"オーダーナンバー（例：JAPAN- IAJ1）","area":"配達エリア（例：KANSAI）","time":"配達時間（例：11:30）","place":"受け渡し場所","contact":"担当者氏名","phone":"電話番号","notesEn":"特記事項の原文。SPECIAL NOTES の記載に加えて、品目の見出しなどに書かれたアレルギー・食べられないもの・NO PORK・NO ALCOHOL などの注意も、原文のまま改行区切りで入れる","notesJa":"notesEn の日本語訳（厨房の担当者に伝わる、簡潔で正確な日本語。1文ずつ改行）","extra":"人数など、そのほかの補足を日本語で（なければ空）"}
+見出し部分：
+${top.slice(0, 6000)}
+品目の見出し：
+${rows.filter((x) => x.sec).map((x) => x.en).join("\n").slice(0, 3000)}
+表の下の記載：
+${foot.slice(0, 2000)}`, opt());
+    } catch (e) { if (e && e.code === "cancelled") return; }
+    // 和訳・梱包容器・数量の変更は、行をいくつかずつに分けてAIに頼む（返事が長くなりすぎないように）
+    const N = 14, out = new Map(); let failed = 0;
+    for (let i = 0; i < rows.length; i += N) {
+      say(`AIが品目を和訳しています…（${Math.min(rows.length, i + N)}/${rows.length}行）`);
+      const part = rows.slice(i, i + N).map((x, k) => ({ i: i + k, ...(x.sec ? { heading: x.en } : { item: x.en, qty: x.qty, instr: x.instr }) }));
+      try {
+        const r = await sample.json(`プライベートジェットのケータリング依頼の品目です。日本の厨房の担当者が読むために、各行に日本語を付けてください。
+規則：
+・ja は item（または heading）の日本語訳。料理名は日本で通じる言い方にし、材料・調理法・盛り付け・容器の指示も省かずに訳す。原文が複数行なら、訳も同じ順で改行する。
+・instrJa は instr の日本語訳。instr が NOS・PCS・PTN・KG・LTR などの単位だけ、または空のときは空文字。
+・qty は数量。「reduce to 7 portions」「update to 3 portions」「amend to …」のように数量の変更が書かれているときは、変更後の数にする。変更がなければ渡された qty のまま。
+・pack は梱包容器。oven-safe／oven tin など → 「オーブン対応容器」、microwave-safe など → 「電子レンジ対応容器」。指定がなければ空文字。ソースなど別添えの容器の指定は、主となる料理の容器には数えない。
+・pj は、その品目を機内食会社ではなく依頼主側（PJ）が自分で用意すると書かれているときだけ true。
+・推測で内容を足さない。数量・固有名詞・アレルギーの注意は正確に。
+返答はJSONだけ。形式：{"rows":[{"i":0,"ja":"","instrJa":"","qty":"","pack":"","pj":false}]}
+行：${JSON.stringify(part)}`, opt());
+        for (const x of Array.isArray(r.rows) ? r.rows : []) if (x && Number.isInteger(x.i)) out.set(x.i, x);
+      } catch (e) { if (e && e.code === "cancelled") return; if (AI_ERR[e && e.code] && !out.size) { say(AI_ERR[e.code]); return; } failed++; }
+    }
+    const items = rows.map((x, i) => { const t = out.get(i) || {}, qty = String(t.qty != null && String(t.qty).trim() !== "" ? t.qty : x.qty || "");
+      return x.sec ? { id: uid("i"), sec: true, en: x.en, ja: String(t.ja || "") } : { id: uid("i"), en: x.en, ja: String(t.ja || ""), qty, qty0: String(x.qty || ""), instr: x.instr || "", instrJa: String(t.instrJa || ""), pack: PJ_PACKS.includes(t.pack) ? t.pack : String(t.pack || ""), ...(t.pj ? { pj: true } : {}) }; });
+    const s = (v) => String(v == null ? "" : v).trim(), dm = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s(hd.date)) || /(\d{4})[./-](\d{1,2})[./-](\d{1,2})/.exec(top);
+    dlg.close();
+    pjOpen({ visitDate: dm ? `${dm[1]}-${String(dm[2]).padStart(2, "0")}-${String(dm[3]).padStart(2, "0")}` : "", flight: s(hd.flight), orderNo: s(hd.orderNo), area: s(hd.area), time: s(hd.time), place: s(hd.place), contact: s(hd.contact), phone: s(hd.phone),
+      notesEn: s(hd.notesEn), notesJa: s(hd.notesJa), extra: [s(hd.extra), foot ? "表の下の記載：" + foot : ""].filter(Boolean).join("\n"), items, srcName: files.map((f) => f.name).join("、"), ai: true });
+    toast(failed ? "一部の行は和訳できませんでした。空欄の行を確認してください" : `${items.filter((x) => !x.sec).length}品目を読み取りました。内容を原本と照合してください`);
+  } catch (e) {
+    if (e && e.code === "cancelled") return;
+    say(AI_ERR[e && e.code] || "読み取りに失敗しました。もう一度お試しください。");
+  }
+}
+function viewPjCase(c) {
+  c.items = c.items || [];
+  const ch = () => { c.groupName = pjName(c); caseSaver.touch(); };
+  const f = (key, label, attrs = {}) => field(label, h("input", { id: "pj-" + key, value: c[key] || "", ...attrs, oninput: (e) => { c[key] = e.target.value; ch(); } }));
+  const ta = (key, label, rows) => field(label, h("textarea", { id: "pj-" + key, rows, value: c[key] || "", oninput: (e) => { c[key] = e.target.value; ch(); } }));
+  const body = h("tbody", {}), packs = h("datalist", { id: "pj-packs" }, ...PJ_PACKS.map((x) => h("option", { value: x })));
+  const cell = (it, key, ph, rows) => h("textarea", { id: it.id + "-" + key, rows: rows || 1, value: it[key] || "", placeholder: ph || "", "aria-label": ph, oninput: (e) => { it[key] = e.target.value; ch(); } });
+  const tools = (it) => h("td", { class: "pj-tools" },
+    h("button", { type: "button", class: "x", title: "上へ", "aria-label": "上へ", text: "↑", onclick: () => { const i = c.items.indexOf(it); if (i > 0) { c.items.splice(i - 1, 0, c.items.splice(i, 1)[0]); draw(); ch(); } } }),
+    h("button", { type: "button", class: "x", title: "下へ", "aria-label": "下へ", text: "↓", onclick: () => { const i = c.items.indexOf(it); if (i < c.items.length - 1) { c.items.splice(i + 1, 0, c.items.splice(i, 1)[0]); draw(); ch(); } } }),
+    h("button", { type: "button", class: "x", title: "この下に品目を追加", "aria-label": "この下に品目を追加", text: "＋", onclick: () => { c.items.splice(c.items.indexOf(it) + 1, 0, { id: uid("i"), en: "", ja: "", qty: "", instr: "", instrJa: "", pack: "" }); draw(); ch(); } }),
+    confirmBtn("×", "削除", () => { c.items.splice(c.items.indexOf(it), 1); draw(); ch(); }, "x"));
+  const draw = () => { body.replaceChildren(...c.items.map((it) => it.sec
+    ? h("tr", { class: "pj-sec" }, h("td", { colspan: "2" }, h("div", { class: "row", style: "gap:6px;flex-wrap:nowrap" }, h("span", { class: "pill plain", text: "見出し" }), cell(it, "en", "見出し（英語）"))), h("td", { colspan: "3" }, cell(it, "ja", "見出し（日本語）")), h("td", {}), tools(it))
+    : h("tr", { class: it.pj ? "pj-own" : "" }, h("td", {}, cell(it, "en", "品目（英語）", 2)), h("td", {}, cell(it, "ja", "品目（日本語）", 2)),
+        h("td", {}, h("input", { id: it.id + "-qty", value: it.qty || "", "aria-label": "数量", class: it.qty0 != null && it.qty0 !== "" && it.qty0 !== it.qty ? "unsure" : "", title: it.qty0 != null && it.qty0 !== "" && it.qty0 !== it.qty ? `依頼の表の数量は ${it.qty0} でした（変更の指示を反映）` : "", style: "width:64px;text-align:center", oninput: (e) => { it.qty = e.target.value; ch(); } })),
+        h("td", {}, cell(it, "instr", "Special Instructions（英語）", 2)), h("td", {}, cell(it, "instrJa", "日本語", 2)),
+        h("td", {}, h("input", { id: it.id + "-pack", list: "pj-packs", value: it.pack || "", "aria-label": "梱包容器", style: "width:150px", oninput: (e) => { it.pack = e.target.value; ch(); } }),
+          h("label", { class: "row small", style: "gap:4px;margin-top:3px;cursor:pointer" }, h("input", { type: "checkbox", style: "width:auto", checked: !!it.pj, onchange: (e) => { if (e.target.checked) it.pj = true; else delete it.pj; draw(); ch(); } }), "PJ様ご用意")),
+        tools(it)))); fitAll(body); };
+  draw();
+  const dmsg = h("span", { class: "small", id: "pj-msg", style: "white-space:pre-wrap" }), say = (t, bad) => { dmsg.textContent = t; dmsg.style.color = bad ? "var(--bad)" : "var(--ok)"; };
+  const linkRow = () => (c.drive && c.drive.folderUrl ? h("div", { class: "row small", id: "pj-links", style: "gap:14px" }, h("span", { class: "pill ok", text: "Googleドライブに作成済み" }), h("a", { href: c.drive.folderUrl, target: "_blank", rel: "noopener", text: "フォルダを開く" }), c.drive.sheetUrl ? h("a", { href: c.drive.sheetUrl, target: "_blank", rel: "noopener", text: "スプレッドシートを開く" }) : null) : null);
+  return [
+    h("div", {}, h("button", { type: "button", class: "linkbtn", text: "← PJ管理", onclick: () => go({ name: "pj" }) })),
+    c.ai ? h("div", { class: "banner warn", text: "AIによる読み取りと和訳です。数量・アレルギーの注意・固有名詞は、必ず原本と照合してから使ってください。黄色の数量は、変更の指示を反映したものです。" }) : null,
+    h("div", { class: "panel fields", id: "pj-head" }, f("visitDate", "利用日", { type: "date" }), f("flight", "フライトナンバー"), f("orderNo", "オーダーナンバー"), f("area", "配達エリア"), f("time", "配達時間", { placeholder: "例：11:30" })),
+    h("div", { class: "panel stack" }, h("h3", { text: "特記事項（SPECIAL NOTES）" }),
+      h("div", { class: "fields" }, ta("notesEn", "原文（英語）", 4), ta("notesJa", "日本語", 4)), ta("extra", "補足（人数など）", 2)),
+    h("div", { class: "panel fields" }, f("place", "受け渡し場所"), f("contact", "担当者氏名"), f("phone", "携帯番号")),
+    h("div", { class: "panel stack" }, h("div", { class: "row" }, h("h3", { text: "品目" }), h("span", { class: "muted small", text: c.srcName ? "読み込んだ依頼：" + c.srcName : "" }), h("span", { style: "margin-left:auto" }),
+        h("button", { type: "button", class: "btn sm", id: "pj-add-sec", text: "＋ 見出しを追加", onclick: () => { c.items.push({ id: uid("i"), sec: true, en: "", ja: "" }); draw(); ch(); } }),
+        h("button", { type: "button", class: "btn sm", id: "pj-add", text: "＋ 品目を追加", onclick: () => { c.items.push({ id: uid("i"), en: "", ja: "", qty: "", instr: "", instrJa: "", pack: "" }); draw(); ch(); } })),
+      h("div", { class: "scroll" }, h("table", { class: "prev pj", id: "pj-items" }, h("thead", {}, h("tr", {}, ...["Catering Item（英語）", "日本語", "数量", "Special Instructions（英語）", "日本語", "梱包容器", ""].map((x) => h("th", { text: x })))), body), packs)),
+    linkRow(),
+    h("div", { class: "row" }, dmsg, h("span", { style: "margin-left:auto" }),
+      dl ? h("button", { type: "button", class: "btn", id: "pj-xlsx", text: "Excel出力", onclick: async (e) => { e.target.disabled = true; say("Excelを作成中…"); try { await dl.save({ filename: pjName(c).replace(/[\\/:*?"<>|]/g, "") + ".xlsx", data: new Blob([await pjWorkbook(c)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }) }); say("Excelを出力しました。"); } catch (err) { say(err && err.code === "declined" ? "" : "Excelを作成できませんでした。", true); } e.target.disabled = false; } }) : null,
+      h("button", { type: "button", class: "btn primary", id: "pj-drive", text: c.drive && c.drive.sheetUrl ? "スプレッドシートを作り直す" : "Googleドライブにフォルダとスプレッドシートを作成", onclick: async (e) => { e.target.disabled = true; try { await caseSaver.flush(); await pjDrive(c, say); ch(); await caseSaver.flush(); render(); } catch (err) { say(String((err && err.message) || "Googleドライブに作成できませんでした。"), true); } e.target.disabled = false; } }),
+      confirmBtn("この案件を削除", "本当に削除する", async () => { const id = c.id; draft = null; S.cases.delete(id); try { if (db) await db.doc("cases/" + id).delete(); } catch (_) { toast("削除できませんでした"); } go({ name: "pj" }); })),
+  ].filter(Boolean);
+}
+/** 仕上げの表（Excel）。この Excel を Google ドライブに送ると、スプレッドシートに変換される。 */
+async function pjWorkbook(c) {
+  await loadScript(LIB.exceljs);
+  const wb = new ExcelJS.Workbook(), ws = wb.addWorksheet("Quotation", { pageSetup: { paperSize: 8, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } } });
+  const W = [92, 11, 46, 22]; ws.columns = W.map((width) => ({ width }));
+  const thin = { style: "thin" }, B = { top: thin, left: thin, bottom: thin, right: thin }, FN = "Arial";
+  const fill = (argb) => ({ type: "pattern", pattern: "solid", fgColor: { argb } }), RED = { argb: "FFFF0000" };
+  const lines = (text, width) => String(text || "").split("\n").reduce((n, l) => n + Math.max(1, Math.ceil(textUnits(l) / Math.max(4, width * 0.6))), 0);
+  const put = (r, col, value, o = {}) => { const cell = ws.getCell(r, col); cell.value = value; cell.font = { name: FN, size: o.size || 10, bold: !!o.bold, ...(o.color ? { color: o.color } : {}) }; cell.alignment = { vertical: o.v || "middle", horizontal: o.h || "left", wrapText: true }; cell.border = B; if (o.fill) cell.fill = fill(o.fill); return cell; };
+  put(1, 1, "Date " + pjDate(c.visitDate), { bold: true }); put(1, 2, "Delivery", { bold: true });
+  put(2, 1, "Flight Number  " + (c.flight || ""), { bold: true, size: 12 }); put(2, 2, c.area || "", { bold: true });
+  put(3, 1, "Order Number " + (c.orderNo || ""), { bold: true }); put(3, 2, c.time || "", { bold: true });
+  ws.mergeCells(1, 3, 3, 4); put(1, 3, "SPECIAL NOTES:\n" + (c.notesEn || ""), { bold: true, color: c.notesEn ? RED : undefined, v: "top", fill: c.notesEn ? "FFFFFF00" : undefined });
+  const nh = Math.max(3, lines("SPECIAL NOTES:\n" + (c.notesEn || ""), W[2] + W[3])) * 13 / 3; for (let r = 1; r <= 3; r++) ws.getRow(r).height = Math.max(18, nh);
+  let r = 4;
+  const block = (text, o) => { ws.mergeCells(r, 1, r, 4); put(r, 1, text, { v: "top", ...o }); ws.getRow(r).height = lines(text, W[0] + W[1] + W[2] + W[3]) * (o.size ? o.size * 1.45 : 14) + 6; r++; };
+  const notes = [c.notesEn || c.notesJa ? "SPECIAL NOTES:（特記事項）" : "", c.notesEn, c.notesJa, c.extra ? "\n補足：" + c.extra : ""].filter(Boolean).join("\n");
+  if (notes) block(notes, { bold: true, color: RED, fill: "FFFFFF00" });
+  const dv = [["配達時間", c.time], ["受け渡し場所", c.place], ["担当者氏名", c.contact], ["携帯番号", c.phone]].filter((x) => x[1]);
+  if (dv.length) block("【配達詳細】\n" + dv.map((x) => x[0] + "：" + x[1]).join("\n"), { size: 12, fill: "FFCFE2F3" });
+  ["Catering Item", "Quantity", "Special Instructions", "梱包容器"].forEach((t, i) => { const cell = put(r, i + 1, t, { bold: true }); cell.border = { top: { style: "medium" }, bottom: { style: "medium" }, left: thin, right: thin }; }); ws.getRow(r).height = 18; r++;
+  let own = false;
+  for (const it of c.items || []) {
+    if (it.sec) {
+      own = /PJ様|ご用意/.test((it.ja || "") + (it.en || ""));
+      ws.mergeCells(r, 1, r, 4); put(r, 1, { richText: [{ text: it.en || "", font: { name: FN, size: 11, bold: true, color: RED } }, ...(it.ja ? [{ text: "　" + it.ja, font: { name: FN, size: 11, bold: true, color: RED } }] : [])] }, { fill: own ? "FFFFFF00" : "FFF4CCCC" });
+      ws.getRow(r).height = Math.max(18, lines((it.en || "") + "　" + (it.ja || ""), W[0] + W[1] + W[2] + W[3]) * 15); r++; continue;
+    }
+    const yel = own || it.pj ? "FFFFFF00" : undefined;
+    put(r, 1, it.ja ? { richText: [{ text: it.en || "", font: { name: FN, size: 10 } }, { text: "\n" + it.ja, font: { name: FN, size: 10, bold: true } }] } : it.en || "", { fill: yel });
+    const q = String(it.qty || "").trim(); put(r, 2, /^\d+(\.\d+)?$/.test(q) ? +q : q, { h: "center", fill: yel, color: it.qty0 != null && it.qty0 !== "" && it.qty0 !== it.qty ? RED : undefined });
+    put(r, 3, it.instrJa ? { richText: [{ text: it.instr || "", font: { name: FN, size: 10, color: RED } }, { text: (it.instr ? "\n" : "") + it.instrJa, font: { name: FN, size: 10, color: RED } }] } : it.instr || "", { color: RED, fill: yel });
+    put(r, 4, it.pack || "", { bold: true, fill: yel });
+    ws.getRow(r).height = Math.max(20, Math.max(lines((it.en || "") + (it.ja ? "\n" + it.ja : ""), W[0]), lines((it.instr || "") + (it.instrJa ? "\n" + it.instrJa : ""), W[2]), lines(it.pack, W[3])) * 13.5 + 6); r++;
+  }
+  return wb.xlsx.writeBuffer();
+}
+/** Google ドライブ：操作している人が Google にログインし、その人の権限で、決まった親フォルダの下にフォルダとスプレッドシートを作る。
+    クライアントID と親フォルダは共通設定に登録する。アクセス権は、この画面を開いている間だけ覚えておく。 */
+let gTok = null;
+async function gToken() {
+  const cid = String(S.settings.gClientId || "").trim(); if (!cid) throw new Error("共通設定の「Googleドライブ連携」に、クライアントIDが登録されていません。");
+  if (gTok && gTok.exp > Date.now() + 60000) return gTok.t;
+  try { await loadScript("https://accounts.google.com/gsi/client"); } catch (_) { throw new Error("この表示環境では Google にログインできません（公開ページから操作してください）。"); }
+  const r = await new Promise((ok, ng) => { const tc = google.accounts.oauth2.initTokenClient({ client_id: cid, scope: "https://www.googleapis.com/auth/drive", callback: ok, error_callback: (e) => ng(new Error(e && e.type === "popup_closed" ? "Google のログインが閉じられました。" : "Google にログインできませんでした。ポップアップが止められていないか確かめてください。")) }); tc.requestAccessToken(); });
+  if (!r || !r.access_token) throw new Error("Google の許可が得られませんでした。" + (r && r.error ? "（" + r.error + "）" : ""));
+  gTok = { t: r.access_token, exp: Date.now() + (+r.expires_in || 3000) * 1000 }; return gTok.t;
+}
+async function pjDrive(c, say) {
+  const m = /folders\/([\w-]+)/.exec(String(S.settings.gFolderId || "")), parent = m ? m[1] : String(S.settings.gFolderId || "").trim();
+  if (!parent) throw new Error("共通設定の「Googleドライブ連携」に、保存先のフォルダが登録されていません。");
+  say("Google にログインしています…"); const tok = await gToken(), name = pjName(c), au = { Authorization: "Bearer " + tok };
+  const fail = async (res, what) => { let t = ""; try { t = ((await res.json()).error || {}).message || ""; } catch (_) {} return new Error(`${what}できませんでした（${res.status}）。${res.status === 404 ? "保存先のフォルダが見つからないか、このアカウントに権限がありません。" : res.status === 403 ? "このアカウントに、保存先フォルダへ書き込む権限がありません。" : ""}${t ? "\n" + t : ""}`); };
+  c.drive = c.drive || {};
+  if (!c.drive.folderId) {
+    say("フォルダを作成しています…");
+    const res = await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id", { method: "POST", headers: { ...au, "Content-Type": "application/json" }, body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder", parents: [parent] }) });
+    if (!res.ok) throw await fail(res, "フォルダを作成");
+    c.drive.folderId = (await res.json()).id; c.drive.folderUrl = "https://drive.google.com/drive/folders/" + c.drive.folderId;
+  }
+  say("スプレッドシートを作成しています…");
+  const meta = { name, mimeType: "application/vnd.google-apps.spreadsheet", parents: [c.drive.folderId] }, bd = "tcore" + Math.random().toString(36).slice(2);
+  const body = new Blob(["--" + bd + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" + JSON.stringify(meta) + "\r\n--" + bd + "\r\nContent-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n", await pjWorkbook(c), "\r\n--" + bd + "--"]);
+  const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,webViewLink", { method: "POST", headers: { ...au, "Content-Type": "multipart/related; boundary=" + bd }, body });
+  if (!res.ok) { if (res.status === 404) { delete c.drive.folderId; delete c.drive.folderUrl; } throw await fail(res, "スプレッドシートを作成"); }
+  const j = await res.json(); c.drive.sheetId = j.id; c.drive.sheetUrl = j.webViewLink || "https://docs.google.com/spreadsheets/d/" + j.id; c.drive.at = new Date().toISOString();
+  say("Googleドライブに作成しました。");
 }
 
 /* ---------- 座席レイアウト ----------
@@ -3621,7 +3870,7 @@ window.addEventListener("drop", (e) => e.preventDefault());
 (function init() {
   const hsh = (location.hash || "").slice(1);
   if (hsh.startsWith("case-")) view = { name: "case", id: hsh.slice(5) };
-  else if (["stores", "courses", "spec", "layouts"].includes(hsh)) view = { name: hsh };
+  else if (["stores", "courses", "spec", "layouts", "pj"].includes(hsh)) view = { name: hsh };
   boot();
 })();
 </script>
