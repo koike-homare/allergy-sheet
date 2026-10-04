@@ -363,6 +363,7 @@ div.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute
 .hl-back mark{background:#ffe45c;color:transparent;border-radius:2px}
 .sb-each{margin:4px 0;padding:4px 6px;border:1px dashed var(--line);border-radius:4px;display:grid;gap:3px} .sb-each .sb-t{font-size:11px;color:var(--muted)}
 .sb-each label{display:grid;grid-template-columns:minmax(0,1fr) 98px;gap:6px;align-items:center;font-size:12px} .sb-each select{padding:2px 4px}
+tr.rv-dup>td{background:#fff8e6} tr.rv-old>td{background:#fff8e6;padding:2px 8px 6px;border-top:0}
 .unsure,input.unsure,select.unsure,textarea.unsure{background:#fff3a3 !important}
 .srow textarea.risk{color:var(--bad,#c00000);border-color:var(--bad,#c00000);background:#fff4f2} .resp-pick{margin:0 0 4px} .resp-pick+textarea{margin-bottom:4px} .resp-pick label{display:block;font-size:11px;color:var(--muted);margin-bottom:2px}
 .lay-note.un{background:#eef1f5;border-color:#6b7684;border-style:dashed;color:#39424e} .lay-note.un .lay-note-x{color:#6b7684}
@@ -1723,7 +1724,8 @@ async function runAi(textData, images, add, msgEl, maxImg) {
     }
   }
   if (failed && !people.length) return say(failed);
-  if (!people.length && !images) return say("アレルギーの記載を読み取れませんでした。");
+  const gotMeta = !!(meta.visit || meta.store || meta.party || group);
+  if (!people.length && !images && !gotMeta) return say("アレルギーの記載を読み取れませんでした。");
   reviewDialog(people, add, group, failed ? "途中で読み取りが止まりました。ここまでの結果を表示しています。残りはもう一度取り込んでください。（" + failed + "）" : "", meta);
   return !failed;
 }
@@ -1738,7 +1740,13 @@ function partyFromAi(a) {
 }
 function reviewDialog(people, add, groupName, warn, meta) {
   meta = meta || { unclear: [] };
-  const dlg = $("#dlg"); const on = people.map(() => true);
+  const dlg = $("#dlg");
+  // すでに案件にいる人（同じ氏名）は、二重に取り込まないよう最初はチェックを外しておく
+  const nameKey = (s) => norm(s).replace(/[（(].*$/, ""), have = new Set(((draft && draft.rows) || []).map((r) => nameKey(r.name)).filter(Boolean));
+  const same = people.map((p) => (nameKey(p.name) && have.has(nameKey(p.name)) ? draft.rows.filter((r) => nameKey(r.name) === nameKey(p.name)) : []));
+  const dup = same.map((l) => l.length > 0), on = people.map((_, i) => !dup[i]);
+  const oldLine = (r) => [[r.year ? half(r.year) + "年" : "", r.kumi || ""].join(""), r.sex || "", r.name || "", "／ " + (r.allergy || "（アレルギーの記載なし）"), r.seibun ? "／ 成分" + r.seibun : ""].filter(Boolean).join(" ");
+  const hasMeta = !!(draft && (meta.visit || meta.store || meta.party));
   // 読み取りに自信がない項目は黄色にする。人が直したら色を消す。
   const un = (list, key, el) => { if ((list || []).includes(key)) { el.classList.add("unsure"); el.title = "AIが読み取りに自信のない箇所です。原本と照合してください"; const off = () => el.classList.remove("unsure"); el.addEventListener("input", off); el.addEventListener("change", off); } return el; };
   // 案件の店舗・ご利用日・コースも、この画面で決められるようにする（取り込むときに案件へ反映）
@@ -1751,7 +1759,7 @@ function reviewDialog(people, add, groupName, warn, meta) {
   if (hd.course === "__" && meta.course) { const q = norm(meta.course), l = [...S.courses.values()].filter((x) => x.name && (norm(x.name) === q || norm(x.name).includes(q) || q.includes(norm(x.name)))); if (l.length === 1) hd.course = l[0].id; }
   let usePt = !!(meta.party && draft && !partyTotal(draft.party));
   const ptText = meta.party ? partyGroups(meta.party).map((g) => `${g.label} ${g.n}名`).join("、") + `（合計 ${partyTotal(meta.party)}名）` : "";
-  const head = people.length && draft ? h("div", { class: "fields", id: "rv-head" },
+  const head = draft && (people.length || hasMeta) ? h("div", { class: "fields", id: "rv-head" },
     field("店舗", h("div", {}, un(meta.unclear, "storeName", h("input", { id: "rv-store", list: "rv-stores", value: hd.store, placeholder: "店舗名を入力、または候補から選択", autocomplete: "off", oninput: (e) => { hd.store = e.target.value; } })),
       h("datalist", { id: "rv-stores" }, ...stores.map((x) => h("option", { value: x.name }))))),
     field("ご利用日", un(meta.unclear, "visitDate", h("input", { id: "rv-visit", type: "date", value: hd.visit, oninput: (e) => { hd.visit = e.target.value; } }))),
@@ -1762,7 +1770,7 @@ function reviewDialog(people, add, groupName, warn, meta) {
     const el = $("#rv-course-hint"), ok = $("#rv-ok"); if (!el) return;
     el.style.color = hd.course ? "var(--muted)" : "var(--warn)";
     el.textContent = hd.course === "__" ? "コースを選ぶと、そのコースの成分表で注意文と対応を作成します。" : hd.course ? "このコースの成分表で注意文と対応を作成します。" : "コースの成分表を使わないため、成分表にない食材は【要確認】になります。";
-    if (ok) ok.disabled = !people.length || hd.course === "__";
+    if (ok) ok.disabled = people.length ? hd.course === "__" : !hasMeta; // 人数や利用日だけの資料は、コースを選ばなくても取り込める
   };
   const applyHead = () => {
     if (!head || !draft) return;
@@ -1773,7 +1781,7 @@ function reviewDialog(people, add, groupName, warn, meta) {
     draft.courseId = hd.course === "__" ? "" : hd.course; const m = M(draft.courseId); draft.rows.forEach((r) => regen(r, m));
   };
   const count = h("strong", {});
-  const upd = () => { count.textContent = `${on.filter(Boolean).length}名を取り込みます`; };
+  const upd = () => { const k = on.filter(Boolean).length; count.textContent = k ? `${k}名を取り込みます` : hasMeta ? "店舗・ご利用日・利用人数だけを取り込みます" : "0名を取り込みます"; };
   dlg.replaceChildren(h("div", { class: "dlg" },
     h("h3", { text: "読み取り結果の確認" }),
     h("div", { class: "banner warn", text: "AIによる読み取りです。読み違いがあり得ますので、原本と照合し、この画面で直接修正してから取り込んでください。取り込んだ行には「AI読取」の印が付きます。" }),
@@ -1786,7 +1794,10 @@ function reviewDialog(people, add, groupName, warn, meta) {
     people.some((p) => (p.unclear || []).length) || meta.unclear.length ? h("div", { class: "small", id: "rv-unsure-note" }, h("span", { class: "unsure", style: "padding:1px 8px;border-radius:3px;border:1px solid #d9b500", text: "黄色" }), " は、AIが読み取りに自信のない箇所です。原本と照合してください。") : null,
     people.length ? h("div", { class: "scroll", style: "max-height:52vh;overflow-y:auto" }, h("table", { class: "prev rv" },
       h("thead", {}, h("tr", {}, ...["", "年", "組", "性別", "氏名", "アレルギー", "成分可否", "症状", "資料メモ（PDF反映あり）", "確認メモ（社内用・PDF反映なし）"].map((t) => h("th", { text: t })))),
-      h("tbody", {}, ...people.map((p, i) => h("tr", {}, h("td", { style: "min-width:0" }, h("input", { id: "rv-" + i, type: "checkbox", style: "width:auto", checked: true, onchange: (e) => { on[i] = e.target.checked; upd(); } })),
+      h("tbody", {}, ...people.flatMap((p, i) => [h("tr", { class: dup[i] ? "rv-dup" : "" }, h("td", { style: "min-width:0" }, dup[i]
+          ? sel([["0", "取り込まない"], ["1", "別人として取り込む"]], "0", (v) => { on[i] = v === "1"; upd(); }, { id: "rv-" + i, "aria-label": "同じ氏名の人の扱い", style: "min-width:132px" })
+          : h("input", { id: "rv-" + i, type: "checkbox", style: "width:auto", checked: true, onchange: (e) => { on[i] = e.target.checked; upd(); } })),
+
         h("td", {}, un(p.unclear, "year", h("input", { id: `rv-${i}-year`, "aria-label": "年", value: p.year || "", oninput: (e) => { p.year = e.target.value; } }))),
         h("td", {}, un(p.unclear, "kumi", h("input", { id: `rv-${i}-kumi`, "aria-label": "組", value: p.kumi, oninput: (e) => { p.kumi = e.target.value; } }))),
         h("td", {}, un(p.unclear, "sex", sel([["", ""], "男", "女"], p.sex, (v) => { p.sex = v; }, { id: `rv-${i}-sex`, "aria-label": "性別" }))),
@@ -1795,10 +1806,12 @@ function reviewDialog(people, add, groupName, warn, meta) {
         h("td", {}, un(p.unclear, "seibun", sel([["", ""], ...SEIBUN], p.seibun, (v) => { p.seibun = v; }, { id: `rv-${i}-sb`, "aria-label": "成分可否" }))),
         h("td", {}, un(p.unclear, "symptom", h("textarea", { id: `rv-${i}-sy`, "aria-label": "症状", rows: 1, value: p.symptom || "不明", oninput: (e) => { p.symptom = e.target.value; } }))),
         h("td", {}, un(p.unclear, "remark", h("textarea", { id: `rv-${i}-rm`, "aria-label": "資料メモ", rows: 2, placeholder: "エピペン所持、薬持参、通院中など", value: p.remark, oninput: (e) => { p.remark = e.target.value; } }))),
-        h("td", {}, h("textarea", { id: `rv-${i}-mm`, "aria-label": "確認メモ", rows: 2, placeholder: "判読不明、要確認の点など", value: p.memo || "", oninput: (e) => { p.memo = e.target.value; } }))))))) : h("div", { class: "empty", text: "アレルギーの記載を読み取れませんでした。" }),
+        h("td", {}, h("textarea", { id: `rv-${i}-mm`, "aria-label": "確認メモ", rows: 2, placeholder: "判読不明、要確認の点など", value: p.memo || "", oninput: (e) => { p.memo = e.target.value; } }))),
+        dup[i] ? h("tr", { class: "rv-old", id: "rv-old-" + i }, h("td", {}), h("td", { colspan: "9" }, h("span", { class: "pill warn", style: "margin-right:8px", text: "同じ氏名の人が登録済み" }), ...same[i].map((r, k) => h("div", { class: "small", style: "display:inline-block;margin-right:14px", text: (same[i].length > 1 ? `(${k + 1}) ` : "") + oldLine(r) })))) : null].filter(Boolean))))) : h("div", { class: "empty", text: hasMeta ? "この資料にアレルギー対応者の記載はありませんでした。上の店舗・ご利用日・利用人数だけを取り込めます。" : "アレルギーの記載を読み取れませんでした。" }),
+    dup.some(Boolean) ? h("div", { class: "small", id: "rv-dup-note", style: "color:var(--warn)", text: `同じ氏名の人がこの案件にすでにいる${dup.filter(Boolean).length}名は、登録済みの内容を下に表示しています。「取り込まない」か「別人として取り込む」を選んでください（初めは「取り込まない」）。同じ人の内容が変わった場合は、案件の画面でその人の行を直してください。` }) : null,
     h("div", { class: "row" }, count, h("span", { style: "margin-left:auto" }),
       h("button", { type: "button", class: "btn", text: "やめる", onclick: () => dlg.close() }),
-      h("button", { type: "button", class: "btn primary", id: "rv-ok", text: "取り込む", disabled: !people.length, onclick: () => { const list = people.filter((_, i) => on[i]).map((p) => { const q = { ...p }; delete q.unclear; return q; }); dlg.close(); if (list.length) { if (groupName && draft && !draft.groupName) draft.groupName = groupName; add(list, true); applyHead(); caseSaver.touch(); render(); } } }))));
+      h("button", { type: "button", class: "btn primary", id: "rv-ok", text: "取り込む", disabled: !(people.length || hasMeta), onclick: () => { const list = people.filter((_, i) => on[i]).map((p) => { const q = { ...p }; delete q.unclear; return q; }); dlg.close(); if (list.length || hasMeta) { if (groupName && draft && !draft.groupName) draft.groupName = groupName; if (list.length) add(list, true); applyHead(); caseSaver.touch(); render(); if (!list.length) toast("店舗・ご利用日・利用人数を取り込みました"); } } }))));
   // 横幅は通常の約1.5倍。右端のつまみをドラッグすると変えられ、閉じるまで（次に開くときも）その幅を保つ。
   const grip = h("div", { class: "dlg-grip", id: "rv-grip", title: "ドラッグして横幅を変更" });
   const clampW = (w) => Math.max(Math.min(640, window.innerWidth - 32), Math.min(window.innerWidth - 32, w));
