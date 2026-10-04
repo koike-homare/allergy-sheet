@@ -352,7 +352,18 @@ div.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute
 .lay-pin{position:absolute;width:11px;height:11px;margin:-5.5px 0 0 -5.5px;border-radius:50%;background:#c00000;border:2px solid #fff;box-shadow:0 0 0 1px #c00000;pointer-events:auto;cursor:grab;touch-action:none}
 .lay-pin:active{cursor:grabbing}
 .resp-warn{margin-top:4px;font-size:12px;line-height:1.45;color:var(--bad,#c00000);background:#fff4f2;border:1px solid var(--bad,#c00000);border-radius:6px;padding:5px 8px}
-.srow select.chosen{font-weight:700} .resp-pick{margin:0 0 4px} .resp-pick+textarea{margin-bottom:4px} .resp-pick label{display:block;font-size:11px;color:var(--muted);margin-bottom:2px}
+.srow select.chosen{font-weight:700}
+.resp-sel>summary{cursor:pointer;font-size:11px;color:var(--muted);margin-bottom:4px} .resp-cards{display:grid;gap:6px;margin-bottom:4px}
+.resp-card{position:relative;display:block;width:100%;text-align:left;white-space:pre-wrap;font:inherit;font-size:12.5px;line-height:1.45;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 8px;cursor:pointer;opacity:.6}
+.resp-card:hover{opacity:.9} .resp-card.on{opacity:1;border:2px solid var(--accent);padding:5px 7px;background:#f3f7fd}
+.resp-auto{position:absolute;top:4px;right:6px;font-size:10px;color:var(--accent);border:1px solid var(--accent);border-radius:999px;padding:0 6px;background:#fff}
+.srow textarea.ro{background:var(--sunken,#f4f5f7);color:var(--ink)} .resp-sel select{margin-bottom:4px} .resp-pick input{margin-top:4px}
+.hl-wrap{position:relative} .hl-wrap textarea{position:relative;background:transparent}
+.hl-back{position:absolute;inset:0;padding:4px 6px;border:1px solid transparent;border-radius:4px;background:var(--surface);color:transparent;white-space:pre-wrap;overflow-wrap:break-word;font:inherit;line-height:1.5;overflow:hidden;pointer-events:none;box-sizing:border-box}
+.hl-back mark{background:#ffe45c;color:transparent;border-radius:2px}
+.sb-each{margin:4px 0;padding:4px 6px;border:1px dashed var(--line);border-radius:4px;display:grid;gap:3px} .sb-each .sb-t{font-size:11px;color:var(--muted)}
+.sb-each label{display:grid;grid-template-columns:minmax(0,1fr) 98px;gap:6px;align-items:center;font-size:12px} .sb-each select{padding:2px 4px}
+.srow textarea.risk{color:var(--bad,#c00000);border-color:var(--bad,#c00000);background:#fff4f2} .resp-pick{margin:0 0 4px} .resp-pick+textarea{margin-bottom:4px} .resp-pick label{display:block;font-size:11px;color:var(--muted);margin-bottom:2px}
 .lay-note.un{background:#eef1f5;border-color:#6b7684;border-style:dashed;color:#39424e} .lay-note.un .lay-note-x{color:#6b7684}
 .lay-lines line.un{stroke:#6b7684;stroke-dasharray:4 3} .lay-pin.un{background:#6b7684;box-shadow:0 0 0 1px #6b7684}
 .seat-warn{display:grid;gap:6px;white-space:pre-wrap;color:var(--ink,#111);background:#fff4f2;border:1px solid var(--bad,#c00000);border-radius:8px;padding:8px 12px;margin-top:6px} .seat-warn strong{color:var(--bad,#c00000)}
@@ -677,22 +688,52 @@ function respAuto(row, store) {
   const v = analyse(row, store).verdict;
   if (!v) return "";
   // 成分可否が「不可」「不明」の人は、現物・成分とも該当しない場合でも低アレルゲンコースかお持込みを優先する
-  return v === "clear" && row.seibun !== "不可" && row.seibun !== "不明" && store.responseOk ? "ok" : "ng";
+  // 品目ごとに可否が違う場合は、いちばん厳しいものに合わせる
+  const sbs = parseTags(row.allergy).map((tag) => sbOf(row, tag)); if (!sbs.length) sbs.push(row.seibun || "");
+  return v === "clear" && !sbs.some((x) => x === "不可" || x === "不明" || x === "微量不可") && store.responseOk ? "ok" : "ng";
+}
+const SEIBUN = ["可", "不可", "不明", "微量不可"];
+/** その品目の成分可否：品目ごとの指定があればそれ、なければ行全体の成分可否。 */
+const sbOf = (row, tag) => (row.sbMap && row.sbMap[tag]) || row.seibun || "";
+/** 資料の「成分可否」欄：品目ごとの指定があれば「えび：可／卵：不可」のように品目別に出す。 */
+function seibunOut(row) {
+  const tags = parseTags(row.allergy), m = row.sbMap || {};
+  if (!tags.some((x) => m[x] && m[x] !== (row.seibun || ""))) return row.seibun || "";
+  return tags.map((x) => `${x}：${sbOf(row, x) || "—"}`).join("\n");
+}
+/** 入力欄の文字のうち、指定した言葉に一致する部分の背景を黄色くする（入力欄の裏に、同じ文章を色付きで重ねる）。 */
+function hlWrap(ta, termsFn) {
+  const back = h("div", { class: "hl-back", "aria-hidden": "true" }), wrap = h("div", { class: "hl-wrap" }, back, ta);
+  const esc = (s) => s.replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]));
+  wrap.sync = () => {
+    const terms = [...new Set(termsFn().filter((x) => x && x.length))].sort((a, b) => b.length - a.length), v = ta.value;
+    if (!terms.length) { back.textContent = v; return; }
+    const re = new RegExp(terms.map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g");
+    let out = "", last = 0, m; while ((m = re.exec(v))) { if (!m[0]) { re.lastIndex++; continue; } out += esc(v.slice(last, m.index)) + "<mark>" + esc(m[0]) + "</mark>"; last = m.index + m[0].length; }
+    back.innerHTML = out + esc(v.slice(last)) + "\u200b";
+  };
+  ta.addEventListener("input", wrap.sync);
+  return wrap;
 }
 /** 対応の文章から、最終的に選べる対応の一覧を作る。「①通常コース」「②低アレルゲンコース／・チキンステーキ…」→ 通常コース、低アレルゲンコース（チキンステーキ…）。 */
-function respOptions(text) {
+function respParse(text) {
   const out = []; let cur = null;
   for (const raw of String(text || "").split("\n")) {
     const line = raw.trim(), m = /^(?:[①-⑳]|[(（]?\d+[)）.．、])\s*(.+)$/.exec(line), s = /^[・･\-‐－*＊]\s*(.+)$/.exec(line);
     if (m) { cur = { name: m[1].trim(), subs: [] }; out.push(cur); } else if (s && cur) cur.subs.push(s[1].trim()); else if (!line) cur = null;
   }
-  return out.flatMap((o) => (o.subs.length ? o.subs.map((x) => `${o.name}（${x}）`) : [o.name]));
+  return out;
 }
+/** 金額（1,650円 など）を外す。コース名には金額を書かない。 */
+const noPrice = (s) => String(s).replace(/[\s　]*[（(]?[¥￥]?[0-9０-９][0-9０-９,，]*\s*円[)）]?(?:[（(]税[込抜別][)）])?/g, "").trim();
+function respOptions(text) { return respParse(text).flatMap((o) => (o.subs.length ? o.subs.map((x) => `${noPrice(o.name)}（${noPrice(x)}）`) : [noPrice(o.name)])); }
 const RESP_WARN = "※コースにアレルゲンが含まれることをご理解いただいたうえで、保護者様およびご本人様のご指示により通常コースを提供いたします。万一の場合も、当店では責任を負いかねます。";
 /** 該当あり（または判定できない）の人が、通常コースを最終的な対応に選んでいるか。 */
 const respRisk = (row, store) => !!row.final && /通常/.test(row.final) && respAuto(row, store) === "ng";
 /** 資料（PDF・Excel）の「対応」欄に出す文章：最終的な対応を選ぶ前は選択肢の文章、選んだ後は決定した内容。 */
-const respOut = (row, store) => (row.final ? row.final + (respRisk(row, store) ? "\n" + RESP_WARN : "") : row.response || "");
+const respOut = (row, store) => { const w = row.final ? respCaution(row, store) : ""; return row.final ? row.final + (w ? "\n" + w : "") : row.response || ""; };
+/** 注意文：手で書き換えていなければ、該当ありの人が通常コースを選んだときだけ標準の文面を入れる。 */
+const respCaution = (row, store) => (row.cautionAuto === false ? row.caution || "" : respRisk(row, store) ? RESP_WARN : "");
 /** 配席の吹き出しに書く内容：氏名・アレルゲン・選んだ対応（コース名）。 */
 const noteText = (row) => [(row.name || "").trim(), (row.allergy || "").trim(), (row.final || "").trim()].filter(Boolean).join("\n");
 /** アレルゲンの使用状況と定型文は全店舗共通（共通設定）。 */
@@ -1126,7 +1167,7 @@ function newCase() {
 /** 承認は「その時点の内容」に対して行う。内容が1文字でも変われば署名が変わり、承認は無効になる。 */
 function caseSig(c) {
   const o = { g: c.groupName || "", v: c.visitDate || "", s: S.stores.get(c.storeId)?.name || c.storeName || "", k: c.courseId || "", d: c.createdDate || "",
-    r: (c.rows || []).map((r) => [r.special, r.kumi, r.sex, r.name, r.allergy, r.seibun, r.element, r.response, r.remark, r.final, r.respPat].map((x) => x || "").concat(r.symptom ? [r.symptom] : [], r.year ? ["年:" + r.year] : [])) };
+    r: (c.rows || []).map((r) => [r.special, r.kumi, r.sex, r.name, r.allergy, r.seibun, r.element, r.response, r.remark, r.final, r.respPat, r.finalFree ? "f" : "", r.sbMap ? JSON.stringify(r.sbMap) : "", r.cautionAuto === false ? "!" + (r.caution || "") : ""].map((x) => x || "").concat(r.symptom ? [r.symptom] : [], r.year ? ["年:" + r.year] : [])) };
   let hsh = 5381; for (const chr of JSON.stringify(o)) hsh = ((hsh * 33) ^ chr.charCodeAt(0)) >>> 0;
   return hsh.toString(36);
 }
@@ -1197,18 +1238,38 @@ function viewCase() {
   function rowEl(r) {
     const chips = h("div", { class: "chips" }), state = h("div", { class: "state" });
     const elTa = h("textarea", { id: r.id + "-el", rows: 3, oninput: (e) => { r.element = e.target.value; r.elementAuto = false; marks(); ch(); } });
-    const reTa = h("textarea", { id: r.id + "-re", rows: 3, oninput: (e) => { r.response = e.target.value; r.responseAuto = false; marks(); drawResp(); ch(); } });
-    const elMark = h("div", {}), reMark = h("div", {});
+    const reTa = h("textarea", { id: r.id + "-re", rows: 3, oninput: (e) => { r.response = e.target.value; r.responseAuto = false; ch(); }, onchange: () => drawResp() });
+    const elMark = h("div", {}), reMark = h("div", {}), sbBox = h("div", {});
+    // 黄色にする言葉：その人のアレルギー名（辞書で置き換えた品目・分類を含む）と、成分に関わる言い回し
+    const elWrap = hlWrap(elTa, () => { const a = analyse(r, store), out = ["成分が含まれて", "成分は含まれて", "含まれる可能性", "微量混入"]; for (const i of a.items) { out.push(i.tag, i.ja || ""); for (const p of i.parts || []) out.push(p.name, (p.entry && p.entry.group) || ""); } return out; });
     // 対応は選択式：どちらのパターンの文章を使うか（初期値は自動の判定）と、最終的にどの内容で対応するか
-    const patSel = h("select", { id: r.id + "-pat", "aria-label": "対応のパターン", onchange: (e) => { r.respPat = e.target.value; r.responseAuto = true; upd(); ch(); } });
-    const finSel = h("select", { id: r.id + "-fin", "aria-label": "最終的な対応", onchange: (e) => { r.final = e.target.value; drawResp(); ch(); } });
-    const riskBox = h("div", { class: "resp-warn", id: r.id + "-risk", hidden: true, text: RESP_WARN });
+    const patSel = h("select", { id: r.id + "-pat", "aria-label": "対応の選択肢", onchange: (e) => {
+      const v = e.target.value;
+      if (v === "free") { r.responseAuto = false; r.response = ""; reTa.value = ""; drawResp(); fit(reTa); reTa.focus(); } // フリー入力は空の枠から書く
+      else { r.respPat = v === respAuto(r, store) ? "" : v; r.responseAuto = true; upd(); if (r.final && !r.finalFree && !/通常/.test(r.final) && !respOptions(r.response).includes(r.final)) { r.final = ""; selBox.open = true; drawResp(); } }
+      ch(); } });
+    const selSum = h("summary", {}), selBox = h("details", { class: "resp-sel", id: r.id + "-sel", open: !r.final }, selSum, patSel, reTa);
+    const finIn = h("input", { id: r.id + "-finfree", hidden: true, "aria-label": "最終的な対応（フリー入力）", placeholder: "対応の内容を入力", oninput: (e) => { r.final = e.target.value; cauBox.hidden = !r.final; if (r.final) { const w = respCaution(r, store); if (cauTa.value !== w) cauTa.value = w; cauState(); } ch(); }, onchange: () => { selBox.open = !r.final; drawResp(); } });
+    const finSel = h("select", { id: r.id + "-fin", "aria-label": "最終的な対応", onchange: (e) => { const v = e.target.value; if (v === "__free") { r.finalFree = true; r.final = ""; drawResp(); finIn.focus(); } else { delete r.finalFree; r.final = v; selBox.open = !r.final; drawResp(); } ch(); } });
+    const cauTa = h("textarea", { id: r.id + "-ca", rows: 2, "aria-label": "注意文", placeholder: "注意文はありません（必要なときは記入）", oninput: (e) => { r.caution = e.target.value; r.cautionAuto = false; cauState(); ch(); } });
+    const cauMark = h("div", {}), cauBox = h("div", { class: "resp-pick", id: r.id + "-risk", hidden: true }, h("label", { for: r.id + "-ca", text: "注意文（PDF反映あり）" }), cauTa, cauMark);
+    const cauState = () => { cauTa.classList.toggle("risk", !!cauTa.value.trim()); cauMark.replaceChildren(...(r.cautionAuto === false ? [h("span", { class: "manual", text: "手修正あり " }), h("button", { type: "button", class: "linkbtn", text: "標準の注意文に戻す", onclick: () => { r.cautionAuto = true; delete r.caution; drawResp(); ch(); } })] : [])); fit(cauTa); };
     function drawResp() {
-      const au = respAuto(r, store), nm = { ng: "該当あり用", ok: "該当なし用" };
-      patSel.replaceChildren(...[["", au ? `自動（${nm[au]}）` : "自動"], ["ng", "該当あり・判定できない場合の文章"], ["ok", "該当なしの場合の文章"]].map(([v, t]) => h("option", { value: v, text: t, selected: (r.respPat || "") === v })));
-      const os = respOptions(r.response); if (r.final && !os.includes(r.final)) os.push(r.final);
-      finSel.replaceChildren(h("option", { value: "", text: "（未選択）" }), ...os.map((o) => h("option", { value: o, text: o, selected: r.final === o })));
-      finSel.classList.toggle("chosen", !!r.final); riskBox.hidden = !respRisk(r, store);
+      const au = respAuto(r, store), cur = r.responseAuto === false ? "" : r.respPat || au;
+      // 選択肢はリストから選ぶ：登録済みの2つの文章（自動で選ばれたほうに「AI判定」）と、フリー入力
+      const pats = [["ng", store && store.response], ["ok", store && store.responseOk]].filter((x) => x[1]), free = r.responseAuto === false;
+      patSel.replaceChildren(...pats.map(([k, text]) => h("option", { value: k, selected: !free && cur === k, text: (k === au ? "【AI判定】" : "") + (respParse(text).map((o) => noPrice(o.name)).join("／") || text.split("\n")[0]) })),
+        h("option", { value: "free", text: "フリー入力", selected: free }));
+      reTa.readOnly = !free; reTa.classList.toggle("ro", !free); reTa.placeholder = free ? "対応の内容を入力" : "";
+      const os = respOptions(r.response);
+      // 通常コースは、どの選択肢のときでも選べるようにする（該当ありの人が選ぶと注意文が入る）
+      if (!os.some((o) => /通常/.test(o))) os.unshift(respOptions(store && store.responseOk).find((o) => /通常/.test(o)) || "通常コース");
+      if (r.final && !r.finalFree && !os.includes(r.final)) os.push(r.final);
+      finSel.replaceChildren(h("option", { value: "", text: "（未選択）" }), ...os.map((o) => h("option", { value: o, text: o, selected: !r.finalFree && r.final === o })), h("option", { value: "__free", text: "フリー入力", selected: !!r.finalFree }));
+      finIn.hidden = !r.finalFree; if (r.finalFree && finIn.value !== (r.final || "")) finIn.value = r.final || "";
+      finSel.classList.toggle("chosen", !!r.final);
+      selSum.textContent = r.final ? "選択肢を表示" : "選択肢";
+      cauBox.hidden = !r.final; if (r.final) { const w = respCaution(r, store); if (cauTa.value !== w) cauTa.value = w; cauState(); }
     }
     function marks() {
       elMark.replaceChildren(...(r.elementAuto === false ? [h("span", { class: "manual", text: "手修正あり " }), h("button", { type: "button", class: "linkbtn", text: "マスタの文章に戻す", onclick: () => { r.elementAuto = true; upd(); ch(); } })] : []));
@@ -1230,6 +1291,10 @@ function viewCase() {
         : i.state === "maybe"
         ? h("button", { type: "button", class: "chip maybe", title: i.tip, text: `${i.label} →「${i.m.entry.name}」と同じ扱いにする`, onclick: () => addAlias(i.ja || i.tag, i.m.entry.name) })
         : h("span", { class: "chip " + i.state, title: i.tip, text: i.label + (i.kind === "dict" ? "＝" + i.parts.map((p) => p.name + (p.entry && p.entry.unlisted ? "※" : p.entry && p.entry.genbutsu && p.entry.seibun ? "" : "?")).join("・") : "") + (i.kind === "fruit" ? "（果物）" : "") + (i.state === "warn" && i.kind !== "dict" ? " 未確認" : "") })]));
+      // 品目ごとの成分可否（アレルギーが2つ以上のとき）。指定しなければ「成分可否」の列と同じ。
+      sbBox.replaceChildren(...(a.tags.length >= 2 ? [h("div", { class: "sb-each", id: r.id + "-sbeach" }, h("div", { class: "sb-t", text: "品目ごとの成分可否" }),
+        ...a.tags.map((tag, i) => h("label", {}, h("span", { text: tag }), sel([["", "全体と同じ"], ...SEIBUN], (r.sbMap || {})[tag] || "", (v) => { r.sbMap = r.sbMap || {}; if (v) r.sbMap[tag] = v; else delete r.sbMap[tag]; upd(); ch(); }, { id: r.id + "-sb-" + i, "aria-label": tag + " の成分可否", class: (r.sbMap || {})[tag] ? "chosen" : "" }))))] : []));
+      elWrap.sync();
       const st = [];
       if (a.verdict) st.push(h("span", { class: "pill " + { hit: "bad", clear: "ok", unknown: "warn", ext: "plain" }[a.verdict], title: "コースの成分表・共通設定との照合結果", text: { hit: "該当あり", clear: "該当なし", unknown: "判定保留", ext: "成分表外" }[a.verdict] }));
       if (r.ai) st.push(h("span", { class: "pill warn", text: "AI読取" }));
@@ -1246,11 +1311,11 @@ function viewCase() {
       h("div", {}, lab("組"), inp("kumi")),
       h("div", {}, lab("性別"), sel([["", ""], "男", "女"], r.sex, (v) => { r.sex = v; ch(); }, { id: r.id + "-sex" })),
       h("div", { class: "w" }, lab("氏名（敬称略）"), inp("name")),
-      h("div", { class: "w" }, lab("アレルギー"), h("textarea", { id: r.id + "-al", rows: 2, value: r.allergy, placeholder: "例：えび、かに（少量なら可）", oninput: (e) => { r.allergy = e.target.value; upd(); ch(); } }), chips, state),
-      h("div", {}, lab("成分可否"), sel([["", ""], "可", "不可", "不明"], r.seibun, (v) => { r.seibun = v; upd(); ch(); }, { id: r.id + "-sb" })),
-      h("div", { class: "w" }, lab("アレルゲンの要素"), elTa, elMark),
-      h("div", { class: "w" }, lab("対応"), h("div", { class: "resp-pick" }, h("label", { for: r.id + "-pat", text: "文章のパターン" }), patSel), reTa, reMark,
-        h("div", { class: "resp-pick" }, h("label", { for: r.id + "-fin", text: "最終的な対応" }), finSel), riskBox),
+      h("div", { class: "w" }, lab("アレルギー"), h("textarea", { id: r.id + "-al", rows: 2, value: r.allergy, placeholder: "例：えび、かに（少量なら可）", oninput: (e) => { r.allergy = e.target.value; upd(); ch(); } }), chips, sbBox, state),
+      h("div", {}, lab("成分可否"), sel([["", ""], ...SEIBUN], r.seibun, (v) => { r.seibun = v; upd(); ch(); }, { id: r.id + "-sb" })),
+      h("div", { class: "w" }, lab("アレルゲンの要素"), elWrap, elMark),
+      h("div", { class: "w" }, lab("対応"), selBox,
+        h("div", { class: "resp-pick" }, h("label", { for: r.id + "-fin", text: "最終的な対応" }), finSel, finIn), cauBox),
       h("div", { class: "w" }, lab("症状"), h("textarea", { id: r.id + "-sy", rows: 1, value: r.symptom || "", placeholder: "不明", "aria-label": "症状", oninput: (e) => { r.symptom = e.target.value; ch(); } })),
       h("div", { class: "w" }, lab("備考"), h("div", { class: "memo src" }, h("label", { for: r.id + "-rm", text: "資料メモ（PDF反映あり）" }),
           h("textarea", { id: r.id + "-rm", rows: 1, value: r.remark, placeholder: "エピペン・薬など", title: "エピペン所持、薬持参、通院中など、症状に対する応急処置や服薬の情報", oninput: (e) => { r.remark = e.target.value; ch(); } })),
@@ -1260,7 +1325,8 @@ function viewCase() {
     elTa.value = r.element || ""; reTa.value = r.response || "";
     // 既存行は保存済みの文章を保ったまま表示し、状態表示だけ更新する
     const keepE = r.element, keepR = r.response; upd();
-    if (stale) { r.element = keepE; r.response = keepR; elTa.value = keepE || ""; reTa.value = keepR || ""; drawResp(); }
+    elWrap.sync();
+    if (stale) { r.element = keepE; r.response = keepR; elTa.value = keepE || ""; reTa.value = keepR || ""; drawResp(); elWrap.sync(); }
     return el;
   }
   function addToMaster(tag) {
@@ -1402,6 +1468,12 @@ const GUESS = [["allergy", /アレルギ|アレルゲン|原因食|食物|除去
 const MARK = /^([○〇◯●✓✔レ有]|あり|1|yes|y)$/i;
 function guessRole(hd) { const t = String(hd || ""); for (const [r, re] of GUESS) if (re.test(t)) return r; for (const g of SYN) if (g.some((x) => norm(x) === norm(t))) return "allergy"; return ""; }
 const normSex = (v) => (/女|^f/i.test(v) ? "女" : /男|^m/i.test(v) ? "男" : "");
+/** AIが読み取った食材ごとの可否を、アレルギー欄の食材名に結び付ける。 */
+function sbMapFrom(allergy, each) {
+  const tags = parseTags(allergy), out = {};
+  for (const e of Array.isArray(each) ? each : []) { const item = String((e && e.item) || "").trim(), v = e && e.value; if (!item || !SEIBUN.includes(v)) continue; const tag = tags.find((x) => x === item) || tags.find((x) => x.includes(item) || item.includes(x)); if (tag) out[tag] = v; }
+  return out;
+}
 const normSeibun = (v) => (/不可|×|ng|ダメ|だめ/i.test(v) ? "不可" : /不明|[?？]/.test(v) ? "不明" : /可|○|〇|ok/i.test(v) ? "可" : "");
 function gridToPeople(grid, hdr, roles, onlyAllergy) {
   const head = grid[hdr] || [], out = [];
@@ -1510,7 +1582,8 @@ function pasteDialog(add) {
 const AI_PROMPT = `あなたは団体旅行の食事手配の担当者を手伝っています。渡された資料（名簿・連絡票・FAX・メールなど）から、食物アレルギーのある人の情報を1人ずつ抜き出してください。
 規則：資料に書かれていることだけを書き写し、推測で補わない。読み取れない項目は空文字にする。食材名は資料の表記のまま書く。外国語で書かれた食材名は訳さず原文のまま書き、すぐ後ろに（）で日本語訳を添える（例：lobster（ロブスター））。「ナッツ類」「甲殻類」のようなまとめた表現や、「味噌」「マヨネーズ」のような食品名も、個別の食材に言い換えずそのまま書く。アレルギーの記載がない人は含めない。選択肢に○や✓を付ける形式の用紙では、印が付いた項目だけを対象にし、印のない選択肢は書かない。手書きで読みにくい文字は、読めた範囲を書いて memo に「判読不明あり（どの項目か）」と書く。remark は、症状に対する応急処置や薬の情報だけを書く欄で、エピペンの所持、持参する薬・服用中の薬、通院中であること、発症時の対応などを、資料に実際に書かれていた内容だけ、説明の言葉（「〜との記載あり」「〜との補足あり」など）を付けずに短く書く（例：「エピペン所持」「抗ヒスタミン薬を持参」「通院中」）。該当する記載がなければ空にする。それ以外の記載（保護者のコメント、食器の希望など）と、読み取った側の注意や確認事項は remark ではなく memo に分けて書く。「微量混入で発症したことがある」に該当する人は seibun を「不可」、「いいえ」の人は「可」とする。1枚に1人の用紙が複数ある場合は、全員分を出力する。
 返答はJSONだけにしてください。形式：
-{"groupName":"団体名（なければ空）","people":[{"year":"学年（数字だけ。例：2。記載がなければ空）","kumi":"組・クラス（例：3組、A組。学年は year に書き、ここには入れない。記載がなければ空）","sex":"男 または 女 または 空","name":"氏名","allergy":"アレルギーの食材を「、」区切り。程度や条件は（）で添える","seibun":"調味料・だし・エキスなど微量成分の摂取について 可 / 不可 / 不明 のいずれか。記載がなければ空","symptom":"アレルギーの症状（じんましん、かゆみ、呼吸困難、アナフィラキシーなど、資料に書かれていた内容だけ）。症状の記載がなければ「不明」","remark":"資料メモ：エピペン所持・持参薬・服用中の薬・通院中など、応急処置や薬の情報（書かれていた内容だけ。なければ空。症状は symptom に書く）","memo":"確認メモ（社内向けの注意）：判読しにくい箇所、確認が必要な点、remark に入らないその他の記載。なければ空"}]}
+{"groupName":"団体名（なければ空）","people":[{"year":"学年（数字だけ。例：2。記載がなければ空）","kumi":"組・クラス（例：3組、A組。学年は year に書き、ここには入れない。記載がなければ空）","sex":"男 または 女 または 空","name":"氏名","allergy":"アレルギーの食材を「、」区切り。程度や条件は（）で添える","seibun":"調味料・だし・エキスなど微量成分の摂取について 可 / 不可 / 不明 / 微量不可（同じ厨房での微量の混入も不可）のいずれか。記載がなければ空。食材ごとに違う場合は、いちばん多いものを書く","seibunEach":[{"item":"allergy に書いた食材名（程度や条件の（）は付けない）","value":"可 / 不可 / 不明 / 微量不可"}],"symptom":"アレルギーの症状（じんましん、かゆみ、呼吸困難、アナフィラキシーなど、資料に書かれていた内容だけ）。症状の記載がなければ「不明」","remark":"資料メモ：エピペン所持・持参薬・服用中の薬・通院中など、応急処置や薬の情報（書かれていた内容だけ。なければ空。症状は symptom に書く）","memo":"確認メモ（社内向けの注意）：判読しにくい箇所、確認が必要な点、remark に入らないその他の記載。なければ空"}]}
+seibunEach は、食材ごとに可否が分けて書かれているとき（例：A…成分可、B…成分不可、C…微量混入不可）だけ、その食材ぶんを書く。全部同じ、または記載がなければ空の配列にする。
 
 `;
 let aiCtl = null;
@@ -1536,7 +1609,7 @@ async function runAi(textData, images, add, msgEl, maxImg) {
     try {
       const res = await sample.json(AI_PROMPT + intro, { signal: aiCtl.signal, ...(ch ? { images: ch } : {}) });
       for (const p of res && Array.isArray(res.people) ? res.people : []) {
-        const q = { year: String(p.year || "").trim(), kumi: String(p.kumi || ""), sex: normSex(String(p.sex || "")), name: String(p.name || ""), allergy: String(p.allergy || ""), seibun: ["可", "不可", "不明"].includes(p.seibun) ? p.seibun : "", symptom: String(p.symptom || "").trim() || "不明", remark: String(p.remark || ""), memo: String(p.memo || "") };
+        const q = { year: String(p.year || "").trim(), kumi: String(p.kumi || ""), sex: normSex(String(p.sex || "")), name: String(p.name || ""), allergy: String(p.allergy || ""), seibun: SEIBUN.includes(p.seibun) ? p.seibun : "", sbMap: sbMapFrom(String(p.allergy || ""), p.seibunEach), symptom: String(p.symptom || "").trim() || "不明", remark: String(p.remark || ""), memo: String(p.memo || "") };
         if (q.name || q.allergy) people.push(q);
       }
       if (!group && res && res.groupName) group = String(res.groupName);
@@ -1592,7 +1665,7 @@ function reviewDialog(people, add, groupName, warn) {
         h("td", {}, sel([["", ""], "男", "女"], p.sex, (v) => { p.sex = v; }, { id: `rv-${i}-sex`, "aria-label": "性別" })),
         h("td", {}, h("input", { id: `rv-${i}-name`, "aria-label": "氏名", value: p.name, oninput: (e) => { p.name = e.target.value; } })),
         h("td", {}, h("textarea", { id: `rv-${i}-al`, "aria-label": "アレルギー", rows: 2, value: p.allergy, oninput: (e) => { p.allergy = e.target.value; } })),
-        h("td", {}, sel([["", ""], "可", "不可", "不明"], p.seibun, (v) => { p.seibun = v; }, { id: `rv-${i}-sb`, "aria-label": "成分可否" })),
+        h("td", {}, sel([["", ""], ...SEIBUN], p.seibun, (v) => { p.seibun = v; }, { id: `rv-${i}-sb`, "aria-label": "成分可否" })),
         h("td", {}, h("textarea", { id: `rv-${i}-sy`, "aria-label": "症状", rows: 1, value: p.symptom || "不明", oninput: (e) => { p.symptom = e.target.value; } })),
         h("td", {}, h("textarea", { id: `rv-${i}-rm`, "aria-label": "資料メモ", rows: 2, placeholder: "エピペン所持、薬持参、通院中など", value: p.remark, oninput: (e) => { p.remark = e.target.value; } })),
         h("td", {}, h("textarea", { id: `rv-${i}-mm`, "aria-label": "確認メモ", rows: 2, placeholder: "判読不明、要確認の点など", value: p.memo || "", oninput: (e) => { p.memo = e.target.value; } }))))))) : h("div", { class: "empty", text: "アレルギーの記載を読み取れませんでした。" }),
@@ -1702,7 +1775,7 @@ async function doExport(c) {
     let r = 6;
     const rows = c.rows.length ? c.rows : [newRow()];
     for (const p of rows) {
-      const vals = [p.special, p.kumi, p.sex, p.name, p.allergy, p.seibun, p.element, respOut(p, store), p.remark];
+      const vals = [p.special, p.kumi, p.sex, p.name, p.allergy, seibunOut(p), p.element, respOut(p, store), p.remark];
       vals.forEach((v, i) => put(String.fromCharCode(65 + i) + r, v || "", { h: i === 6 || i === 7 || i === 8 ? "left" : "center", size: i >= 6 ? 8.5 : 9 }));
       ws.getRow(r).height = Math.max(42, Math.max(...vals.map((v, i) => linesFor(v, W[i]))) * 12 + 10);
       r++;
@@ -2059,7 +2132,7 @@ async function exportCasePdf(c) {
       el("th", `border:${B};font-weight:400`, "店舗名"), Object.assign(el("th", `border:${B};text-align:left;padding:2px 8px;font-size:15px`, storeName), { colSpan: 5 })),
     el("tr", "", ...["組", "性別", "氏名（敬称略）", "アレルギー", "成分可否", "アレルゲンの要素", "対応", "症状", "備考"].map((t) => el("th", `border:${B};font-weight:400;padding:1px 2px`, t))));
   const rowEl = (r) => el("tr", "",
-    ...[r.year ? `${half(r.year)}年${/^\d+$/.test(half(r.kumi)) ? half(r.kumi) + "組" : r.kumi || ""}` : r.kumi, r.sex, r.name, r.allergy, r.seibun].map((v) => el("td", `border:${B};padding:4px 3px;text-align:center;vertical-align:middle;${pre}`, v || "")),
+    ...[r.year ? `${half(r.year)}年${/^\d+$/.test(half(r.kumi)) ? half(r.kumi) + "組" : r.kumi || ""}` : r.kumi, r.sex, r.name, r.allergy, seibunOut(r)].map((v) => el("td", `border:${B};padding:4px 3px;text-align:center;vertical-align:middle;${pre}`, v || "")),
     ...[r.element, respOut(r, M(c.courseId)), r.symptom, r.remark].map((v) => el("td", `border:${B};padding:4px 5px;vertical-align:middle;font-size:10.5px;${pre}`, v || "")));
   const table = (rows) => el("table", "border-collapse:collapse;width:100%;table-layout:fixed;font-size:11.5px", colgroup(), head(), el("tbody", "", ...rows.map(rowEl)));
   const title = () => el("div", "display:flex;gap:70px;margin-bottom:8px;align-items:stretch",
