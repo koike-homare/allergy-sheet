@@ -2489,11 +2489,21 @@ function layoutEditor(doc, onChange, opts = {}) {
     const dx = X(nc) - X(g.c1), dy = Y(nr) - Y(g.r1);
     mutate(() => {
       const inS = (r, c) => r >= g.r1 && r <= g.r2 && c >= g.c1 && c <= g.c2, inD = (r, c) => r >= nr && r < nr + hh && c >= nc && c < nc + ww;
+      const under = fl.under || (fl.under = {});
+      // 前の移動で壁などから借りた線は、動かす前に外しておく
+      for (let r = g.r1; r <= g.r2; r++) for (let c = g.c1; c <= g.c2; c++) { const k = K(r, c), u = under[k], x = fl.cells[k]; if (u && x) { if (u.own) x.bd = u.own; else delete x.bd; } }
       const cells = [], ms = fl.merges.filter((m) => inS(m[0], m[1]) && inS(m[2], m[3])), og = [];
       for (let r = g.r1; r <= g.r2; r++) for (let c = g.c1; c <= g.c2; c++) { const k = K(r, c); if (fl.cells[k]) { cells.push([r + dr, c + dc, fl.cells[k]]); delete fl.cells[k]; } if (doc.orig && fl.id + ":" + k in doc.orig) { og.push([r + dr, c + dc, doc.orig[fl.id + ":" + k]]); delete doc.orig[fl.id + ":" + k]; } }
-      fl.merges = fl.merges.filter((m) => !ms.includes(m) && !(m[0] < nr + hh && m[2] >= nr && m[1] < nc + ww && m[3] >= nc));
-      for (let r = nr; r < nr + hh; r++) for (let c = nc; c < nc + ww; c++) { delete fl.cells[K(r, c)]; if (doc.orig) delete doc.orig[fl.id + ":" + K(r, c)]; }
-      for (const [r, c, x] of cells) fl.cells[K(r, c)] = x;
+      // 動かす前の場所：下に隠れていたマス（壁の線など）があれば戻す
+      for (let r = g.r1; r <= g.r2; r++) for (let c = g.c1; c <= g.c2; c++) { const k = K(r, c); if (under[k]) { fl.cells[k] = under[k].cell; delete under[k]; } }
+      // 動かした先：中身のあるマスが載る場所だけを置き換える。元からあった罫線は消さずに残す。
+      const land = new Set(cells.map(([r, c]) => K(r, c))); for (const m of ms) for (let r = m[0] + dr; r <= m[2] + dr; r++) for (let c = m[1] + dc; c <= m[3] + dc; c++) land.add(K(r, c));
+      fl.merges = fl.merges.filter((m) => { if (ms.includes(m)) return false; for (let r = m[0]; r <= m[2]; r++) for (let c = m[1]; c <= m[3]; c++) if (land.has(K(r, c))) return false; return true; });
+      for (const [r, c, x] of cells) {
+        const k = K(r, c), old = fl.cells[k]; if (doc.orig) delete doc.orig[fl.id + ":" + k];
+        if (old) { under[k] = { cell: old, own: x.bd || "" }; if (old.bd) { const p = (x.bd || "0000").split(""), q = old.bd.split(""); x.bd = p.map((v, i) => String(Math.max(+v, +q[i] || 0))).join(""); } }
+        fl.cells[k] = x;
+      }
       for (const [r, c, x] of og) doc.orig[fl.id + ":" + K(r, c)] = x;
       for (const m of ms) fl.merges.push([m[0] + dr, m[1] + dc, m[2] + dr, m[3] + dc]);
       for (const n of doc.notes || []) { if (n.fid !== fl.id || n.r == null) continue;
@@ -2572,11 +2582,12 @@ function layoutEditor(doc, onChange, opts = {}) {
     const fl = F(), cells = {};
     for (const [k, v] of Object.entries(fl.cells)) { const p = k.split(",").map(Number); if (p[axis] >= at) p[axis] += n; cells[p.join(",")] = v; }
     fl.cells = cells;
+    if (fl.under) fl.under = Object.fromEntries(Object.entries(fl.under).map(([k, v]) => { const p = k.split(",").map(Number); if (p[axis] >= at) p[axis] += n; return [p.join(","), v]; }));
     for (const m of fl.merges) { if (m[axis] >= at) { m[axis] += n; m[axis + 2] += n; } else if (m[axis + 2] >= at) m[axis + 2] += n; }
     if (axis) { fl.cw.splice(at, 0, ...Array(n).fill(fl.cw[Math.max(0, at - 1)] || LAY.cw)); fl.cols += n; } else { fl.rh.splice(at, 0, ...Array(n).fill(fl.rh[Math.max(0, at - 1)] || LAY.rh)); fl.rows += n; }
   }
   function remove(axis, from, to) {
-    const fl = F(), n = to - from + 1, cells = {};
+    const fl = F(), n = to - from + 1, cells = {}; delete fl.under;
     for (const [k, v] of Object.entries(fl.cells)) { const p = k.split(",").map(Number); if (p[axis] >= from && p[axis] <= to) continue; if (p[axis] > to) p[axis] -= n; cells[p.join(",")] = v; }
     fl.cells = cells;
     fl.merges = fl.merges.map((m) => { const s = m[axis] > to ? m[axis] - n : Math.min(m[axis], from), e = m[axis + 2] > to ? m[axis + 2] - n : m[axis + 2] >= from ? from - 1 : m[axis + 2]; const o = m.slice(); o[axis] = s; o[axis + 2] = e; return o; }).filter((m) => m[2] >= m[0] && m[3] >= m[1] && (m[0] !== m[2] || m[1] !== m[3]));
@@ -2775,6 +2786,25 @@ function padLayout(lay, n = 5) {
   for (const [k, v] of Object.entries(lay.orig || {})) if (!(lay.floors || []).some((fl) => k.startsWith(fl.id + ":"))) orig[k] = v;
   lay.orig = orig; lay.pad = n; return lay;
 }
+/** 表のタイトル（図のいちばん上の、線で囲まれていない文字）をマス目から外す。タイトルは画面の見出しとして別に出す。 */
+function stripTitle(lay) {
+  for (const fl of lay.floors || []) {
+    const keys = Object.keys(fl.cells || {}); if (!keys.length) continue;
+    const top = Math.min(...keys.map((k) => +k.split(",")[0]));
+    for (const [k, x] of Object.entries(fl.cells)) {
+      const [r, c] = k.split(",").map(Number), bd = x.bd || "0000";
+      if (r !== top || !x.v || isSeatCell(x) || bd[0] !== "0" || bd[3] !== "0") continue; // 上や左に線がある＝枠で囲まれた文字はタイトルではない
+      fl.merges = fl.merges.filter((m) => !(m[0] === r && m[1] === c));
+      if (/[12]/.test(bd)) fl.cells[k] = { bd }; else delete fl.cells[k]; // 下の線（部屋の壁）は残す
+    }
+  }
+  lay.notitle = 1; return lay;
+}
+/** レイアウトの名称：店舗名 案件名 利用日（年月日）。 */
+function layoutTitle(c) {
+  const d = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(c.visitDate || "");
+  return [(S.stores.get(c.storeId) || {}).name || c.storeName || "", c.groupName || "", d ? `${+d[1]}年${+d[2]}月${+d[3]}日` : ""].filter(Boolean).join("　") || "配席レイアウト";
+}
 /** 前回の配席で書き換えたマスを、店舗レイアウトの状態に戻す（自動で付けた吹き出しも消す）。 */
 function clearSeating(lay) {
   for (const [k, v] of Object.entries(lay.orig || {})) { const [fid, pos] = k.split(":"); const f2 = lay.floors.find((x) => x.id === fid); if (!f2) continue; if (v) f2.cells[pos] = clone(v); else delete f2.cells[pos]; }
@@ -2863,7 +2893,7 @@ function layoutCounts(lay) {
   return out;
 }
 /** 案件画面に出す、レイアウトのプレビュー（見るだけ）。最初は枠に収まる大きさで、＋／−やCtrl+ホイールで拡大・縮小できる。 */
-function layoutPreview(lay, onOpen) {
+function layoutPreview(lay, onOpen, title) {
   const floors = (lay && lay.floors) || [], fl = floors.find((x) => Object.keys((lay.orig || {})).some((k) => k.startsWith(x.id + ":"))) || floors[0];
   const view = h("div", { class: "lay-prev-view", id: "lay-prev-view", title: "ダブルクリックでレイアウトを開く" }), pct = h("span", { class: "small muted", id: "lay-prev-pct", style: "min-width:44px;text-align:center" });
   const box = h("div", { class: "lay-prev", id: "lay-prev" });
@@ -2892,7 +2922,7 @@ function layoutPreview(lay, onOpen) {
   view.addEventListener("dblclick", onOpen);
   // ドラッグで見たい場所へ動かす
   view.addEventListener("pointerdown", (e) => { const sx = e.clientX, sy = e.clientY, l = view.scrollLeft, t = view.scrollTop; view.setPointerCapture(e.pointerId); const mv = (ev) => { view.scrollLeft = l - (ev.clientX - sx); view.scrollTop = t - (ev.clientY - sy); }; const up = () => { view.removeEventListener("pointermove", mv); view.removeEventListener("pointerup", up); view.removeEventListener("pointercancel", up); }; view.addEventListener("pointermove", mv); view.addEventListener("pointerup", up); view.addEventListener("pointercancel", up); });
-  box.append(h("div", { class: "row lay-prev-bar" },
+  box.append(h("div", { class: "row lay-prev-bar" }, title ? h("strong", { class: "small", id: "lay-prev-title", text: title }) : null,
     floors.length > 1 ? h("span", { class: "small muted", text: `${fl.name || "1F"}（全${floors.length}階）` }) : null,
     unN ? h("span", { class: "small", id: "lay-prev-un", style: "color:var(--bad);font-weight:700", text: `未配席の吹き出しが${unN}個あります。` }) : null, h("span", { style: "margin-left:auto" }),
     b("−", "縮小", "lay-prev-out", () => step(1 / 1.25)), pct, b("＋", "拡大", "lay-prev-in", () => step(1.25)), b("全体", "枠に合わせて全体を表示", "lay-prev-fit", () => { zoom = 0; fit(); view.scrollLeft = view.scrollTop = 0; })), view);
@@ -2930,7 +2960,7 @@ function partyPanel(c, ch) {
   drawC(); drawO(); queueMicrotask(upd);
   const lay = S.layouts.get(c.storeId), has = !!(lay && (lay.floors || []).length) || !!c.layout;
   const open = () => go({ name: "clayout", id: c.id });
-  const prev = has ? layoutPreview(c.layout || lay, open) : null;
+  const prev = has ? layoutPreview(c.layout || lay, open, c.layout ? layoutTitle(c) : "") : null;
   return h("div", { class: "panel stack", id: "party" },
     h("div", { class: "row" }, h("h3", { text: "利用人数" }), total, allSt, h("span", { style: "margin-left:auto" }),
       h("button", { type: "button", class: "btn primary", id: "btn-layout", disabled: !has, text: c.layout ? "レイアウトを開く" : "レイアウト作成", onclick: open })),
@@ -2945,12 +2975,13 @@ function partyPanel(c, ch) {
 function viewCaseLayout() {
   if (!draft) { const c0 = S.cases.get(view.id); if (!c0 || c0.locked) return [h("div", { class: "empty", text: "この案件は見つかりません。" })]; draft = clone(c0); }
   const c = draft, ch = () => caseSaver.touch(), back = h("div", {}, h("button", { type: "button", class: "linkbtn", text: "← 案件に戻る", onclick: () => go({ name: "case", id: c.id }) }));
-  const base = S.layouts.get(c.storeId), fresh = () => padLayout({ storeId: c.storeId, floors: clone(base.floors), notes: [], area: null, orig: {}, ai: (c.layout && c.layout.ai) || "", ...(c.layout && Array.isArray(c.layout.opts) ? { opts: c.layout.opts } : {}) });
+  const base = S.layouts.get(c.storeId), fresh = () => padLayout(stripTitle({ storeId: c.storeId, floors: clone(base.floors), notes: [], area: null, orig: {}, ai: (c.layout && c.layout.ai) || "", ...(c.layout && Array.isArray(c.layout.opts) ? { opts: c.layout.opts } : {}) }));
   if (!c.layout) {
     if (!base || !(base.floors || []).length) return [back, h("div", { class: "banner warn", text: "この店舗にはレイアウトが登録されていません。店舗マスタの「レイアウト」で登録してください。" })];
     c.layout = fresh(); ch();
   }
   const lay = c.layout; lay.notes = lay.notes || []; lay.orig = lay.orig || {};
+  if (!lay.notitle) { stripTitle(lay); ch(); } // 以前に作ったレイアウトからも、マス目の中のタイトルを外す
   if (!lay.pad) { padLayout(lay); ch(); } // 以前に作ったレイアウトにも、周りの余白を足す
   const groups = partyGroups(c.party), msg = h("div", { class: "small", id: "seat-msg", style: "white-space:pre-wrap" });
   // 配席の条件：チェックした項目とAIへの依頼文を合わせて、AIへの指示にする。案件ごとに保存し、次に作る案件の初期値にもする。
@@ -3056,7 +3087,7 @@ ${text}
   sumText();
   queueMicrotask(info); showPrompt();
   ed.addEventListener("pointerup", () => queueMicrotask(info)); ed.addEventListener("click", () => queueMicrotask(info));
-  return [h("div", { class: "row", style: "gap:14px" }, back, h("strong", { style: "font-size:15px", text: `${c.groupName || "（団体名未入力）"} の配席レイアウト` })),
+  return [h("div", { class: "row", style: "gap:14px" }, back, h("strong", { style: "font-size:15px", id: "lay-title", text: layoutTitle(c) })),
     moved ? h("div", { class: "banner warn row" }, h("span", { text: "案件の店舗が変わっています。今のレイアウトは変更前の店舗のものです。" }), h("span", { style: "margin-left:auto" }), confirmBtn("今の店舗のレイアウトで作り直す", "本当に作り直す", () => { c.layout = fresh(); ch(); draft = clone(c); app0(); }, "btn sm")) : null,
     panel, ed].filter(Boolean);
   function app0() { const a = $("#app"); a.replaceChildren(...viewCaseLayout()); }
