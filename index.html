@@ -256,6 +256,9 @@ button.chip{font-size:11.5px}
 .banner.bad{background:var(--bad-soft);color:var(--bad)}
 .banner.info{background:var(--accent-soft);color:var(--accent)}
 .pill{display:inline-block;border-radius:99px;padding:1px 9px;font-size:12px;font-weight:700;white-space:nowrap}
+.pj-st{border-radius:99px;padding:2px 8px;font-size:12px;font-weight:700;width:auto;border:1px solid transparent;cursor:pointer}
+.pj-st.st-run{background:#e3edfb;color:#1d4f9c} .pj-st.st-yet{background:var(--warn-soft);color:var(--warn)} .pj-st.st-bill{background:var(--bad-soft);color:var(--bad)} .pj-st.st-paid{background:var(--ok-soft);color:var(--ok)}
+.pj-st option{background:#fff;color:#222;font-weight:400}
 .pill.ok{background:var(--ok-soft);color:var(--ok)} .pill.warn{background:var(--warn-soft);color:var(--warn)} .pill.bad{background:var(--bad-soft);color:var(--bad)} .pill.plain{background:var(--sunken);color:var(--muted)}
 .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
 .chip{font-size:11.5px;border-radius:4px;padding:0 6px;border:1px solid transparent;line-height:1.7}
@@ -455,6 +458,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <span id="save"></span>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 105</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -2621,6 +2625,21 @@ function pjPackNote(text) {
   if (/bento/i.test(s) || /弁当/.test(s)) out.push("弁当箱");
   return out;
 }
+const PJ_STATUS = ["進行中", "未請求", "請求中", "入金済"], PJ_ST_CLS = { 進行中: "st-run", 未請求: "st-yet", 請求中: "st-bill", 入金済: "st-paid" };
+const pjStatus = (c) => (PJ_STATUS.includes(c.status) ? c.status : "進行中");
+/** ステータスの選択。一覧からも案件の画面からも変えられる（開いている案件は下書きへ、一覧では直接保存）。 */
+function pjStatusSel(c, id) {
+  const sel = h("select", { id, class: "pj-st " + PJ_ST_CLS[pjStatus(c)], "aria-label": "ステータス", disabled: readOnly || undefined }, ...PJ_STATUS.map((x) => h("option", { value: x, text: x, selected: x === pjStatus(c) || undefined })));
+  sel.onchange = async () => {
+    const v = sel.value; sel.className = "pj-st " + PJ_ST_CLS[v];
+    if (draft && draft.id === c.id) { draft.status = v; c.status = v; caseSaver.touch(); return; }
+    const cur = S.cases.get(c.id); if (!cur) return;
+    const old = cur.status; cur.status = v; cur.updatedAt = new Date().toISOString(); cur.editedBy = clientId;
+    try { const body = clone(cur); delete body.id; if (db) await db.doc("cases/" + c.id).set(dataKey ? await seal(body) : body); }
+    catch (_) { cur.status = old; sel.value = pjStatus(cur); sel.className = "pj-st " + PJ_ST_CLS[sel.value]; toast("ステータスを保存できませんでした"); }
+  };
+  return sel;
+}
 function viewPj() {
   const list = [...S.cases.values()].filter((c) => c.kind === "pj").sort((a, b) => (b.visitDate || "9").localeCompare(a.visitDate || "9") || (b.updatedAt || "").localeCompare(a.updatedAt || ""));
   const file = h("input", { type: "file", id: "pj-file", accept: ".pdf,.xlsx,.xls,.csv,.tsv,.txt,image/*", multiple: true, hidden: true, onchange: (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) pjImport(fs); } });
@@ -2628,7 +2647,8 @@ function viewPj() {
   for (const c of list) tb.append(h("tr", { class: "click", onclick: () => go({ name: "case", id: c.id }) },
     h("td", { text: c.visitDate ? c.visitDate.replace(/-/g, "/") : "—" }), h("td", {}, h("strong", { text: c.locked ? c.groupName : c.flight || "—" })), h("td", { text: c.orderNo || "—" }),
     h("td", { text: c.area || "—" }), h("td", { text: c.time || "—" }),
-    h("td", {}, c.drive && c.drive.sheetUrl ? h("a", { href: c.drive.sheetUrl, target: "_blank", rel: "noopener", text: "スプレッドシート", onclick: (e) => e.stopPropagation() }) : h("span", { class: "pill plain", text: "未作成" })),
+    h("td", { onclick: (e) => e.stopPropagation() }, c.locked ? null : pjStatusSel(c, "pj-st-" + c.id)),
+    h("td", {}, c.drive && c.drive.folderUrl ? h("a", { href: c.drive.folderUrl, target: "_blank", rel: "noopener", text: "フォルダ", onclick: (e) => e.stopPropagation() }) : h("span", { class: "pill plain", text: "未作成" })),
     h("td", { class: "muted small", text: c.updatedAt ? c.updatedAt.slice(0, 10).replace(/-/g, "/") : "" })));
   return [
     h("div", { class: "row" }, h("h2", { text: "PJ管理" }), h("span", { style: "margin-left:auto" }),
@@ -2638,7 +2658,7 @@ function viewPj() {
     h("div", { class: "panel drop scroll", id: "pjlist", style: "padding:4px 8px",
       ondragover: (e) => { e.preventDefault(); e.currentTarget.classList.add("over"); }, ondragleave: (e) => e.currentTarget.classList.remove("over"),
       ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove("over"); const fs = [...(e.dataTransfer?.files || [])]; if (fs.length) pjImport(fs); } }, list.length
-      ? h("table", { class: "list" }, h("thead", {}, h("tr", {}, ...["利用日", "フライトナンバー", "オーダーナンバー", "配達エリア", "配達時間", "Googleドライブ", "更新"].map((x) => h("th", { text: x })))), tb)
+      ? h("table", { class: "list" }, h("thead", {}, h("tr", {}, ...["利用日", "フライトナンバー", "オーダーナンバー", "配達エリア", "配達時間", "ステータス", "Googleドライブ", "更新"].map((x) => h("th", { text: x })))), tb)
       : h("div", { class: "empty", text: "まだ案件がありません。「依頼を読み込む」から、届いた依頼のファイルを選ぶか、ここにドロップしてください。" })),
   ];
 }
@@ -2769,7 +2789,7 @@ function viewPjCase(c) {
   return [
     h("div", {}, h("button", { type: "button", class: "linkbtn", text: "← PJ管理", onclick: () => go({ name: "pj" }) })),
     c.ai ? h("div", { class: "banner warn", text: "AIによる読み取りと和訳です。数量・アレルギーの注意・固有名詞は、必ず原本と照合してから使ってください。黄色の数量は、変更の指示を反映したものです。" }) : null,
-    h("div", { class: "panel fields", id: "pj-head" }, f("visitDate", "利用日", { type: "date" }), f("flight", "フライトナンバー"), f("orderNo", "オーダーナンバー"), f("area", "配達エリア"), f("time", "配達時間", { placeholder: "例：11:30" })),
+    h("div", { class: "panel fields", id: "pj-head" }, f("visitDate", "利用日", { type: "date" }), f("flight", "フライトナンバー"), f("orderNo", "オーダーナンバー"), f("area", "配達エリア"), f("time", "配達時間", { placeholder: "例：11:30" }), field("ステータス", pjStatusSel(c, "pj-status"))),
     h("div", { class: "panel stack" }, h("h3", { text: "特記事項（SPECIAL NOTES）" }),
       h("div", { class: "fields" }, ta("notesEn", "原文（英語）", 4), ta("notesJa", "日本語", 4)), ta("extra", "補足（人数など）", 2)),
     h("div", { class: "panel fields" }, f("place", "受け渡し場所"), f("contact", "担当者氏名"), f("phone", "携帯番号")),
@@ -2891,7 +2911,7 @@ function viewPjSheet(c) {
   const msg = h("span", { class: "small", id: "pj-msg", style: "white-space:pre-wrap" }), say = (t, bad) => { msg.textContent = t; msg.style.color = bad ? "var(--bad)" : "var(--ok)"; };
   const ro = (key, label, val) => field(label, h("input", { id: "pj-" + key, value: val || "", readonly: true, class: "ro", title: "スプレッドシートの内容です。直すときは、下のスプレッドシートで直してください" }));
   const head = h("div", { class: "panel fields", id: "pj-head" });
-  const drawHead = () => head.replaceChildren(ro("visitDate", "利用日", c.visitDate ? c.visitDate.replace(/-/g, "/") : ""), ro("flight", "フライトナンバー", c.flight), ro("orderNo", "オーダーナンバー", c.orderNo), ro("area", "配達エリア", c.area), ro("time", "配達時間", c.time));
+  const drawHead = () => head.replaceChildren(ro("visitDate", "利用日", c.visitDate ? c.visitDate.replace(/-/g, "/") : ""), ro("flight", "フライトナンバー", c.flight), ro("orderNo", "オーダーナンバー", c.orderNo), ro("area", "配達エリア", c.area), ro("time", "配達時間", c.time), field("ステータス", pjStatusSel(c, "pj-status")));
   drawHead();
   const sync = async (quiet) => { try { if (!quiet) say("スプレッドシートを読んでいます…"); const sh = await pjSheetRead(c), changed = pjTakeHead(c, sh); drawHead(); ch(); if (!quiet || changed) say(changed ? "スプレッドシートの内容で、利用日などを更新しました。" : "利用日などは、スプレッドシートと同じです。"); } catch (e) { if (!quiet) say(String((e && e.message) || "読み取れませんでした。"), true); } };
   // Google にログイン済みなら、開いたときに自動で読み直す（ログインの窓は、ボタンを押したときだけ出す）
