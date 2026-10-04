@@ -606,12 +606,19 @@ function wordKind(tag, row) {
 /** 食品以外のうち、食物アレルギーの確認が要るもの（社内向けの注意）。 */
 function nonFoodHint(tag) { return /そば|蕎麦/.test(tag) ? `「${tag}」の記載あり：そばアレルギーの有無を要確認` : /ラテックス|ゴム|latex/i.test(tag) ? `「${tag}」の記載あり：果物（バナナ・キウイ・アボカド等）のアレルギーの有無を要確認` : ""; }
 /** 料理名から食材を見つけるための言い換え。同じ行の言葉は、どれで申告されても同じ食材として料理名を探す。 */
-const DISH_WORDS = [["米", "お米", "白米", "玄米", "コメ", "ご飯", "ごはん", "御飯", "ライス", "飯", "丼", "寿司", "すし", "おにぎり", "おむすび", "粥", "雑炊", "リゾット", "チャーハン", "炒飯", "ピラフ"]].map((g) => g.map(norm));
+const DISH_WORDS = [["米", "お米", "白米", "玄米", "コメ", "ご飯", "ごはん", "御飯", "ライス", "飯", "丼", "寿司", "すし", "おにぎり", "おむすび", "粥", "雑炊", "リゾット", "チャーハン", "炒飯", "ピラフ"],
+  ["人参", "にんじん", "キャロット"], ["生姜", "しょうが", "ジンジャー"], ["玉ねぎ", "玉葱", "たまねぎ", "オニオン"], ["なす", "茄子", "なすび"], ["ねぎ", "葱", "長ねぎ"], ["にんにく", "大蒜", "ガーリック"],
+  ["きのこ", "茸"], ["しいたけ", "椎茸"], ["きくらげ", "木耳"], ["わかめ", "若布"], ["のり", "海苔", "青のり"], ["かつお", "鰹", "かつおぶし", "鰹節", "かつお節"], ["たけのこ", "筍", "竹の子"], ["とうもろこし", "コーン"], ["じゃがいも", "ポテト", "馬鈴薯"]].map((g) => g.map(norm));
 /** コースの料理のうち、名前にその食材（または言い換え）が入っているもの。 */
 function dishesWith(course, name) {
   const t = norm(name); if (!t) return [];
-  const words = DISH_WORDS.find((g) => g.includes(t)) || [t];
-  return (course.dishes || []).map((x) => x.name).filter((n) => n && words.some((w) => norm(n).includes(w)));
+  // 漢字・かな・別の呼び方（蛸＝たこ、海老＝えび など）でも同じ食材として探す
+  const terms = entryTerms({ name }), words = [...new Set([...terms, ...DISH_WORDS.filter((g) => terms.some((x) => g.includes(x))).flat()])].filter((w) => w.length >= 2 || /[^\u3040-\u309f]/.test(w));
+  const has = (s) => !!s && words.some((w) => norm(s).includes(w));
+  // 料理名に加えて、成分表の「コース内容・特記事項」に書かれた食材も見る（例：なす →「串かつ5本：牛、豚、鶏、玉ねぎ、なす」）
+  const out = (course.dishes || []).map((x) => x.name).filter(has);
+  for (const n of course.notes || []) if ((has(n.item) || has(n.text)) && !out.includes(n.item || "特記事項")) out.push(n.item || "特記事項");
+  return out;
 }
 function dictFind(tag) { const t = norm(tag); return (S.settings.dict || []).find((d) => splitList(d.term).some((x) => norm(x) === t)) || null; }
 /** 申告の1語を、判定に使うアレルゲン（parts）へ展開する。成分表に完全一致 → 辞書 → 部分一致（未承認）→ 該当なし の順。 */
@@ -2163,7 +2170,7 @@ function viewCourses() {
       h("div", { class: "panel stack" },
         h("div", { class: "row" }, h("h3", { text: "コース内容・特記事項" }), h("span", { style: "margin-left:auto" }),
           locked ? null : h("button", { type: "button", class: "btn sm", text: "1行追加", onclick: () => { s.notes.push({ id: uid("n"), item: "", text: "" }); drawNotes(); ch(); notes.lastElementChild?.querySelector("input")?.focus(); } })),
-        h("div", { class: "muted small", text: "成分表の控えです。対応シートの文章には入りません。" }),
+        h("div", { class: "muted small", text: "成分表の控えです。ここに書いた食材は、成分表に行がない食材の判定にも使います（申告された食材がここに書かれていれば「現物を使用」として扱います）。" }),
         notes),
       h("div", { class: "row" }, h("span", { style: "margin-left:auto" }),
         dl ? h("button", { type: "button", class: "btn primary", id: "co-pdf", text: "PDFプレビュー・出力", onclick: () => exportCoursePdf(s) }) : h("span", { class: "muted small", text: "この表示環境ではPDF出力が使えません。" }),
