@@ -360,7 +360,8 @@ div.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute
 .lay-pin:active{cursor:grabbing}
 .lay-guide{position:absolute;border-left:2px solid #e11d2a;border-top:2px solid #e11d2a;margin:-1px 0 0 -1px;pointer-events:none;z-index:3}
 .lay-wrap.pen table,.lay-wrap.pen td{cursor:crosshair} .lay-bar .lay-ico.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-table.pj td{vertical-align:top;padding:3px} table.pj textarea{min-height:30px;font-size:12.5px} table.pj tr.pj-sec td{background:#fbe4e4} table.pj tr.pj-own td{background:#fffbd6}
+.pj-frame{width:100%;height:calc(100vh - 250px);min-height:520px;border:1px solid var(--line);border-radius:6px;background:#fff} input.ro{background:var(--sunken,#f4f5f7)} a.btn{text-decoration:none;display:inline-flex;align-items:center}
+table.pj td{vertical-align:top;padding:3px} table.pj textarea{min-height:30px;font-size:12.5px} table.pj tr.pj-sec td{background:#e3eefb} table.pj tr.pj-own td{background:#fffbd6}
 table.pj th:nth-child(1),table.pj th:nth-child(2){min-width:230px} table.pj th:nth-child(4),table.pj th:nth-child(5){min-width:150px} .pj-tools{white-space:nowrap} .pj-tools .x{padding:2px 5px}
 .resp-warn{margin-top:4px;font-size:12px;line-height:1.45;color:var(--bad,#c00000);background:#fff4f2;border:1px solid var(--bad,#c00000);border-radius:6px;padding:5px 8px}
 .srow select.chosen{font-weight:700}
@@ -2478,7 +2479,7 @@ function viewSettings() {
       h("div", { class: "muted small", text: "コースを指定した案件に適用されます。果物の申告は、調味料・ソース・調理油の成分を「果物」と表記して「該当あり」と判定します。成分表にない果物（パイナップルなど）は、現物は使用なしとして扱います。" }),
       field("果物として扱う食材（「、」で区切る。特定原材料の「別の呼び方」も含まれます）", ta("fruits", 4))),
     h("div", { class: "panel stack", id: "gdrive" }, h("h3", { text: "Googleドライブ連携（PJ管理）" }),
-      h("div", { class: "muted small", text: "PJ管理の案件から、Googleドライブにフォルダとスプレッドシートを作るための設定です。操作する人が自分の Google アカウントでログインし、その人の権限で、下の保存先フォルダの中に作ります。クライアントIDは Google Cloud の「OAuth クライアントID（ウェブ アプリケーション）」で、パスワードのような秘密の値ではありません。" }),
+      h("div", { class: "muted small", text: "PJ管理の案件から、Googleドライブにフォルダとスプレッドシートを作るための設定です。操作する人が自分の Google アカウントでログインし、その人の権限で、下の保存先フォルダの中に作ります。クライアントIDは Google Cloud の「OAuth クライアントID（ウェブ アプリケーション）」で、パスワードのような秘密の値ではありません。Google Cloud のプロジェクトでは「Google Drive API」と「Google Sheets API」の両方を有効にしてください。" }),
       h("div", { class: "fields" },
         field("OAuth クライアントID", h("input", { id: "set-gClientId", value: s.gClientId || "", placeholder: "例：1234567890-xxxxxxxx.apps.googleusercontent.com", autocomplete: "off", oninput: (e) => { s.gClientId = e.target.value.trim(); ch(); } })),
         field("保存先フォルダ（フォルダのURL、またはID）", h("input", { id: "set-gFolderId", value: s.gFolderId || "", placeholder: "例：https://drive.google.com/drive/folders/xxxxxxxx", autocomplete: "off", oninput: (e) => { s.gFolderId = e.target.value.trim(); ch(); } })))),
@@ -2742,6 +2743,7 @@ ${foot.slice(0, 2000)}`, opt());
   }
 }
 function viewPjCase(c) {
+  if (c.drive && c.drive.sheetId) return viewPjSheet(c); // シートを作った後は、シートそのものを表示する
   c.items = c.items || [];
   const ch = () => { c.groupName = pjName(c); caseSaver.touch(); };
   const f = (key, label, attrs = {}) => field(label, h("input", { id: "pj-" + key, value: c[key] || "", ...attrs, oninput: (e) => { c[key] = e.target.value; ch(); } }));
@@ -2778,7 +2780,7 @@ function viewPjCase(c) {
     linkRow(),
     h("div", { class: "row" }, dmsg, h("span", { style: "margin-left:auto" }),
       dl ? h("button", { type: "button", class: "btn", id: "pj-xlsx", text: "Excel出力", onclick: async (e) => { e.target.disabled = true; say("Excelを作成中…"); try { await dl.save({ filename: pjName(c).replace(/[\\/:*?"<>|]/g, "") + ".xlsx", data: new Blob([await pjWorkbook(c)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }) }); say("Excelを出力しました。"); } catch (err) { say(err && err.code === "declined" ? "" : "Excelを作成できませんでした。", true); } e.target.disabled = false; } }) : null,
-      h("button", { type: "button", class: "btn primary", id: "pj-drive", text: c.drive && c.drive.sheetUrl ? "スプレッドシートを作り直す" : "Googleドライブにフォルダとスプレッドシートを作成", onclick: async (e) => { e.target.disabled = true; try { await caseSaver.flush(); await pjDrive(c, say); ch(); await caseSaver.flush(); render(); } catch (err) { say(String((err && err.message) || "Googleドライブに作成できませんでした。"), true); } e.target.disabled = false; } }),
+      h("button", { type: "button", class: "btn primary", id: "pj-drive", text: "Googleドライブにフォルダとスプレッドシートを作成", title: "作成した後は、スプレッドシートが本体になります（この画面の品目の表は使わず、スプレッドシートをここに表示して直接編集します）", onclick: async (e) => { e.target.disabled = true; try { await caseSaver.flush(); await pjDrive(c, say); ch(); await caseSaver.flush(); render(); } catch (err) { say(String((err && err.message) || "Googleドライブに作成できませんでした。"), true); } e.target.disabled = false; } }),
       confirmBtn("この案件を削除", "本当に削除する", async () => { const id = c.id; draft = null; S.cases.delete(id); try { if (db) await db.doc("cases/" + id).delete(); } catch (_) { toast("削除できませんでした"); } go({ name: "pj" }); })),
   ].filter(Boolean);
 }
@@ -2807,7 +2809,7 @@ async function pjWorkbook(c) {
   for (const it of c.items || []) {
     if (it.sec) {
       own = /PJ様|ご用意/.test((it.ja || "") + (it.en || ""));
-      ws.mergeCells(r, 1, r, 4); put(r, 1, { richText: [{ text: it.en || "", font: { name: FN, size: 11, bold: true, color: RED } }, ...(it.ja ? [{ text: "　" + it.ja, font: { name: FN, size: 11, bold: true, color: RED } }] : [])] }, { fill: own ? "FFFFFF00" : "FFF4CCCC" });
+      ws.mergeCells(r, 1, r, 4); put(r, 1, { richText: [{ text: it.en || "", font: { name: FN, size: 11, bold: true, color: RED } }, ...(it.ja ? [{ text: "　" + it.ja, font: { name: FN, size: 11, bold: true, color: RED } }] : [])] }, { fill: own ? "FFFFFF00" : "FFDDEBF7" });
       ws.getRow(r).height = Math.max(18, lines((it.en || "") + "　" + (it.ja || ""), W[0] + W[1] + W[2] + W[3]) * 15); r++; continue;
     }
     const yel = own || it.pj ? "FFFFFF00" : undefined;
@@ -2823,8 +2825,8 @@ async function pjWorkbook(c) {
     クライアントID と親フォルダは共通設定に登録する。アクセス権は、この画面を開いている間だけ覚えておく。 */
 let gTok = null;
 async function gToken() {
-  const cid = String(S.settings.gClientId || "").trim(); if (!cid) throw new Error("共通設定の「Googleドライブ連携」に、クライアントIDが登録されていません。");
   if (gTok && gTok.exp > Date.now() + 60000) return gTok.t;
+  const cid = String(S.settings.gClientId || "").trim(); if (!cid) throw new Error("共通設定の「Googleドライブ連携」に、クライアントIDが登録されていません。");
   try { await loadScript("https://accounts.google.com/gsi/client"); } catch (_) { throw new Error("この表示環境では Google にログインできません（公開ページから操作してください）。"); }
   const r = await new Promise((ok, ng) => { const tc = google.accounts.oauth2.initTokenClient({ client_id: cid, scope: "https://www.googleapis.com/auth/drive", callback: ok, error_callback: (e) => ng(new Error(e && e.type === "popup_closed" ? "Google のログインが閉じられました。" : "Google にログインできませんでした。ポップアップが止められていないか確かめてください。")) }); tc.requestAccessToken(); });
   if (!r || !r.access_token) throw new Error("Google の許可が得られませんでした。" + (r && r.error ? "（" + r.error + "）" : ""));
@@ -2849,6 +2851,177 @@ async function pjDrive(c, say) {
   if (!res.ok) { if (res.status === 404) { delete c.drive.folderId; delete c.drive.folderUrl; } throw await fail(res, "スプレッドシートを作成"); }
   const j = await res.json(); c.drive.sheetId = j.id; c.drive.sheetUrl = j.webViewLink || "https://docs.google.com/spreadsheets/d/" + j.id; c.drive.at = new Date().toISOString();
   say("Googleドライブに作成しました。");
+}
+
+/* ----- PJ管理：スプレッドシートを「正」にする -----
+   シートを作った後は、T-CORE は品目の写しを使わず、シートそのものを画面に埋め込んで見る・直す。
+   T-CORE が持つのは一覧用の5項目（利用日・フライトナンバー・オーダーナンバー・配達エリア・配達時間）だけで、シートから読み直す。
+   変更の依頼（Excel・テキストなど）は、AIが今のシートと比べて変更点を出し、確認してからシートへ書き込む（変えたセルは薄い赤、反映前の状態は別シートに残す）。 */
+const PJ_CHG = { red: 1, green: 0.78, blue: 0.78 }; // 変更したセルの色（薄い赤）
+async function gApi(url, opt = {}) {
+  const tok = await gToken();
+  const res = await fetch(url, { ...opt, headers: { Authorization: "Bearer " + tok, ...(opt.body ? { "Content-Type": "application/json" } : {}), ...(opt.headers || {}) } });
+  if (!res.ok) { let t = ""; try { t = ((await res.json()).error || {}).message || ""; } catch (_) {} throw new Error((res.status === 403 && /sheets\.googleapis|has not been used|disabled/i.test(t) ? "Google Cloud で「Google Sheets API」が有効になっていません。有効にしてから、もう一度お試しください。" : res.status === 404 ? "スプレッドシートが見つかりません（削除されたか、このアカウントに権限がありません）。" : res.status === 403 ? "このアカウントには、スプレッドシートを扱う権限がありません。" : "Google との通信に失敗しました（" + res.status + "）。") + (t ? "\n" + t : "")); }
+  return res.json();
+}
+/** シートの1枚目を読み、見出し部分と品目の行に分ける。行番号 r は 0 始まり。 */
+async function pjSheetRead(c) {
+  const id = c.drive.sheetId, meta = await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${id}?fields=sheets.properties`);
+  const sheets = (meta.sheets || []).map((x) => x.properties), main = sheets.slice().sort((a, b) => a.index - b.index)[0];
+  const v = (await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent("'" + main.title.replace(/'/g, "''") + "'!A1:D800")}`)).values || [];
+  const cell = (r, k) => String((v[r] || [])[k] == null ? "" : v[r][k]).trim();
+  const hi = v.findIndex((row) => /catering\s*item/i.test(String((row || [])[0] || "")));
+  const find = (re) => { for (let r = 0; r < (hi < 0 ? Math.min(v.length, 12) : hi); r++) { const m = re.exec(cell(r, 0)); if (m) return { r, m }; } return null; };
+  const d = find(/Date\s*(\d{4})[./-](\d{1,2})[./-](\d{1,2})/i), fl = find(/Flight\s*Number\s*(.*)$/i), od = find(/Order\s*Number\s*(.*)$/i), nt = find(/^SPECIAL NOTES/i);
+  const rows = []; if (hi >= 0) for (let r = hi + 1; r < v.length; r++) { const a = cell(r, 0), b = cell(r, 1), cc = cell(r, 2), dd = cell(r, 3); if (!a && !b && !cc) continue; rows.push({ r, sec: !b && !cc && !dd, a, b, c: cc, d: dd }); }
+  return { main, sheets, hi, rows, last: v.length - 1, notesRow: nt ? nt.r : -1, notes: nt ? cell(nt.r, 0) : "",
+    head: { visitDate: d ? `${d.m[1]}-${String(d.m[2]).padStart(2, "0")}-${String(d.m[3]).padStart(2, "0")}` : "", flight: fl ? fl.m[1].trim() : "", orderNo: od ? od.m[1].trim() : "", area: fl ? cell(fl.r, 1) : "", time: od ? cell(od.r, 1) : "" },
+    at: { date: d ? d.r : 0, flight: fl ? fl.r : 1, order: od ? od.r : 2 } };
+}
+/** 一覧用の5項目を、シートの内容に合わせる。変わった項目があれば true。 */
+function pjTakeHead(c, sh) {
+  let changed = false;
+  for (const k of ["visitDate", "flight", "orderNo", "area", "time"]) { const v = sh.head[k]; if (v && v !== c[k]) { c[k] = v; changed = true; } }
+  if (changed) c.groupName = pjName(c);
+  c.drive.syncedAt = new Date().toISOString(); return changed;
+}
+const pjEn = (a) => { const ls = String(a || "").split("\n"), i = ls.findIndex((l) => /[぀-ヿ一-鿿]/.test(l)); return (i < 0 ? ls : ls.slice(0, i)).join("\n").trim() || String(a || "").trim(); }; // セルの中の英語の部分（最初に日本語が出る行より上）
+function viewPjSheet(c) {
+  const ch = () => { c.groupName = pjName(c); caseSaver.touch(); };
+  const msg = h("span", { class: "small", id: "pj-msg", style: "white-space:pre-wrap" }), say = (t, bad) => { msg.textContent = t; msg.style.color = bad ? "var(--bad)" : "var(--ok)"; };
+  const ro = (key, label, val) => field(label, h("input", { id: "pj-" + key, value: val || "", readonly: true, class: "ro", title: "スプレッドシートの内容です。直すときは、下のスプレッドシートで直してください" }));
+  const head = h("div", { class: "panel fields", id: "pj-head" });
+  const drawHead = () => head.replaceChildren(ro("visitDate", "利用日", c.visitDate ? c.visitDate.replace(/-/g, "/") : ""), ro("flight", "フライトナンバー", c.flight), ro("orderNo", "オーダーナンバー", c.orderNo), ro("area", "配達エリア", c.area), ro("time", "配達時間", c.time));
+  drawHead();
+  const sync = async (quiet) => { try { if (!quiet) say("スプレッドシートを読んでいます…"); const sh = await pjSheetRead(c), changed = pjTakeHead(c, sh); drawHead(); ch(); if (!quiet || changed) say(changed ? "スプレッドシートの内容で、利用日などを更新しました。" : "利用日などは、スプレッドシートと同じです。"); } catch (e) { if (!quiet) say(String((e && e.message) || "読み取れませんでした。"), true); } };
+  // Google にログイン済みなら、開いたときに自動で読み直す（ログインの窓は、ボタンを押したときだけ出す）
+  if (gTok && gTok.exp > Date.now() + 60000) queueMicrotask(() => sync(true));
+  const file = h("input", { type: "file", id: "pj-chg-file", accept: ".pdf,.xlsx,.xls,.csv,.tsv,.txt,image/*", multiple: true, hidden: true, onchange: (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) pjChange(c, { files: fs }, say, () => { drawHead(); ch(); }); } });
+  const url = `https://docs.google.com/spreadsheets/d/${c.drive.sheetId}/edit`;
+  return [
+    h("div", {}, h("button", { type: "button", class: "linkbtn", text: "← PJ管理", onclick: () => go({ name: "pj" }) })),
+    head,
+    h("div", { class: "row", id: "pj-bar", style: "gap:8px" },
+      h("button", { type: "button", class: "btn primary", id: "pj-chg", text: "変更の依頼を取り込む（Excel・PDF・画像）", title: "クライアントから届いた変更入りの資料を読み、今のスプレッドシートと比べて変更点を反映する", onclick: () => file.click() }),
+      h("button", { type: "button", class: "btn", id: "pj-chg-text", text: "変更の文章を貼り付ける", onclick: () => pjChangeText(c, say, () => { drawHead(); ch(); }) }),
+      h("button", { type: "button", class: "btn", id: "pj-sync", text: "シートから読み直す", title: "利用日・フライトナンバーなど、一覧に出す項目をスプレッドシートから読み直す", onclick: () => sync(false) }),
+      h("span", { style: "margin-left:auto" }),
+      h("a", { class: "btn", href: url, target: "_blank", rel: "noopener", id: "pj-open", text: "別タブで開く" }),
+      c.drive.folderUrl ? h("a", { class: "btn", href: c.drive.folderUrl, target: "_blank", rel: "noopener", text: "フォルダを開く" }) : null, file),
+    msg,
+    h("iframe", { id: "pj-frame", class: "pj-frame", src: url, title: "スプレッドシート", allow: "clipboard-read; clipboard-write" }),
+    h("div", { class: "muted small", text: "スプレッドシートはクライアントと共有している本体です。ここで直接編集でき、クライアントの編集もその場で表示されます。表示されないときは、このブラウザで Google にログインしているか確かめるか、「別タブで開く」を使ってください。" }),
+    h("div", { class: "row" }, h("span", { style: "margin-left:auto" }),
+      confirmBtn("この案件を削除", "本当に削除する", async () => { const id = c.id; draft = null; S.cases.delete(id); try { if (db) await db.doc("cases/" + id).delete(); } catch (_) { toast("削除できませんでした"); } go({ name: "pj" }); })),
+    h("div", { class: "muted small", text: "案件を削除しても、Google ドライブのフォルダとスプレッドシートは消えません。" }),
+  ].filter(Boolean);
+}
+function pjChangeText(c, say, done) {
+  const dlg = $("#dlg"), ta = h("textarea", { id: "pj-chg-ta", rows: 10, placeholder: "クライアントから届いた変更の連絡（メールの文章など）を貼り付けてください" });
+  dlg.replaceChildren(h("div", { class: "dlg", style: "max-width:640px" }, h("h3", { text: "変更の文章を貼り付ける" }), ta,
+    h("div", { class: "row" }, h("span", { style: "margin-left:auto" }), h("button", { type: "button", class: "btn", text: "やめる", onclick: () => dlg.close() }),
+      h("button", { type: "button", class: "btn primary", id: "pj-chg-go", text: "読み取る", onclick: () => { const t = ta.value.trim(); if (!t) return; dlg.close(); pjChange(c, { text: t }, say, done); } }))));
+  dlg.showModal(); ta.focus();
+}
+/** 変更の依頼を読み、今のシートと比べた変更点をAIに出させ、確認の画面を出す。 */
+async function pjChange(c, src, say, done) {
+  if (!sample) return say("この表示環境ではAIの読み取りが使えません。", true);
+  try {
+    say("スプレッドシートを読んでいます…"); const sh = await pjSheetRead(c);
+    if (sh.hi < 0) return say("スプレッドシートに「Catering Item」の行が見つかりません。表の見出しを消していないか確かめてください。", true);
+    say("資料を準備しています…"); const texts = src.text ? [src.text] : [], imgs = [];
+    for (const f of src.files || []) {
+      if (/\.(xlsx|xls)$/i.test(f.name)) { await loadScript(LIB.xlsx); const wb = XLSX.read(await f.arrayBuffer(), { type: "array" }); const g = pjParseGrid(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: "" }));
+        texts.push(g.rows.length ? `【${f.name}（依頼の表）】\n${g.top}\n` + g.rows.map((x) => (x.sec ? `■ ${x.en}` : `${x.en} ｜ 数量:${x.qty} ｜ ${x.instr}`)).join("\n") + (g.foot ? "\n表の下：" + g.foot : "") : await tableText(f)); }
+      else if (isTable(f)) texts.push(await tableText(f));
+      else if (isPdf(f)) { await loadScript(LIB.pdf); await loadScript(LIB.pdfw); const pdf = await pdfjsLib.getDocument({ data: await f.arrayBuffer(), isEvalSupported: false }).promise; let t = ""; for (let n = 1; n <= pdf.numPages; n++) { const tc = await (await pdf.getPage(n)).getTextContent(); t += tc.items.map((it) => it.str + (it.hasEOL ? "\n" : " ")).join("") + "\n"; } texts.push(`【${f.name}】\n` + t.slice(0, 60000)); }
+      else if (/^image\//.test(f.type)) imgs.push(f);
+    }
+    if (!texts.length && !imgs.length) return say("読み取れる資料がありませんでした。", true);
+    say("AIが、今のスプレッドシートと変更の依頼を比べています…（1分ほどかかることがあります）");
+    const cur = sh.rows.map((x) => (x.sec ? { row: x.r + 1, heading: pjEn(x.a) } : { row: x.r + 1, item: pjEn(x.a), qty: x.b, instr: pjEn(x.c), pack: x.d }));
+    const r = await sample.json(`プライベートジェットのケータリングの注文表（今のスプレッドシート）と、クライアントから届いた変更の依頼を比べて、注文表に加える変更点を挙げてください。
+規則：
+・届いた資料が注文全体の改訂版なら、今の表と見比べて、違っている点だけを挙げる。一部の変更だけを伝える連絡なら、書かれている変更だけを挙げる。同じ内容の行は挙げない。
+・type は update（今ある行の変更）、add（行の追加）、remove（行の取り消し）、header（利用日などの変更）のどれか。
+・update と remove の row は、今の表の row の番号。add の after は、その行のすぐ下に入れる今の表の row の番号（どの区切りに入れるか分かるように選ぶ）。
+・update は、変わる項目だけを書く（変わらない項目は書かない）。item を変えるときは itemJa（日本語訳）も書く。instr を変えるときは instrJa も書く。
+・add は item・itemJa・qty・instr・instrJa・pack を書く（pack は「オーブン対応容器」「電子レンジ対応容器」など。指定がなければ空）。区切りの見出しを足すときは heading と headingJa を書く。
+・remove は、取り消しがはっきり書かれているとき、または改訂版の表からその品目がなくなっているときだけ。
+・header の field は date（YYYY-MM-DD）、flight、orderNo、area、time、notes（特記事項に足す文。value は原文、valueJa は日本語訳）のどれか。
+・reason は、資料のどの記載にもとづく変更かを日本語で短く。推測で変更を作らない。
+返答はJSONだけ。形式：{"changes":[{"type":"update","row":12,"qty":"8","instr":"","instrJa":"","item":"","itemJa":"","pack":"","reason":""},{"type":"add","after":20,"item":"","itemJa":"","qty":"","instr":"","instrJa":"","pack":"","reason":""},{"type":"remove","row":15,"reason":""},{"type":"header","field":"time","value":"12:00","valueJa":"","reason":""}],"summary":"全体を1〜2文で"}
+今の表（見出し：利用日 ${sh.head.visitDate}、フライト ${sh.head.flight}、オーダー ${sh.head.orderNo}、エリア ${sh.head.area}、配達時間 ${sh.head.time}）：
+${JSON.stringify(cur)}
+変更の依頼：
+${texts.length ? texts.join("\n\n").slice(0, 60000) : "添付の画像が変更の依頼です。"}`, imgs.length ? { images: imgs.slice(0, 4) } : {});
+    const rowOf = new Map(sh.rows.map((x) => [x.r + 1, x])), list = [];
+    for (const x of Array.isArray(r.changes) ? r.changes : []) {
+      if (!x) continue; const s = (v) => String(v == null ? "" : v).trim();
+      if (x.type === "update" && rowOf.has(+x.row)) { const o = rowOf.get(+x.row), u = { type: "update", r: o.r, old: o, reason: s(x.reason) };
+        if (s(x.item) && s(x.item) !== pjEn(o.a)) { u.a = s(x.item) + (s(x.itemJa) ? "\n" + s(x.itemJa) : ""); }
+        if (x.qty != null && s(x.qty) !== "" && s(x.qty) !== o.b) u.b = s(x.qty);
+        if (x.instr != null && s(x.instr) !== "" && s(x.instr) !== pjEn(o.c)) u.c = s(x.instr) + (s(x.instrJa) ? "\n" + s(x.instrJa) : "");
+        if (x.pack != null && s(x.pack) !== "" && s(x.pack) !== o.d) u.d = s(x.pack);
+        if (u.a != null || u.b != null || u.c != null || u.d != null) list.push(u); }
+      else if (x.type === "remove" && rowOf.has(+x.row)) list.push({ type: "remove", r: rowOf.get(+x.row).r, old: rowOf.get(+x.row), reason: s(x.reason) });
+      else if (x.type === "add") { const after = rowOf.has(+x.after) ? rowOf.get(+x.after).r : sh.rows.length ? sh.rows[sh.rows.length - 1].r : sh.hi; const hd = s(x.heading);
+        if (hd || s(x.item)) list.push({ type: "add", r: after, sec: !!hd, a: hd ? hd + (s(x.headingJa) ? "　" + s(x.headingJa) : "") : s(x.item) + (s(x.itemJa) ? "\n" + s(x.itemJa) : ""), b: hd ? "" : s(x.qty), c: hd ? "" : s(x.instr) + (s(x.instrJa) ? "\n" + s(x.instrJa) : ""), d: hd ? "" : s(x.pack), reason: s(x.reason) }); }
+      else if (x.type === "header" && ["date", "flight", "orderNo", "area", "time", "notes"].includes(x.field) && s(x.value)) list.push({ type: "header", field: x.field, value: s(x.value), valueJa: s(x.valueJa), reason: s(x.reason) });
+    }
+    if (!list.length) return say("変更点は見つかりませんでした。" + (r.summary ? "（AIから：" + String(r.summary).slice(0, 200) + "）" : ""));
+    say(""); pjChangeDialog(c, sh, list, String(r.summary || ""), say, done);
+  } catch (e) { if (e && e.code === "cancelled") return; say(AI_ERR[e && e.code] || String((e && e.message) || "変更を読み取れませんでした。"), true); }
+}
+function pjChangeDialog(c, sh, list, summary, say, done) {
+  const dlg = $("#dlg"), on = list.map(() => true), HN = { date: "利用日", flight: "フライトナンバー", orderNo: "オーダーナンバー", area: "配達エリア", time: "配達時間", notes: "特記事項に追記" };
+  const one = (t) => String(t || "").replace(/\n/g, " ／ "), cnt = h("strong", {}), upd = () => { cnt.textContent = `${on.filter(Boolean).length}件を反映します`; };
+  const desc = (x) => x.type === "update" ? [h("div", { class: "small muted", text: `${x.old.r + 1}行目：${one(pjEn(x.old.a)).slice(0, 70)}` }), ...[["a", "品目"], ["b", "数量"], ["c", "指示"], ["d", "梱包容器"]].filter(([k]) => x[k] != null).map(([k, n]) => h("div", {}, h("span", { class: "pill plain", text: n }), " ", h("s", { class: "muted", text: one(x.old[k]) || "（空）" }), " → ", h("strong", { text: one(x[k]) })))]
+    : x.type === "remove" ? [h("div", {}, h("s", { text: `${x.old.r + 1}行目：${one(x.old.a).slice(0, 90)}` }), x.old.b ? `（数量 ${x.old.b}）` : "")]
+    : x.type === "add" ? [h("div", {}, h("strong", { text: one(x.a) }), x.b ? `　数量 ${x.b}` : "", x.c ? `　指示：${one(x.c)}` : "", x.d ? `　容器：${x.d}` : ""), h("div", { class: "small muted", text: `${x.r + 1}行目の下に追加` })]
+    : [h("div", {}, h("span", { class: "pill plain", text: HN[x.field] }), " ", h("strong", { text: x.value + (x.valueJa ? " ／ " + x.valueJa : "") }))];
+  dlg.replaceChildren(h("div", { class: "dlg", style: "max-width:860px" }, h("h3", { text: "変更点の確認" }),
+    h("div", { class: "banner warn", text: "AIが読み取った変更点です。原本と照合し、反映しないものはチェックを外してください。反映すると、スプレッドシートの該当するセルを書き換えて薄い赤色にし、反映前の状態を別のシート（履歴）に残します。" }),
+    summary ? h("div", { class: "small", text: "AIから：" + summary.slice(0, 300) }) : null,
+    h("div", { class: "scroll", style: "max-height:52vh;overflow-y:auto" }, h("table", { class: "prev", id: "pj-chg-list" }, h("thead", {}, h("tr", {}, ...["", "種類", "内容", "根拠"].map((t) => h("th", { text: t })))),
+      h("tbody", {}, ...list.map((x, i) => h("tr", {}, h("td", {}, h("input", { type: "checkbox", id: "pj-chg-" + i, style: "width:auto", checked: true, onchange: (e) => { on[i] = e.target.checked; upd(); } })),
+        h("td", {}, h("span", { class: "pill " + (x.type === "remove" ? "bad" : x.type === "add" ? "ok" : "warn"), text: { update: "変更", add: "追加", remove: "取消", header: "見出し" }[x.type] })), h("td", {}, ...desc(x)), h("td", { class: "small muted", text: x.reason })))))),
+    h("div", { class: "row" }, cnt, h("span", { style: "margin-left:auto" }), h("button", { type: "button", class: "btn", text: "やめる", onclick: () => dlg.close() }),
+      h("button", { type: "button", class: "btn primary", id: "pj-chg-ok", text: "スプレッドシートへ反映", onclick: async (e) => {
+        const sel = list.filter((_, i) => on[i]); if (!sel.length) return dlg.close(); e.target.disabled = true;
+        try { say("スプレッドシートへ反映しています…"); dlg.close(); await pjApply(c, sh, sel); const sh2 = await pjSheetRead(c); pjTakeHead(c, sh2); done(); say(`${sel.length}件をスプレッドシートへ反映しました（反映前の状態は履歴のシートに残しています）。`); }
+        catch (err) { say(String((err && err.message) || "反映できませんでした。"), true); } } }))));
+  upd(); dlg.showModal();
+}
+/** 変更をシートへ書き込む。先に今のシートを複製して履歴に残し、行の追加は下の行から行う（行番号がずれないように）。 */
+async function pjApply(c, sh, sel) {
+  const sid = sh.main.sheetId, d = new Date(), p2 = (n) => String(n).padStart(2, "0");
+  let name = `履歴 ${d.getMonth() + 1}-${d.getDate()} ${p2(d.getHours())}${p2(d.getMinutes())}`; while (sh.sheets.some((x) => x.title === name)) name += "_";
+  const val = (t) => { const s = String(t == null ? "" : t); return /^\d+(\.\d+)?$/.test(s) ? { numberValue: +s } : { stringValue: s }; };
+  const cellOf = (t, extra) => ({ userEnteredValue: val(t), userEnteredFormat: { backgroundColor: PJ_CHG, ...(extra || {}) } });
+  const put = (r, col, cells, fields) => ({ updateCells: { start: { sheetId: sid, rowIndex: r, columnIndex: col }, rows: [{ values: cells }], fields: fields || "userEnteredValue,userEnteredFormat.backgroundColor" } });
+  const req = [{ duplicateSheet: { sourceSheetId: sid, insertSheetIndex: sh.sheets.length, newSheetName: name } }];
+  // 見出しの変更
+  for (const x of sel.filter((x) => x.type === "header")) {
+    if (x.field === "date") req.push(put(sh.at.date, 0, [cellOf("Date " + pjDate(x.value))]));
+    else if (x.field === "flight") req.push(put(sh.at.flight, 0, [cellOf("Flight Number  " + x.value)]));
+    else if (x.field === "orderNo") req.push(put(sh.at.order, 0, [cellOf("Order Number " + x.value)]));
+    else if (x.field === "area") req.push(put(sh.at.flight, 1, [cellOf(x.value)]));
+    else if (x.field === "time") req.push(put(sh.at.order, 1, [cellOf(x.value)]));
+    else if (x.field === "notes" && sh.notesRow >= 0) req.push(put(sh.notesRow, 0, [cellOf(sh.notes + "\n" + x.value + (x.valueJa ? "\n" + x.valueJa : ""))]));
+  }
+  // 行の変更・取り消し・追加（下の行から）
+  for (const x of sel.filter((x) => x.type !== "header").sort((a, b) => b.r - a.r || (a.type === "add") - (b.type === "add"))) {
+    if (x.type === "update") { for (const [k, col] of [["a", 0], ["b", 1], ["c", 2], ["d", 3]]) if (x[k] != null) req.push(put(x.r, col, [cellOf(x[k])])); }
+    else if (x.type === "remove") req.push({ repeatCell: { range: { sheetId: sid, startRowIndex: x.r, endRowIndex: x.r + 1, startColumnIndex: 0, endColumnIndex: 4 }, cell: { userEnteredFormat: { backgroundColor: PJ_CHG, textFormat: { strikethrough: true } } }, fields: "userEnteredFormat.backgroundColor,userEnteredFormat.textFormat.strikethrough" } });
+    else if (x.type === "add") {
+      const plain = { textFormat: { bold: !!x.sec, strikethrough: false, foregroundColor: { red: 0, green: 0, blue: 0 } }, wrapStrategy: "WRAP", verticalAlignment: "MIDDLE" };
+      req.push({ insertDimension: { range: { sheetId: sid, dimension: "ROWS", startIndex: x.r + 1, endIndex: x.r + 2 }, inheritFromBefore: true } });
+      req.push(put(x.r + 1, 0, [cellOf(x.a, plain), cellOf(x.b, { ...plain, horizontalAlignment: "CENTER" }), cellOf(x.c, plain), cellOf(x.d, plain)], "userEnteredValue,userEnteredFormat.backgroundColor,userEnteredFormat.textFormat,userEnteredFormat.wrapStrategy,userEnteredFormat.verticalAlignment,userEnteredFormat.horizontalAlignment"));
+    }
+  }
+  await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${c.drive.sheetId}:batchUpdate`, { method: "POST", body: JSON.stringify({ requests: req }) });
+  (c.drive.log = c.drive.log || []).push({ at: d.toISOString(), n: sel.length, sheet: name }); if (c.drive.log.length > 30) c.drive.log.shift();
 }
 
 /* ---------- 座席レイアウト ----------
