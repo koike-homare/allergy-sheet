@@ -733,7 +733,17 @@ const respRisk = (row, store) => !!row.final && /通常/.test(row.final) && resp
 /** 資料（PDF・Excel）の「対応」欄に出す文章：最終的な対応を選ぶ前は選択肢の文章、選んだ後は決定した内容。 */
 const respOut = (row, store) => { const w = row.final ? respCaution(row, store) : ""; return row.final ? row.final + (w ? "\n" + w : "") : row.response || ""; };
 /** 注意文：手で書き換えていなければ、該当ありの人が通常コースを選んだときだけ標準の文面を入れる。 */
-const respCaution = (row, store) => (row.cautionAuto === false ? row.caution || "" : respRisk(row, store) ? RESP_WARN : "");
+const respCaution = (row, store) => (row.cautionAuto === false ? row.caution || "" : respRisk(row, store) ? RESP_WARN : IS_BYO.test(row.final || "") ? RESP_BYO : "");
+const IS_BYO = /持ち?込/;
+const RESP_BYO = "※店内ではアレルゲンを含む様々な食材を取り扱っているため、微量混入（コンタミネーション）を防ぐことができません。お客様の安全を最優先に考え、お持込みを推奨いたします。なお、お持込み料は不要です。";
+/** 微量不可の品目があるか。 */
+const hasTrace = (row) => { const tags = parseTags(row.allergy); return tags.length ? tags.some((x) => sbOf(row, x) === "微量不可") : row.seibun === "微量不可"; };
+/** 微量不可がある人は、最終的な対応を自動で「お持込み」にする（人が選び直したら、それを優先する）。 */
+function finalAuto(row) {
+  if (row.finalTouched) return;
+  if (hasTrace(row)) { const o = respOptions(row.response).find((x) => IS_BYO.test(x)) || "お持込み"; if (!row.final || row.finalAuto) { row.final = o; row.finalAuto = true; delete row.finalFree; } }
+  else if (row.finalAuto) { row.final = ""; delete row.finalAuto; }
+}
 /** 配席の吹き出しに書く内容：氏名・アレルゲン・選んだ対応（コース名）。 */
 const noteText = (row) => [(row.name || "").trim(), (row.allergy || "").trim(), (row.final || "").trim()].filter(Boolean).join("\n");
 /** アレルゲンの使用状況と定型文は全店舗共通（共通設定）。 */
@@ -760,6 +770,7 @@ const SET_DEFAULTS = () => ({ ...DEFAULT_TPL, company: "", dept: "", tel: "", fa
 function regen(row, store) {
   if (row.elementAuto !== false) row.element = genElement(row, store);
   if (row.responseAuto !== false) row.response = genResponse(row, store);
+  finalAuto(row);
 }
 
 /* ---------- データ ---------- */
@@ -1167,7 +1178,7 @@ function newCase() {
 /** 承認は「その時点の内容」に対して行う。内容が1文字でも変われば署名が変わり、承認は無効になる。 */
 function caseSig(c) {
   const o = { g: c.groupName || "", v: c.visitDate || "", s: S.stores.get(c.storeId)?.name || c.storeName || "", k: c.courseId || "", d: c.createdDate || "",
-    r: (c.rows || []).map((r) => [r.special, r.kumi, r.sex, r.name, r.allergy, r.seibun, r.element, r.response, r.remark, r.final, r.respPat, r.finalFree ? "f" : "", r.sbMap ? JSON.stringify(r.sbMap) : "", r.cautionAuto === false ? "!" + (r.caution || "") : ""].map((x) => x || "").concat(r.symptom ? [r.symptom] : [], r.year ? ["年:" + r.year] : [])) };
+    r: (c.rows || []).map((r) => [r.special, r.kumi, r.sex, r.name, r.allergy, r.seibun, r.element, r.response, r.remark, r.final, r.respPat, r.finalFree ? "f" : "", r.finalTouched ? "t" : "", r.sbMap ? JSON.stringify(r.sbMap) : "", r.cautionAuto === false ? "!" + (r.caution || "") : ""].map((x) => x || "").concat(r.symptom ? [r.symptom] : [], r.year ? ["年:" + r.year] : [])) };
   let hsh = 5381; for (const chr of JSON.stringify(o)) hsh = ((hsh * 33) ^ chr.charCodeAt(0)) >>> 0;
   return hsh.toString(36);
 }
@@ -1250,7 +1261,7 @@ function viewCase() {
       ch(); } });
     const selSum = h("summary", {}), selBox = h("details", { class: "resp-sel", id: r.id + "-sel", open: !r.final }, selSum, patSel, reTa);
     const finIn = h("input", { id: r.id + "-finfree", hidden: true, "aria-label": "最終的な対応（フリー入力）", placeholder: "対応の内容を入力", oninput: (e) => { r.final = e.target.value; cauBox.hidden = !r.final; if (r.final) { const w = respCaution(r, store); if (cauTa.value !== w) cauTa.value = w; cauState(); } ch(); }, onchange: () => { selBox.open = !r.final; drawResp(); } });
-    const finSel = h("select", { id: r.id + "-fin", "aria-label": "最終的な対応", onchange: (e) => { const v = e.target.value; if (v === "__free") { r.finalFree = true; r.final = ""; drawResp(); finIn.focus(); } else { delete r.finalFree; r.final = v; selBox.open = !r.final; drawResp(); } ch(); } });
+    const finSel = h("select", { id: r.id + "-fin", "aria-label": "最終的な対応", onchange: (e) => { const v = e.target.value; r.finalTouched = true; delete r.finalAuto; if (v === "__free") { r.finalFree = true; r.final = ""; drawResp(); finIn.focus(); } else { delete r.finalFree; r.final = v; selBox.open = !r.final; drawResp(); } ch(); } });
     const cauTa = h("textarea", { id: r.id + "-ca", rows: 2, "aria-label": "注意文", placeholder: "注意文はありません（必要なときは記入）", oninput: (e) => { r.caution = e.target.value; r.cautionAuto = false; cauState(); ch(); } });
     const cauMark = h("div", {}), cauBox = h("div", { class: "resp-pick", id: r.id + "-risk", hidden: true }, h("label", { for: r.id + "-ca", text: "注意文（PDF反映あり）" }), cauTa, cauMark);
     const cauState = () => { cauTa.classList.toggle("risk", !!cauTa.value.trim()); cauMark.replaceChildren(...(r.cautionAuto === false ? [h("span", { class: "manual", text: "手修正あり " }), h("button", { type: "button", class: "linkbtn", text: "標準の注意文に戻す", onclick: () => { r.cautionAuto = true; delete r.caution; drawResp(); ch(); } })] : [])); fit(cauTa); };
@@ -1265,7 +1276,7 @@ function viewCase() {
       // 通常コースは、どの選択肢のときでも選べるようにする（該当ありの人が選ぶと注意文が入る）
       if (!os.some((o) => /通常/.test(o))) os.unshift(respOptions(store && store.responseOk).find((o) => /通常/.test(o)) || "通常コース");
       if (r.final && !r.finalFree && !os.includes(r.final)) os.push(r.final);
-      finSel.replaceChildren(h("option", { value: "", text: "（未選択）" }), ...os.map((o) => h("option", { value: o, text: o, selected: !r.finalFree && r.final === o })), h("option", { value: "__free", text: "フリー入力", selected: !!r.finalFree }));
+      finSel.replaceChildren(h("option", { value: "", text: "（未選択）" }), ...os.map((o) => h("option", { value: o, text: (hasTrace(r) && IS_BYO.test(o) ? "【AI判定】" : "") + o, selected: !r.finalFree && r.final === o })), h("option", { value: "__free", text: "フリー入力", selected: !!r.finalFree }));
       finIn.hidden = !r.finalFree; if (r.finalFree && finIn.value !== (r.final || "")) finIn.value = r.final || "";
       finSel.classList.toggle("chosen", !!r.final);
       selSum.textContent = r.final ? "選択肢を表示" : "選択肢";
@@ -1276,7 +1287,7 @@ function viewCase() {
       reMark.replaceChildren(...(r.responseAuto === false ? [h("span", { class: "manual", text: "手修正あり " }), h("button", { type: "button", class: "linkbtn", text: "マスタの文章に戻す", onclick: () => { r.responseAuto = true; upd(); ch(); } })] : []));
     }
     function upd() {
-      regen(r, store);
+      const f0 = r.final; regen(r, store); if (r.final !== f0) selBox.open = !r.final;
       if (elTa.value !== r.element) elTa.value = r.element;
       if (reTa.value !== r.response) reTa.value = r.response;
       const a = analyse(r, store);
