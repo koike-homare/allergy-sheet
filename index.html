@@ -457,11 +457,12 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
       <button type="button" data-v="spec">特定原材料</button>
       <hr class="nav-sep">
       <button type="button" data-v="pj">PJ管理</button>
+      <button type="button" data-v="pjsales">PJ売上管理</button>
     </nav>
     <span id="save"></span>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 118</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 119</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -942,7 +943,7 @@ function viewAuth() {
   } }, h("h2", { text: "ログイン" }), h("div", { class: "muted", text: "氏名やアレルギー情報を扱うため、パスワードが必要です。" }),
     field("パスワード", withEye(pw)), msg, btn)];
 }
-function enter() { authState = "open"; startData(); render(); }
+function enter() { authState = "open"; view = { name: "list" }; try { location.hash = "list"; } catch (_) {} startData(); render(); } // ログインした直後は、いつも案件の一覧を表示する
 async function logout() {
   await Promise.all([caseSaver.flush(), storeSaver.flush(), setSaver.flush(), courseSaver.flush(), laySaver.flush()]);
   unsubs.forEach((u) => u()); unsubs = []; dataKey = rawKey = null; opened.clear();
@@ -1035,7 +1036,7 @@ function startData() {
     S.got.cases = true;
     if (first) render();
     else if (view.name === "list") renderListBody();
-    else if (view.name === "layouts" || view.name === "pj") render();
+    else if (view.name === "layouts" || view.name === "pj" || view.name === "pjsales") render();
     else if (view.name === "case" && draft) {
       const r = S.cases.get(draft.id);
       if (r && r.editedBy !== clientId && r.updatedAt !== draft.updatedAt && !caseSaver.busy) { draft = clone(r); render(); toast("他の方の変更を反映しました"); }
@@ -1196,6 +1197,7 @@ function render() {
   if (view.name === "list") app.replaceChildren(...top, ...viewList());
   else if (view.name === "layouts") app.replaceChildren(...top, ...viewLayouts());
   else if (view.name === "pj") app.replaceChildren(...top, ...viewPj());
+  else if (view.name === "pjsales") app.replaceChildren(...top, ...viewPjSales());
   else if (view.name === "case") app.replaceChildren(...top, ...viewCase());
   else if (view.name === "stores") app.replaceChildren(...top, ...viewStores());
   else if (view.name === "courses") app.replaceChildren(...top, ...viewCourses());
@@ -3274,6 +3276,80 @@ async function pjInvoice(c, ch, after) {
   draw(); drawIssued(); if (!dlg.open) dlg.showModal();
 }
 
+/* ----- PJ売上管理 -----
+   期間（利用日）で PJ の案件を絞り、請求書作成に入れた金額から、案件ごとの合計と税率ごとの内訳を出す。PJ様納品の行は含めない。 */
+let pjSalesR = null;
+const pjYmd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const pjMonth = (back) => { const n = new Date(), a = new Date(n.getFullYear(), n.getMonth() - back, 1), b = new Date(n.getFullYear(), n.getMonth() - back + 1, 0); return { from: pjYmd(a), to: pjYmd(b) }; };
+function pjSalesRows(r) {
+  return [...S.cases.values()].filter((c) => c.kind === "pj" && !c.locked && c.visitDate && (!r.from || c.visitDate >= r.from) && (!r.to || c.visitDate <= r.to))
+    .sort((a, b) => a.visitDate.localeCompare(b.visitDate) || String(a.flight || "").localeCompare(String(b.flight || "")))
+    .map((c) => { const has = !!(c.inv && Array.isArray(c.inv.lines)), T = has ? pjInvTotals(c.inv) : { sub8: 0, sub10: 0, sub0: 0, tax8: 0, tax10: 0, total: 0 };
+      return { c, has, T, miss: has ? c.inv.lines.filter((l) => !l.pj && pjNum(l.amount) == null).length : 0, issued: has && (c.inv.issued || []).length > 0 }; });
+}
+const pjSalesSum = (rows) => rows.reduce((a, x) => { for (const k of ["sub8", "sub10", "sub0", "tax8", "tax10", "total"]) a[k] += x.T[k]; return a; }, { sub8: 0, sub10: 0, sub0: 0, tax8: 0, tax10: 0, total: 0 });
+function viewPjSales() {
+  if (!pjSalesR) pjSalesR = pjMonth(0);
+  const r = pjSalesR, rows = pjSalesRows(r), sum = pjSalesSum(rows), any0 = sum.sub0 > 0, jp = (v) => String(v || "").replace(/-/g, "/");
+  const set = (x) => { pjSalesR = x; render(); }, same = (x) => x.from === r.from && x.to === r.to;
+  const msg = h("span", { class: "small", id: "pjs-msg" }), say = (t, bad) => { msg.textContent = t; msg.style.color = bad ? "var(--bad)" : "var(--ok)"; };
+  const amt = (incl, excl) => h("td", { style: "text-align:right;white-space:nowrap" }, h("div", { text: incl ? pjYen(incl) : "—" }), incl ? h("div", { class: "muted small", text: "税抜 " + pjYen(excl) }) : null);
+  const tb = h("tbody", {}, ...rows.map((x) => h("tr", { class: "click", onclick: () => go({ name: "case", id: x.c.id }) },
+    h("td", { style: "white-space:nowrap", text: jp(x.c.visitDate) }),
+    h("td", {}, h("strong", { text: x.c.groupName || pjName(x.c) }), !x.has ? h("span", { class: "pill plain", style: "margin-left:8px", text: "請求書 未作成" }) : x.miss ? h("span", { class: "pill warn", style: "margin-left:8px", text: `金額未入力 ${x.miss}行` }) : !x.issued ? h("span", { class: "pill plain", style: "margin-left:8px", text: "未発行" }) : null),
+    h("td", {}, h("span", { class: "pj-st " + PJ_ST_CLS[pjStatus(x.c)], style: "cursor:default;display:inline-block", text: pjStatus(x.c) })),
+    amt(x.T.sub10 + x.T.tax10, x.T.sub10), amt(x.T.sub8 + x.T.tax8, x.T.sub8), ...(any0 ? [amt(x.T.sub0, x.T.sub0)] : []),
+    h("td", { style: "text-align:right;white-space:nowrap" }, h("strong", { text: x.T.total ? pjYen(x.T.total) : "—" }), x.T.total ? h("div", { class: "muted small", text: "税抜 " + pjYen(x.T.sub8 + x.T.sub10 + x.T.sub0) }) : null))));
+  const tot = (incl, excl, big) => h("td", { style: "text-align:right;white-space:nowrap" }, h("strong", { style: big ? "font-size:17px" : "", text: pjYen(incl) }), h("div", { class: "muted small", text: "税抜 " + pjYen(excl) }));
+  return [
+    h("div", { class: "row" }, h("h2", { text: "PJ売上管理" }), h("span", { style: "margin-left:auto" }), msg,
+      dl ? h("button", { type: "button", class: "btn primary", id: "pjs-pdf", text: "PDF出力", disabled: rows.length ? undefined : true, onclick: async (e) => { e.target.disabled = true; say("PDFを作成中…"); try { await pjSalesPdf(r, rows, sum); say("PDFを出力しました。"); } catch (err) { say(err && err.code === "declined" ? "" : "PDFを作成できませんでした。", true); } e.target.disabled = false; } }) : null),
+    h("div", { class: "panel row", id: "pjs-range", style: "gap:10px;align-items:flex-end;flex-wrap:wrap" },
+      field("期間（利用日）開始", h("input", { type: "date", id: "pjs-from", value: r.from, style: "width:170px", onchange: (e) => set({ from: e.target.value, to: r.to }) })),
+      field("終了", h("input", { type: "date", id: "pjs-to", value: r.to, style: "width:170px", onchange: (e) => set({ from: r.from, to: e.target.value }) })),
+      ...[["当月", 0], ["前月", 1], ["前々月", 2]].map(([t, k]) => h("button", { type: "button", class: "btn" + (same(pjMonth(k)) ? " primary" : ""), id: "pjs-m" + k, text: t, onclick: () => set(pjMonth(k)) }))),
+    h("div", { class: "muted small", style: "max-width:92ch", text: "利用日が期間内の PJ の案件を、請求書作成に入っている金額で集計します。金額は税込で、下に税抜を小さく表示します。PJ様納品の行は含みません。行を押すと案件を開きます。" }),
+    h("div", { class: "panel scroll", id: "pjs-list", style: "padding:4px 8px" }, rows.length
+      ? h("table", { class: "list" }, h("thead", {}, h("tr", {}, ...["利用日", "案件名", "ステータス", "10%項目", "8%項目", ...(any0 ? ["対象外"] : []), "案件合計"].map((t, i) => h("th", { text: t, style: i > 2 ? "text-align:right" : "" })))), tb,
+          h("tfoot", {}, h("tr", { id: "pjs-total" }, h("td", { colspan: "3", style: "border-top:2px solid var(--ink)" }, h("strong", { text: `合計（${rows.length}件）` })), ...[tot(sum.sub10 + sum.tax10, sum.sub10), tot(sum.sub8 + sum.tax8, sum.sub8), ...(any0 ? [tot(sum.sub0, sum.sub0)] : []), tot(sum.total, sum.sub8 + sum.sub10 + sum.sub0, true)].map((td) => { td.style.borderTop = "2px solid var(--ink)"; return td; }))))
+      : h("div", { class: "empty", text: "この期間に、利用日が入った PJ の案件はありません。" })),
+  ];
+}
+/** PJ売上管理の PDF（A4縦）。 */
+async function pjSalesPdf(r, rows, sum) {
+  const made = [];
+  try {
+    await loadScript(LIB.h2c); await loadScript(LIB.jspdf); try { await document.fonts.ready; } catch (_) {}
+    const NV = "#1b3358", LN = "#c9d1dc", PW = 794, PH = 1123, PAD = 46, FOOT = 46, any0 = sum.sub0 > 0, jp = (v) => String(v || "").replace(/-/g, "/"), now = new Date();
+    const th = (t, w, al) => h("th", { style: `border-bottom:1.5px solid ${NV};padding:6px 6px 5px;text-align:${al || "left"};font-size:9.5px;color:${NV};font-weight:700;${w ? "width:" + w + "px;" : ""}`, text: t });
+    const td = (kids, st) => h("td", { style: `border-bottom:1px solid ${LN};padding:5px 6px;vertical-align:top;font-size:10.5px;${st || ""}` }, ...[].concat(kids).filter(Boolean));
+    const money = (incl, excl, bold) => td([h("div", { style: `text-align:right;${bold ? "font-weight:700;" : ""}`, text: incl ? pjYen(incl) : "—" }), incl ? h("div", { style: "text-align:right;font-size:8.5px;color:#6b7684", text: "税抜 " + pjYen(excl) }) : null]);
+    const pages = [];
+    const newPage = () => { const first = !pages.length, body = h("tbody");
+      const table = h("table", { style: "width:100%;border-collapse:collapse;table-layout:fixed;margin-top:14px" }, h("thead", {}, h("tr", {}, th("利用日", 70), th("案件名"), th("ステータス", 62), th("10%項目", 92, "right"), th("8%項目", 92, "right"), ...(any0 ? [th("対象外", 80, "right")] : []), th("案件合計", 100, "right"))), body);
+      const top = first ? [h("div", { style: `font-size:20px;font-weight:700;letter-spacing:.06em;color:${NV}`, text: "PJ売上管理" }), h("div", { style: `height:2px;background:${NV};width:64px;margin:9px 0 11px` }),
+        h("div", { style: "display:flex;align-items:flex-end;gap:24px" }, h("div", {}, h("div", { style: "font-size:9px;color:#6b7684", text: "期間（利用日）" }), h("div", { style: "font-size:13px;font-weight:700", text: `${jp(r.from) || "指定なし"} 〜 ${jp(r.to) || "指定なし"}` })), h("div", {}, h("div", { style: "font-size:9px;color:#6b7684", text: "件数" }), h("div", { style: "font-size:13px;font-weight:700", text: rows.length + "件" })),
+          h("div", { style: `margin-left:auto;background:${NV};color:#fff;padding:8px 16px;text-align:right` }, h("div", { style: "font-size:9px;letter-spacing:.06em", text: "合計（税込）" }), h("div", { style: "font-size:20px;font-weight:700", text: pjYen(sum.total) })))]
+        : [h("div", { style: `display:flex;align-items:baseline;gap:12px;border-bottom:1px solid ${LN};padding-bottom:6px` }, h("div", { style: `font-size:12px;font-weight:700;color:${NV}`, text: "PJ売上管理" }), h("div", { style: "margin-left:auto;font-size:10px", text: `${jp(r.from)} 〜 ${jp(r.to)}` }))];
+      const inner = h("div", {}, ...top, table), pno = h("span", {});
+      const page = h("div", { style: `position:fixed;left:-30000px;top:0;width:${PW}px;height:${PH}px;box-sizing:border-box;padding:${PAD}px ${PAD}px 0;background:#fff;color:#111;overflow:hidden;font-family:'BIZ UDPGothic','Hiragino Sans','Yu Gothic',Meiryo,sans-serif` }, inner,
+        h("div", { style: `position:absolute;left:${PAD}px;right:${PAD}px;bottom:22px;border-top:1px solid ${LN};padding-top:6px;display:flex;font-size:8.5px;color:#6b7684` }, h("span", { text: (S.settings.invName || "株式会社HASSIN") + `　出力日 ${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()}` }), h("span", { style: "margin-left:auto" }, pno)));
+      document.body.append(page); made.push(page); const pg = { page, inner, body, pno }; pages.push(pg); return pg; };
+    const fits = (pg) => pg.inner.getBoundingClientRect().height <= PH - PAD - FOOT;
+    const rowEl = (x) => h("tr", {}, td(jp(x.c.visitDate), "white-space:nowrap"), td([h("div", { style: "font-weight:600", text: x.c.groupName || pjName(x.c) }), !x.has ? h("div", { style: "font-size:8.5px;color:#a15c00", text: "請求書 未作成" }) : x.miss ? h("div", { style: "font-size:8.5px;color:#a15c00", text: `金額未入力 ${x.miss}行` }) : null]), td(pjStatus(x.c)),
+      money(x.T.sub10 + x.T.tax10, x.T.sub10), money(x.T.sub8 + x.T.tax8, x.T.sub8), ...(any0 ? [money(x.T.sub0, x.T.sub0)] : []), money(x.T.total, x.T.sub8 + x.T.sub10 + x.T.sub0, true));
+    let pg = newPage();
+    for (const x of rows) { const tr = rowEl(x); pg.body.append(tr); if (!fits(pg) && pg.body.children.length > 1) { tr.remove(); pg = newPage(); pg.body.append(tr); } }
+    const tt = (incl, excl, big) => h("td", { style: `border-top:1.5px solid ${NV};padding:7px 6px;vertical-align:top` }, h("div", { style: `text-align:right;font-weight:700;font-size:${big ? 13 : 11}px`, text: pjYen(incl) }), h("div", { style: "text-align:right;font-size:8.5px;color:#6b7684", text: "税抜 " + pjYen(excl) }));
+    const totalTr = h("tr", {}, h("td", { colspan: "3", style: `border-top:1.5px solid ${NV};padding:7px 6px;font-size:11px;font-weight:700;color:${NV}`, text: `合計（${rows.length}件）` }), tt(sum.sub10 + sum.tax10, sum.sub10), tt(sum.sub8 + sum.tax8, sum.sub8), ...(any0 ? [tt(sum.sub0, sum.sub0)] : []), tt(sum.total, sum.sub8 + sum.sub10 + sum.sub0, true));
+    pg.body.append(totalTr); if (!fits(pg) && pg.body.children.length > 1) { totalTr.remove(); pg = newPage(); pg.body.append(totalTr); }
+    pages.forEach((q, i) => { q.pno.textContent = `Page ${i + 1} / ${pages.length}`; });
+    const pdf = new jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "portrait", compress: true });
+    for (const [i, q] of pages.entries()) { const shot = await html2canvas(q.page, { scale: 2.5, backgroundColor: "#ffffff", logging: false, windowWidth: PW + 80 }); q.page.remove(); if (i) pdf.addPage("a4", "portrait"); pdf.addImage(shot.toDataURL("image/jpeg", 0.93), "JPEG", 0, 0, 210, 297); }
+    await dl.save({ filename: `PJ売上_${String(r.from || "").replace(/-/g, "")}-${String(r.to || "").replace(/-/g, "")}.pdf`, data: pdf.output("blob") });
+  } catch (e) { made.forEach((x) => x.remove()); throw e; }
+}
+
 /* ----- PJ管理：変更履歴 -----
    取り込みによる変更は、反映した時点で「いつ・だれが・どのセルを・何から何に」をそのまま記録する。
    シートを直接編集した分は、Google がセル単位の記録を外へ出さないため、T-CORE がシートを読むたびに内容を控え（snap）、前回との違いを記録する。
@@ -4482,7 +4558,7 @@ window.addEventListener("drop", (e) => e.preventDefault());
 (function init() {
   const hsh = (location.hash || "").slice(1);
   if (hsh.startsWith("case-")) view = { name: "case", id: hsh.slice(5) };
-  else if (["stores", "courses", "spec", "layouts", "pj"].includes(hsh)) view = { name: hsh };
+  else if (["stores", "courses", "spec", "layouts", "pj", "pjsales"].includes(hsh)) view = { name: hsh };
   boot();
 })();
 </script>
