@@ -699,7 +699,8 @@ function genElement(row, store) {
   if (sNone.length) L.push(T.tplSeibunNone.replace("{食材}", sNone.join("、")));
   if (exts.length && T.tplExt) L.push(T.tplExt.replace("{食材}", exts.join("、")));
   L.push(...notes);
-  if (store?.commonNote) L.push(store.commonNote);
+  // 厨房での微量混入の注意は、食品のアレルギーが1つでもあるときだけ書く（食品以外だけの人には書かない）
+  if (store?.commonNote && items.some((it) => it.kind !== "nonfood")) L.push(store.commonNote);
   if (todo.length) L.push(`【要確認】「${todo.join("、")}」は使用状況を確認できていません。`);
   return L.join("\n");
 }
@@ -1333,8 +1334,9 @@ function viewCase() {
         ? h("button", { type: "button", class: "chip maybe", title: i.tip, text: `${i.label} →「${i.m.entry.name}」と同じ扱いにする`, onclick: () => addAlias(i.ja || i.tag, i.m.entry.name) })
         : h("span", { class: "chip " + i.state, title: i.tip, text: i.label + (i.kind === "dict" ? "＝" + i.parts.map((p) => p.name + (p.entry && p.entry.unlisted ? "※" : p.entry && p.entry.genbutsu && p.entry.seibun ? "" : "?")).join("・") : "") + (i.kind === "fruit" ? "（果物）" : "") + (i.state === "warn" && i.kind !== "dict" ? " 未確認" : "") })]));
       // 品目ごとの成分可否（アレルギーが2つ以上のとき）。指定しなければ「成分可否」の列と同じ。
-      sbBox.replaceChildren(...(a.tags.length >= 2 ? [h("div", { class: "sb-each", id: r.id + "-sbeach" }, h("div", { class: "sb-t", text: "品目ごとの成分可否" }),
-        ...a.tags.map((tag, i) => h("label", {}, h("span", { text: tag }), sel([["", "全体と同じ"], ...SEIBUN], (r.sbMap || {})[tag] || "", (v) => { r.sbMap = r.sbMap || {}; if (v) r.sbMap[tag] = v; else delete r.sbMap[tag]; upd(); ch(); }, { id: r.id + "-sb-" + i, "aria-label": tag + " の成分可否", class: (r.sbMap || {})[tag] ? "chosen" : "" }))))] : []));
+      const foodTags = a.items.filter((i) => i.kind !== "nonfood").map((i) => i.tag); // 食品以外には成分可否を付けない
+      sbBox.replaceChildren(...(foodTags.length >= 2 ? [h("div", { class: "sb-each", id: r.id + "-sbeach" }, h("div", { class: "sb-t", text: "品目ごとの成分可否" }),
+        ...foodTags.map((tag, i) => h("label", {}, h("span", { text: tag }), sel([["", "全体と同じ"], ...SEIBUN], (r.sbMap || {})[tag] || "", (v) => { r.sbMap = r.sbMap || {}; if (v) r.sbMap[tag] = v; else delete r.sbMap[tag]; upd(); ch(); }, { id: r.id + "-sb-" + i, "aria-label": tag + " の成分可否", class: (r.sbMap || {})[tag] ? "chosen" : "" }))))] : []));
       elWrap.sync();
       const st = [];
       for (const i of a.items) if (i.kind === "nonfood") { const hint = nonFoodHint(i.tag); if (hint) st.push(h("span", { class: "pill warn", style: "white-space:normal;border-radius:6px", title: "社内向けの注意です（資料には出ません）", text: hint })); }
