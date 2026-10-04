@@ -351,6 +351,8 @@ div.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute
 .lay-note-x{position:absolute;top:0;right:1px;border:0;background:none;color:#c00000;font-size:13px;line-height:1;padding:2px 3px;cursor:pointer}
 .lay-pin{position:absolute;width:11px;height:11px;margin:-5.5px 0 0 -5.5px;border-radius:50%;background:#c00000;border:2px solid #fff;box-shadow:0 0 0 1px #c00000;pointer-events:auto;cursor:grab;touch-action:none}
 .lay-pin:active{cursor:grabbing}
+.resp-warn{margin-top:4px;font-size:12px;line-height:1.45;color:var(--bad,#c00000);background:#fff4f2;border:1px solid var(--bad,#c00000);border-radius:6px;padding:5px 8px}
+.srow select.chosen{font-weight:700} .resp-pick{margin:0 0 4px} .resp-pick+textarea{margin-bottom:4px} .resp-pick label{display:block;font-size:11px;color:var(--muted);margin-bottom:2px}
 .lay-note.un{background:#eef1f5;border-color:#6b7684;border-style:dashed;color:#39424e} .lay-note.un .lay-note-x{color:#6b7684}
 .lay-lines line.un{stroke:#6b7684;stroke-dasharray:4 3} .lay-pin.un{background:#6b7684;box-shadow:0 0 0 1px #6b7684}
 .seat-warn{display:grid;gap:6px;white-space:pre-wrap;color:var(--ink,#111);background:#fff4f2;border:1px solid var(--bad,#c00000);border-radius:8px;padding:8px 12px;margin-top:6px} .seat-warn strong{color:var(--bad,#c00000)}
@@ -665,11 +667,34 @@ function genElement(row, store) {
 /** 安全優先：現物・成分のどちらにも該当しないと確認できた場合だけ3択、それ以外（該当・判定できない）は低アレルゲンコースかお持込み。 */
 function genResponse(row, store) {
   if (!store) return "";
+  const p = row.respPat || respAuto(row, store);
+  if (!p) return "";
+  return p === "ok" && store.responseOk ? store.responseOk : store.response || "";
+}
+/** 自動の判定で選ばれる対応のパターン。"ng"=該当あり・判定できない場合の文章、"ok"=該当なしの場合の文章、""=まだ判定できない。 */
+function respAuto(row, store) {
+  if (!store) return "";
   const v = analyse(row, store).verdict;
   if (!v) return "";
   // 成分可否が「不可」「不明」の人は、現物・成分とも該当しない場合でも低アレルゲンコースかお持込みを優先する
-  return v === "clear" && row.seibun !== "不可" && row.seibun !== "不明" && store.responseOk ? store.responseOk : store.response || "";
+  return v === "clear" && row.seibun !== "不可" && row.seibun !== "不明" && store.responseOk ? "ok" : "ng";
 }
+/** 対応の文章から、最終的に選べる対応の一覧を作る。「①通常コース」「②低アレルゲンコース／・チキンステーキ…」→ 通常コース、低アレルゲンコース（チキンステーキ…）。 */
+function respOptions(text) {
+  const out = []; let cur = null;
+  for (const raw of String(text || "").split("\n")) {
+    const line = raw.trim(), m = /^(?:[①-⑳]|[(（]?\d+[)）.．、])\s*(.+)$/.exec(line), s = /^[・･\-‐－*＊]\s*(.+)$/.exec(line);
+    if (m) { cur = { name: m[1].trim(), subs: [] }; out.push(cur); } else if (s && cur) cur.subs.push(s[1].trim()); else if (!line) cur = null;
+  }
+  return out.flatMap((o) => (o.subs.length ? o.subs.map((x) => `${o.name}（${x}）`) : [o.name]));
+}
+const RESP_WARN = "※コースにアレルゲンが含まれることをご理解いただいたうえで、保護者様およびご本人様のご指示により通常コースを提供いたします。万一の場合も、当店では責任を負いかねます。";
+/** 該当あり（または判定できない）の人が、通常コースを最終的な対応に選んでいるか。 */
+const respRisk = (row, store) => !!row.final && /通常/.test(row.final) && respAuto(row, store) === "ng";
+/** 資料（PDF・Excel）の「対応」欄に出す文章：最終的な対応を選ぶ前は選択肢の文章、選んだ後は決定した内容。 */
+const respOut = (row, store) => (row.final ? row.final + (respRisk(row, store) ? "\n" + RESP_WARN : "") : row.response || "");
+/** 配席の吹き出しに書く内容：氏名・アレルゲン・選んだ対応（コース名）。 */
+const noteText = (row) => [(row.name || "").trim(), (row.allergy || "").trim(), (row.final || "").trim()].filter(Boolean).join("\n");
 /** アレルゲンの使用状況と定型文は全店舗共通（共通設定）。 */
 /** コースが指定されていればそのコースの成分表から、なければ共通設定の使用状況から文章を作る。 */
 function M(courseId) {
@@ -1101,7 +1126,7 @@ function newCase() {
 /** 承認は「その時点の内容」に対して行う。内容が1文字でも変われば署名が変わり、承認は無効になる。 */
 function caseSig(c) {
   const o = { g: c.groupName || "", v: c.visitDate || "", s: S.stores.get(c.storeId)?.name || c.storeName || "", k: c.courseId || "", d: c.createdDate || "",
-    r: (c.rows || []).map((r) => [r.special, r.kumi, r.sex, r.name, r.allergy, r.seibun, r.element, r.response, r.remark].map((x) => x || "").concat(r.symptom ? [r.symptom] : [], r.year ? ["年:" + r.year] : [])) };
+    r: (c.rows || []).map((r) => [r.special, r.kumi, r.sex, r.name, r.allergy, r.seibun, r.element, r.response, r.remark, r.final, r.respPat].map((x) => x || "").concat(r.symptom ? [r.symptom] : [], r.year ? ["年:" + r.year] : [])) };
   let hsh = 5381; for (const chr of JSON.stringify(o)) hsh = ((hsh * 33) ^ chr.charCodeAt(0)) >>> 0;
   return hsh.toString(36);
 }
@@ -1172,8 +1197,19 @@ function viewCase() {
   function rowEl(r) {
     const chips = h("div", { class: "chips" }), state = h("div", { class: "state" });
     const elTa = h("textarea", { id: r.id + "-el", rows: 3, oninput: (e) => { r.element = e.target.value; r.elementAuto = false; marks(); ch(); } });
-    const reTa = h("textarea", { id: r.id + "-re", rows: 3, oninput: (e) => { r.response = e.target.value; r.responseAuto = false; marks(); ch(); } });
+    const reTa = h("textarea", { id: r.id + "-re", rows: 3, oninput: (e) => { r.response = e.target.value; r.responseAuto = false; marks(); drawResp(); ch(); } });
     const elMark = h("div", {}), reMark = h("div", {});
+    // 対応は選択式：どちらのパターンの文章を使うか（初期値は自動の判定）と、最終的にどの内容で対応するか
+    const patSel = h("select", { id: r.id + "-pat", "aria-label": "対応のパターン", onchange: (e) => { r.respPat = e.target.value; r.responseAuto = true; upd(); ch(); } });
+    const finSel = h("select", { id: r.id + "-fin", "aria-label": "最終的な対応", onchange: (e) => { r.final = e.target.value; drawResp(); ch(); } });
+    const riskBox = h("div", { class: "resp-warn", id: r.id + "-risk", hidden: true, text: RESP_WARN });
+    function drawResp() {
+      const au = respAuto(r, store), nm = { ng: "該当あり用", ok: "該当なし用" };
+      patSel.replaceChildren(...[["", au ? `自動（${nm[au]}）` : "自動"], ["ng", "該当あり・判定できない場合の文章"], ["ok", "該当なしの場合の文章"]].map(([v, t]) => h("option", { value: v, text: t, selected: (r.respPat || "") === v })));
+      const os = respOptions(r.response); if (r.final && !os.includes(r.final)) os.push(r.final);
+      finSel.replaceChildren(h("option", { value: "", text: "（未選択）" }), ...os.map((o) => h("option", { value: o, text: o, selected: r.final === o })));
+      finSel.classList.toggle("chosen", !!r.final); riskBox.hidden = !respRisk(r, store);
+    }
     function marks() {
       elMark.replaceChildren(...(r.elementAuto === false ? [h("span", { class: "manual", text: "手修正あり " }), h("button", { type: "button", class: "linkbtn", text: "マスタの文章に戻す", onclick: () => { r.elementAuto = true; upd(); ch(); } })] : []));
       reMark.replaceChildren(...(r.responseAuto === false ? [h("span", { class: "manual", text: "手修正あり " }), h("button", { type: "button", class: "linkbtn", text: "マスタの文章に戻す", onclick: () => { r.responseAuto = true; upd(); ch(); } })] : []));
@@ -1201,7 +1237,7 @@ function viewCase() {
       else if (a.confirmed) st.push(h("span", { class: "pill ok", text: "✓ 照合済" }),
         h("button", { type: "button", class: "linkbtn", title: "照合前の状態に戻します", text: "取り消す", onclick: () => { delete r.okSig; if (r.aiWas) { r.ai = true; delete r.aiWas; } else r.recheck = true; upd(); ch(); } }));
       state.replaceChildren(...st);
-      marks(); fit(elTa); fit(reTa); updSummary();
+      marks(); drawResp(); fit(elTa); fit(reTa); updSummary();
     }
     const inp = (key, ph) => h("input", { id: r.id + "-" + key, value: r[key] || "", placeholder: ph || "", oninput: (e) => { r[key] = e.target.value; ch(); } });
     const lab = (t) => h("span", { class: "lab", text: t });
@@ -1213,7 +1249,8 @@ function viewCase() {
       h("div", { class: "w" }, lab("アレルギー"), h("textarea", { id: r.id + "-al", rows: 2, value: r.allergy, placeholder: "例：えび、かに（少量なら可）", oninput: (e) => { r.allergy = e.target.value; upd(); ch(); } }), chips, state),
       h("div", {}, lab("成分可否"), sel([["", ""], "可", "不可", "不明"], r.seibun, (v) => { r.seibun = v; upd(); ch(); }, { id: r.id + "-sb" })),
       h("div", { class: "w" }, lab("アレルゲンの要素"), elTa, elMark),
-      h("div", { class: "w" }, lab("対応"), reTa, reMark),
+      h("div", { class: "w" }, lab("対応"), h("div", { class: "resp-pick" }, h("label", { for: r.id + "-pat", text: "文章のパターン" }), patSel), reTa, reMark,
+        h("div", { class: "resp-pick" }, h("label", { for: r.id + "-fin", text: "最終的な対応" }), finSel), riskBox),
       h("div", { class: "w" }, lab("症状"), h("textarea", { id: r.id + "-sy", rows: 1, value: r.symptom || "", placeholder: "不明", "aria-label": "症状", oninput: (e) => { r.symptom = e.target.value; ch(); } })),
       h("div", { class: "w" }, lab("備考"), h("div", { class: "memo src" }, h("label", { for: r.id + "-rm", text: "資料メモ（PDF反映あり）" }),
           h("textarea", { id: r.id + "-rm", rows: 1, value: r.remark, placeholder: "エピペン・薬など", title: "エピペン所持、薬持参、通院中など、症状に対する応急処置や服薬の情報", oninput: (e) => { r.remark = e.target.value; ch(); } })),
@@ -1223,7 +1260,7 @@ function viewCase() {
     elTa.value = r.element || ""; reTa.value = r.response || "";
     // 既存行は保存済みの文章を保ったまま表示し、状態表示だけ更新する
     const keepE = r.element, keepR = r.response; upd();
-    if (stale) { r.element = keepE; r.response = keepR; elTa.value = keepE || ""; reTa.value = keepR || ""; }
+    if (stale) { r.element = keepE; r.response = keepR; elTa.value = keepE || ""; reTa.value = keepR || ""; drawResp(); }
     return el;
   }
   function addToMaster(tag) {
@@ -1665,7 +1702,7 @@ async function doExport(c) {
     let r = 6;
     const rows = c.rows.length ? c.rows : [newRow()];
     for (const p of rows) {
-      const vals = [p.special, p.kumi, p.sex, p.name, p.allergy, p.seibun, p.element, p.response, p.remark];
+      const vals = [p.special, p.kumi, p.sex, p.name, p.allergy, p.seibun, p.element, respOut(p, store), p.remark];
       vals.forEach((v, i) => put(String.fromCharCode(65 + i) + r, v || "", { h: i === 6 || i === 7 || i === 8 ? "left" : "center", size: i >= 6 ? 8.5 : 9 }));
       ws.getRow(r).height = Math.max(42, Math.max(...vals.map((v, i) => linesFor(v, W[i]))) * 12 + 10);
       r++;
@@ -2023,7 +2060,7 @@ async function exportCasePdf(c) {
     el("tr", "", ...["組", "性別", "氏名（敬称略）", "アレルギー", "成分可否", "アレルゲンの要素", "対応", "症状", "備考"].map((t) => el("th", `border:${B};font-weight:400;padding:1px 2px`, t))));
   const rowEl = (r) => el("tr", "",
     ...[r.year ? `${half(r.year)}年${/^\d+$/.test(half(r.kumi)) ? half(r.kumi) + "組" : r.kumi || ""}` : r.kumi, r.sex, r.name, r.allergy, r.seibun].map((v) => el("td", `border:${B};padding:4px 3px;text-align:center;vertical-align:middle;${pre}`, v || "")),
-    ...[r.element, r.response, r.symptom, r.remark].map((v) => el("td", `border:${B};padding:4px 5px;vertical-align:middle;font-size:10.5px;${pre}`, v || "")));
+    ...[r.element, respOut(r, M(c.courseId)), r.symptom, r.remark].map((v) => el("td", `border:${B};padding:4px 5px;vertical-align:middle;font-size:10.5px;${pre}`, v || "")));
   const table = (rows) => el("table", "border-collapse:collapse;width:100%;table-layout:fixed;font-size:11.5px", colgroup(), head(), el("tbody", "", ...rows.map(rowEl)));
   const title = () => el("div", "display:flex;gap:70px;margin-bottom:8px;align-items:stretch",
     el("div", `border:${B};padding:3px 14px;font-weight:700;font-size:11px;display:flex;align-items:center`, "【アレルギー対応　一覧表】"),
@@ -2852,7 +2889,7 @@ function applySeating(lay, fl, tables, plan, groups, rows) {
   for (const row of rows.filter((r) => (r.name || "").trim() && (r.allergy || "").trim())) {
     const g = groupOfRow(row, groups.filter((x) => !x.al)), list = g ? [...(seatOf.get(g.key + "a") || []), ...(seatOf.get(g.key) || [])] : [], s = list.find((p) => !p.star);
     if (s) { s.star = true; touch(s.r, s.c, (x) => { x.v = "★"; x.fg = "#c00000"; x.b = 1; }); } else lost.push(row.name.trim());
-    items.push({ row, s, text: `${row.name.trim()}\n${row.allergy.trim()}` });
+    items.push({ row, s, text: noteText(row) });
   }
   const PX = (c) => fl.cw.slice(0, c).reduce((n, w) => n + w, 10), PY = (r) => fl.rh.slice(0, r).reduce((n, w) => n + w, 10), W = PX(fl.cols), H = PY(fl.rows);
   const size = (text) => { const em = (t) => [...t].reduce((n, ch) => n + (ch.charCodeAt(0) > 255 ? 1 : 0.58), 0), ls = text.split("\n"), w = Math.min(200, Math.ceil(Math.max(...ls.map(em)) * 11) + 30); return { w, h: ls.reduce((n, t) => n + Math.max(1, Math.ceil((em(t) * 11) / 172)), 0) * 14.3 + 9 }; };
@@ -2863,7 +2900,7 @@ function applySeating(lay, fl, tables, plan, groups, rows) {
   let free = 0;
   for (const it of items.filter((i) => !i.s)) { // 席が決まらなかった人：上の余白に並べる
     const z = size(it.text); let b; do { b = { x: 14 + (free % 5) * 210, y: 6 + Math.floor(free / 5) * 46, ...z }; free++; } while (hits(b, used, 4) && free < 60);
-    used.push(b); lay.notes.push({ id: uid("n"), fid: fl.id, x: b.x, y: b.y, text: it.text, auto: true, rowId: it.row.id });
+    used.push(b); lay.notes.push({ id: uid("n"), fid: fl.id, x: b.x, y: b.y, text: it.text, base: it.text, auto: true, rowId: it.row.id });
   }
   for (const it of items.filter((i) => i.s)) {
     const z = size(it.text), cx = PX(it.s.c) + fl.cw[it.s.c] / 2, cy = PY(it.s.r) + fl.rh[it.s.r] / 2; let b = null;
@@ -2873,7 +2910,7 @@ function applySeating(lay, fl, tables, plan, groups, rows) {
       if (k.x < 2 || k.y < 2 || k.x + k.w > W + 8 || k.y + k.h > H + 8 || hits(k, used, 5) || hits(k, stars, 2) || (strict && hits(k, labels, 1))) continue; b = k; break;
     }
     if (!b) b = { x: cx + 16, y: Math.max(0, cy - 46), ...z };
-    used.push(b); lay.notes.push({ id: uid("n"), fid: fl.id, r: it.s.r, c: it.s.c, x: b.x, y: b.y, text: it.text, auto: true, rowId: it.row.id });
+    used.push(b); lay.notes.push({ id: uid("n"), fid: fl.id, r: it.s.r, c: it.s.c, x: b.x, y: b.y, text: it.text, base: it.text, auto: true, rowId: it.row.id });
   }
   return lost;
 }
@@ -2981,6 +3018,8 @@ function viewCaseLayout() {
     c.layout = fresh(); ch();
   }
   const lay = c.layout; lay.notes = lay.notes || []; lay.orig = lay.orig || {};
+  // 配席で作った吹き出しは、氏名・アレルゲン・選んだ対応が変わっていれば書き直す（手で直した吹き出しはそのまま）
+  for (const n of lay.notes) { if (!n.auto || !n.rowId) continue; const row = (c.rows || []).find((r) => r.id === n.rowId); if (!row) continue; const now = noteText(row), was = n.base != null ? n.base : `${(row.name || "").trim()}\n${(row.allergy || "").trim()}`; if (n.text === was && now !== was) { n.text = now; ch(); } if (n.text === now) n.base = now; }
   if (!lay.notitle) { stripTitle(lay); ch(); } // 以前に作ったレイアウトからも、マス目の中のタイトルを外す
   if (!lay.pad) { padLayout(lay); ch(); } // 以前に作ったレイアウトにも、周りの余白を足す
   const groups = partyGroups(c.party), msg = h("div", { class: "small", id: "seat-msg", style: "white-space:pre-wrap" });
