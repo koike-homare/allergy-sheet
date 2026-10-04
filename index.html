@@ -458,7 +458,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <span id="save"></span>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 105</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 107</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -2894,13 +2894,15 @@ async function pjSheetRead(c) {
   const find = (re) => { for (let r = 0; r < (hi < 0 ? Math.min(v.length, 12) : hi); r++) { const m = re.exec(cell(r, 0)); if (m) return { r, m }; } return null; };
   const d = find(/Date\s*(\d{4})[./-](\d{1,2})[./-](\d{1,2})/i), fl = find(/Flight\s*Number\s*(.*)$/i), od = find(/Order\s*Number\s*(.*)$/i), nt = find(/^SPECIAL NOTES/i);
   const rows = []; if (hi >= 0) for (let r = hi + 1; r < v.length; r++) { const a = cell(r, 0), b = cell(r, 1), cc = cell(r, 2), dd = cell(r, 3); if (!a && !b && !cc) continue; rows.push({ r, sec: !b && !cc && !dd, a, b, c: cc, d: dd }); }
-  return { main, sheets, hi, rows, last: v.length - 1, notesRow: nt ? nt.r : -1, notes: nt ? cell(nt.r, 0) : "",
+  const grid = v.map((_, r) => [cell(r, 0), cell(r, 1), cell(r, 2), cell(r, 3)]); while (grid.length && !grid[grid.length - 1].some(Boolean)) grid.pop();
+  return { main, sheets, hi, rows, grid, last: v.length - 1, notesRow: nt ? nt.r : -1, notes: nt ? cell(nt.r, 0) : "",
     head: { visitDate: d ? `${d.m[1]}-${String(d.m[2]).padStart(2, "0")}-${String(d.m[3]).padStart(2, "0")}` : "", flight: fl ? fl.m[1].trim() : "", orderNo: od ? od.m[1].trim() : "", area: fl ? cell(fl.r, 1) : "", time: od ? cell(od.r, 1) : "" },
     at: { date: d ? d.r : 0, flight: fl ? fl.r : 1, order: od ? od.r : 2 } };
 }
 /** 一覧用の5項目を、シートの内容に合わせる。変わった項目があれば true。 */
 function pjTakeHead(c, sh) {
   let changed = false;
+  if (sh.main && sh.main.sheetId != null && c.drive && c.drive.gid !== sh.main.sheetId) c.drive.gid = sh.main.sheetId; // 出力のときに、本体のシートだけを指定するため
   for (const k of ["visitDate", "flight", "orderNo", "area", "time"]) { const v = sh.head[k]; if (v && v !== c[k]) { c[k] = v; changed = true; } }
   if (changed) c.groupName = pjName(c);
   c.drive.syncedAt = new Date().toISOString(); return changed;
@@ -2911,9 +2913,13 @@ function viewPjSheet(c) {
   const msg = h("span", { class: "small", id: "pj-msg", style: "white-space:pre-wrap" }), say = (t, bad) => { msg.textContent = t; msg.style.color = bad ? "var(--bad)" : "var(--ok)"; };
   const ro = (key, label, val) => field(label, h("input", { id: "pj-" + key, value: val || "", readonly: true, class: "ro", title: "スプレッドシートの内容です。直すときは、下のスプレッドシートで直してください" }));
   const head = h("div", { class: "panel fields", id: "pj-head" });
+  // Excel・PDF は Google の書き出しをそのまま使う（このブラウザで Google にログインしている人の権限で保存される）。PDF は本体のシートだけ（履歴のシートは含めない）。
+  const expUrl = (fmt) => `https://docs.google.com/spreadsheets/d/${c.drive.sheetId}/export?format=${fmt}` + (fmt === "pdf" ? (c.drive.gid != null ? "&gid=" + c.drive.gid : "") + "&size=A4&portrait=true&fitw=true&gridlines=false&sheetnames=false&printtitle=false&pagenumbers=false&fzr=false&top_margin=0.4&bottom_margin=0.4&left_margin=0.4&right_margin=0.4" : "");
+  const xBtn = h("a", { class: "btn", id: "pj-exp-xlsx", target: "_blank", rel: "noopener", text: "Excel", title: "今のスプレッドシートを Excel で保存する（履歴のシートも含みます）" }), pBtn = h("a", { class: "btn", id: "pj-exp-pdf", target: "_blank", rel: "noopener", text: "PDF", title: "今のスプレッドシートを PDF で保存する（A4縦・横幅に合わせる）" });
+  const drawExp = () => { xBtn.href = expUrl("xlsx"); pBtn.href = expUrl("pdf"); }; drawExp();
   const drawHead = () => head.replaceChildren(ro("visitDate", "利用日", c.visitDate ? c.visitDate.replace(/-/g, "/") : ""), ro("flight", "フライトナンバー", c.flight), ro("orderNo", "オーダーナンバー", c.orderNo), ro("area", "配達エリア", c.area), ro("time", "配達時間", c.time), field("ステータス", pjStatusSel(c, "pj-status")));
   drawHead();
-  const sync = async (quiet) => { try { if (!quiet) say("スプレッドシートを読んでいます…"); const sh = await pjSheetRead(c), changed = pjTakeHead(c, sh); drawHead(); ch(); if (!quiet || changed) say(changed ? "スプレッドシートの内容で、利用日などを更新しました。" : "利用日などは、スプレッドシートと同じです。"); } catch (e) { if (!quiet) say(String((e && e.message) || "読み取れませんでした。"), true); } };
+  const sync = async (quiet) => { try { if (!quiet) say("スプレッドシートを読んでいます…"); const sh = await pjSheetRead(c), changed = pjTakeHead(c, sh); let n = 0; try { n = await pjTrack(c, sh); } catch (_) {} drawHead(); drawExp(); ch(); if (!quiet || changed) say((changed ? "スプレッドシートの内容で、利用日などを更新しました。" : "利用日などは、スプレッドシートと同じです。") + (n ? `（直接編集された ${n} か所を、変更履歴に記録しました）` : "")); return true; } catch (e) { if (!quiet) say(String((e && e.message) || "読み取れませんでした。"), true); return false; } };
   // Google にログイン済みなら、開いたときに自動で読み直す（ログインの窓は、ボタンを押したときだけ出す）
   if (gTok && gTok.exp > Date.now() + 60000) queueMicrotask(() => sync(true));
   const file = h("input", { type: "file", id: "pj-chg-file", accept: ".pdf,.xlsx,.xls,.csv,.tsv,.txt,image/*", multiple: true, hidden: true, onchange: (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) pjChange(c, { files: fs }, say, () => { drawHead(); ch(); }); } });
@@ -2925,7 +2931,9 @@ function viewPjSheet(c) {
       h("button", { type: "button", class: "btn primary", id: "pj-chg", text: "変更の依頼を取り込む（Excel・PDF・画像）", title: "クライアントから届いた変更入りの資料を読み、今のスプレッドシートと比べて変更点を反映する", onclick: () => file.click() }),
       h("button", { type: "button", class: "btn", id: "pj-chg-text", text: "変更の文章を貼り付ける", onclick: () => pjChangeText(c, say, () => { drawHead(); ch(); }) }),
       h("button", { type: "button", class: "btn", id: "pj-sync", text: "シートから読み直す", title: "利用日・フライトナンバーなど、一覧に出す項目をスプレッドシートから読み直す", onclick: () => sync(false) }),
+      h("button", { type: "button", class: "btn", id: "pj-hist", text: "変更履歴", title: "いつ・だれが・どのセルを・何から何に変えたかを見る", onclick: async (e) => { e.target.disabled = true; const ok = await sync(true); e.target.disabled = false; say(""); pjHistDialog(c, ok ? "" : "今のスプレッドシートを読めなかったため、前回までの記録を表示しています（Google にログインすると、最新の直接編集も記録されます）。"); } }),
       h("span", { style: "margin-left:auto" }),
+      xBtn, pBtn,
       h("a", { class: "btn", href: url, target: "_blank", rel: "noopener", id: "pj-open", text: "別タブで開く" }),
       c.drive.folderUrl ? h("a", { class: "btn", href: c.drive.folderUrl, target: "_blank", rel: "noopener", text: "フォルダを開く" }) : null, file),
     msg,
@@ -2944,10 +2952,87 @@ function pjChangeText(c, say, done) {
   dlg.showModal(); ta.focus();
 }
 /** 変更の依頼を読み、今のシートと比べた変更点をAIに出させ、確認の画面を出す。 */
+/* ----- PJ管理：変更履歴 -----
+   取り込みによる変更は、反映した時点で「いつ・だれが・どのセルを・何から何に」をそのまま記録する。
+   シートを直接編集した分は、Google がセル単位の記録を外へ出さないため、T-CORE がシートを読むたびに内容を控え（snap）、前回との違いを記録する。
+   そのため直接編集の「いつ」は前回読んだ時刻〜今回読んだ時刻の間、「だれが」はその間にシートを編集した人（Google の版の記録）までになる。 */
+const PJ_COL = ["A", "B", "C", "D"], PJ_COLN = ["品目", "数量", "指示", "梱包容器"], PJ_HIST_MAX = 400;
+let gUser = null;
+async function gWho() { if (gUser) return gUser; try { const u = (await gApi("https://www.googleapis.com/drive/v3/about?fields=user(displayName,emailAddress)")).user || {}; gUser = u.displayName || u.emailAddress || ""; } catch (_) {} return gUser || "不明"; }
+/** 2つの表（行×4列）の違い。行の追加・削除で位置がずれても、同じ行どうしを突き合わせてから比べる。 */
+function pjDiff(a, b) {
+  const key = (r) => r.join("\u0001"), out = [], one = (r) => [r[0], r[1] && "数量 " + r[1], r[2], r[3]].filter(Boolean).join(" ／ ");
+  let s0 = 0; while (s0 < a.length && s0 < b.length && key(a[s0]) === key(b[s0])) s0++;
+  let ea = a.length, eb = b.length; while (ea > s0 && eb > s0 && key(a[ea - 1]) === key(b[eb - 1])) { ea--; eb--; }
+  const A = a.slice(s0, ea), B = b.slice(s0, eb), n = A.length, m = B.length, ka = A.map(key), kb = B.map(key);
+  const dp = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i][j] = ka[i] === kb[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const gap = (del, add) => { // del：なくなった行、add：現れた行（どちらも元の行番号）。同じ品目名どうしを先に組にし、残りは順に組にする
+    const used = new Set(), pairs = [];
+    for (const i of del) { const j = add.find((j) => !used.has(j) && b[j][0] && pjEn(b[j][0]) === pjEn(a[i][0])); if (j != null) { used.add(j); pairs.push([i, j]); } else pairs.push([i, null]); }
+    const rest = add.filter((j) => !used.has(j)); for (const p of pairs) if (p[1] == null && rest.length && a[p[0]].some(Boolean) && b[rest[0]].some(Boolean)) p[1] = rest.shift();
+    for (const [i, j] of pairs) { if (j == null) { if (a[i].some(Boolean)) out.push({ k: "del", cell: "A" + (i + 1), label: pjEn(a[i][0]).split("\n")[0], from: one(a[i]), to: "" }); continue; }
+      for (let c = 0; c < 4; c++) if (a[i][c] !== b[j][c]) out.push({ k: "chg", cell: PJ_COL[c] + (j + 1), col: c, label: pjEn(b[j][0] || a[i][0]).split("\n")[0], from: a[i][c], to: b[j][c] }); }
+    for (const j of rest) if (b[j].some(Boolean)) out.push({ k: "add", cell: "A" + (j + 1), label: pjEn(b[j][0]).split("\n")[0], from: "", to: one(b[j]) });
+  };
+  let i = 0, j = 0, del = [], add = [];
+  while (i < n || j < m) {
+    if (i < n && j < m && ka[i] === kb[j]) { if (del.length || add.length) { gap(del, add); del = []; add = []; } i++; j++; }
+    else if (j < m && (i === n || dp[i][j + 1] >= dp[i + 1][j])) add.push(s0 + j++);
+    else del.push(s0 + i++);
+  }
+  if (del.length || add.length) gap(del, add);
+  return out;
+}
+const pjHistPush = (c, list) => { const hs = (c.drive.hist = c.drive.hist || []); hs.push(...list); if (hs.length > PJ_HIST_MAX) hs.splice(0, hs.length - PJ_HIST_MAX); };
+/** シートを読んだときに呼ぶ。前回の控えとの違い（＝直接編集された分）を履歴に足し、控えを更新する。足した件数を返す。 */
+async function pjTrack(c, sh) {
+  const now = new Date().toISOString(), snap = c.drive.snap; let n = 0;
+  if (snap && Array.isArray(snap.g)) {
+    const df = pjDiff(snap.g, sh.grid);
+    if (df.length) {
+      let by = "";
+      try { const rv = (await gApi(`https://www.googleapis.com/drive/v3/files/${c.drive.sheetId}/revisions?pageSize=200&fields=revisions(modifiedTime,lastModifyingUser(displayName,emailAddress))`)).revisions || [];
+        by = [...new Set(rv.filter((x) => x.modifiedTime > snap.at).map((x) => (x.lastModifyingUser || {}).displayName || (x.lastModifyingUser || {}).emailAddress || "匿名（ログインなし）"))].join("、"); } catch (_) {}
+      pjHistPush(c, df.map((d) => ({ ...d, src: "d", at: now, since: snap.at, by: by || "不明" }))); n = df.length;
+    }
+  }
+  c.drive.snap = { at: now, g: sh.grid };
+  return n;
+}
+/** 取り込みで反映した変更を、履歴に記録する。 */
+async function pjHistImport(c, sh, sel) {
+  const at = new Date().toISOString(), by = await gWho(), out = [], lab = (o) => pjEn(o.a).split("\n")[0], one = (o) => [o.a, o.b && "数量 " + o.b, o.c, o.d].filter(Boolean).join(" ／ ");
+  for (const x of sel) {
+    if (x.type === "update") { ["a", "b", "c", "d"].forEach((k, ci) => { if (x[k] != null) out.push({ k: "chg", cell: PJ_COL[ci] + (x.r + 1), col: ci, label: lab(x.old), from: x.old[k], to: x[k], why: x.reason }); }); }
+    else if (x.type === "remove") out.push({ k: "del", cell: "A" + (x.r + 1), label: lab(x.old), from: one(x.old), to: "", why: x.reason });
+    else if (x.type === "add") out.push({ k: "add", cell: "A" + (x.r + 2), label: pjEn(x.a).split("\n")[0], from: "", to: one(x), why: x.reason });
+    else if (x.type === "header") { const f = x.field, H = { date: ["A" + (sh.at.date + 1), "利用日", sh.head.visitDate], flight: ["A" + (sh.at.flight + 1), "フライトナンバー", sh.head.flight], orderNo: ["A" + (sh.at.order + 1), "オーダーナンバー", sh.head.orderNo], area: ["B" + (sh.at.flight + 1), "配達エリア", sh.head.area], time: ["B" + (sh.at.order + 1), "配達時間", sh.head.time], notes: ["A" + (sh.notesRow + 1), "特記事項（追記）", ""] }[f];
+      out.push({ k: "chg", cell: H[0], label: H[1], from: H[2], to: x.value + (x.valueJa ? "\n" + x.valueJa : ""), why: x.reason }); }
+  }
+  pjHistPush(c, out.map((d) => ({ ...d, src: "t", at, by })));
+}
+function pjHistDialog(c, note) {
+  const dlg = $("#dlg"), hs = (c.drive.hist || []).slice().reverse(), p2 = (n) => String(n).padStart(2, "0");
+  const tm = (iso) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()} ${p2(d.getHours())}:${p2(d.getMinutes())}`; }, one = (t) => String(t || "").replace(/\n/g, " ／ ");
+  dlg.replaceChildren(h("div", { class: "dlg", style: "max-width:1040px" }, h("h3", { text: "変更履歴" }),
+    h("div", { class: "muted small", text: "「取り込み」は、T-CORE から反映した変更で、反映した時刻と人をそのまま記録しています。「直接編集」は、スプレッドシートを直接書き換えた分で、T-CORE がシートを読んだときに前回との違いとして記録します。そのため日時は「前回読んだ時刻〜見つけた時刻」の間、変更した人は「その間にシートを編集した人」までの表示です。セルごとの正確な記録は、シートのセルを右クリック →「編集履歴を表示」で確認できます。" }),
+    note ? h("div", { class: "banner warn", text: note }) : null,
+    hs.length ? h("div", { class: "scroll", style: "max-height:56vh;overflow-y:auto" }, h("table", { class: "prev", id: "pj-hist-list" }, h("thead", {}, h("tr", {}, ...["日時", "変更した人", "種類", "セル", "変更前 → 変更後"].map((t) => h("th", { text: t })))),
+      h("tbody", {}, ...hs.map((x) => h("tr", {},
+        h("td", { class: "small", style: "white-space:nowrap", text: x.src === "d" ? `${tm(x.since)} 〜 ${tm(x.at)} の間` : tm(x.at) }),
+        h("td", { class: "small", text: x.by || "不明" }),
+        h("td", {}, h("span", { class: "pill " + (x.src === "t" ? "ok" : "plain"), text: x.src === "t" ? "取り込み" : "直接編集" })),
+        h("td", {}, h("strong", { text: x.cell }), x.k === "chg" && x.col != null ? h("span", { class: "muted small", text: " " + PJ_COLN[x.col] }) : null, h("div", { class: "small muted", text: (x.label || "").slice(0, 40) })),
+        h("td", {}, x.k === "add" ? h("span", { class: "pill ok", text: "行を追加" }) : x.k === "del" ? h("span", { class: "pill bad", text: x.src === "t" ? "取り消し" : "行を削除" }) : null, x.k === "chg" || x.k === "del" ? h("s", { class: "muted", text: " " + (one(x.from) || "（空）") }) : null, x.k === "chg" ? " → " : " ", x.k !== "del" ? h("strong", { text: one(x.to) || "（空）" }) : null,
+          x.why ? h("div", { class: "small muted", text: "根拠：" + x.why }) : null)))))) : h("div", { class: "empty", text: "まだ変更の記録はありません。" }),
+    h("div", { class: "row" }, h("span", { class: "muted small", text: hs.length ? `${hs.length}件（新しい順、最大${PJ_HIST_MAX}件まで保存）` : "" }), h("span", { style: "margin-left:auto" }), h("button", { type: "button", class: "btn primary", id: "pj-hist-close", text: "閉じる", onclick: () => dlg.close() }))));
+  dlg.showModal();
+}
 async function pjChange(c, src, say, done) {
   if (!sample) return say("この表示環境ではAIの読み取りが使えません。", true);
   try {
-    say("スプレッドシートを読んでいます…"); const sh = await pjSheetRead(c);
+    say("スプレッドシートを読んでいます…"); const sh = await pjSheetRead(c); try { if (await pjTrack(c, sh)) done(); } catch (_) {}
     if (sh.hi < 0) return say("スプレッドシートに「Catering Item」の行が見つかりません。表の見出しを消していないか確かめてください。", true);
     say("資料を準備しています…"); const texts = src.text ? [src.text] : [], imgs = [];
     for (const f of src.files || []) {
@@ -3009,7 +3094,7 @@ function pjChangeDialog(c, sh, list, summary, say, done) {
     h("div", { class: "row" }, cnt, h("span", { style: "margin-left:auto" }), h("button", { type: "button", class: "btn", text: "やめる", onclick: () => dlg.close() }),
       h("button", { type: "button", class: "btn primary", id: "pj-chg-ok", text: "スプレッドシートへ反映", onclick: async (e) => {
         const sel = list.filter((_, i) => on[i]); if (!sel.length) return dlg.close(); e.target.disabled = true;
-        try { say("スプレッドシートへ反映しています…"); dlg.close(); await pjApply(c, sh, sel); const sh2 = await pjSheetRead(c); pjTakeHead(c, sh2); done(); say(`${sel.length}件をスプレッドシートへ反映しました（反映前の状態は履歴のシートに残しています）。`); }
+        try { say("スプレッドシートへ反映しています…"); dlg.close(); await pjApply(c, sh, sel); try { await pjHistImport(c, sh, sel); } catch (_) {} const sh2 = await pjSheetRead(c); c.drive.snap = { at: new Date().toISOString(), g: sh2.grid }; pjTakeHead(c, sh2); done(); say(`${sel.length}件をスプレッドシートへ反映しました（反映前の状態は履歴のシートに残しています）。`); }
         catch (err) { say(String((err && err.message) || "反映できませんでした。"), true); } } }))));
   upd(); dlg.showModal();
 }
@@ -4082,5 +4167,3 @@ window.addEventListener("drop", (e) => e.preventDefault());
 
 </body>
 </html>
-
-<!-- build 105-2 -->
