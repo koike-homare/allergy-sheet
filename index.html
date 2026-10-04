@@ -605,6 +605,14 @@ function wordKind(tag, row) {
 }
 /** 食品以外のうち、食物アレルギーの確認が要るもの（社内向けの注意）。 */
 function nonFoodHint(tag) { return /そば|蕎麦/.test(tag) ? `「${tag}」の記載あり：そばアレルギーの有無を要確認` : /ラテックス|ゴム|latex/i.test(tag) ? `「${tag}」の記載あり：果物（バナナ・キウイ・アボカド等）のアレルギーの有無を要確認` : ""; }
+/** 料理名から食材を見つけるための言い換え。同じ行の言葉は、どれで申告されても同じ食材として料理名を探す。 */
+const DISH_WORDS = [["米", "お米", "白米", "玄米", "コメ", "ご飯", "ごはん", "御飯", "ライス", "飯", "丼", "寿司", "すし", "おにぎり", "おむすび", "粥", "雑炊", "リゾット", "チャーハン", "炒飯", "ピラフ"]].map((g) => g.map(norm));
+/** コースの料理のうち、名前にその食材（または言い換え）が入っているもの。 */
+function dishesWith(course, name) {
+  const t = norm(name); if (!t) return [];
+  const words = DISH_WORDS.find((g) => g.includes(t)) || [t];
+  return (course.dishes || []).map((x) => x.name).filter((n) => n && words.some((w) => norm(n).includes(w)));
+}
 function dictFind(tag) { const t = norm(tag); return (S.settings.dict || []).find((d) => splitList(d.term).some((x) => norm(x) === t)) || null; }
 /** 申告の1語を、判定に使うアレルゲン（parts）へ展開する。成分表に完全一致 → 辞書 → 部分一致（未承認）→ 該当なし の順。 */
 function resolveTag(store, tag, row) {
@@ -612,7 +620,8 @@ function resolveTag(store, tag, row) {
   if (m && m.kind === "exact") return { tag, kind: "exact", parts: [{ name: m.entry.name, entry: m.entry }] };
   const d = dictFind(tag);
   // コース指定時、成分表に載っていない食材は「現物は使用なし・調味料等は成分表の対象外」として扱う（御社の方針）
-  const ext = (name) => (store && store.course ? { name, group: "", genbutsu: "none", usedIn: "", seibun: "", unlisted: true, note: "" } : null);
+  // ただし、コースの料理名にその食材が入っていれば「現物を使用」として扱う（例：米 →「白ご飯」、たこ →「揚げたこ焼き」）
+  const ext = (name) => { if (!(store && store.course)) return null; const inD = dishesWith(store.course, name); return { name, group: "", genbutsu: inD.length ? "used" : "none", usedIn: inD.join("、"), seibun: "", unlisted: true, note: "" }; };
   if (d) return { tag, kind: "dict", parts: splitList(d.maps).map((n) => { const x = matchTag(store, n); return { name: n, entry: x && x.kind === "exact" ? x.entry : ext(n) }; }) };
   // 食品以外・料理名は、食材としては判定しない
   const wk = wordKind(tag, row);
@@ -714,12 +723,22 @@ function genResponse(row, store) {
 /** 自動の判定で選ばれる対応のパターン。"ng"=該当あり・判定できない場合の文章、"ok"=該当なしの場合の文章、""=まだ判定できない。 */
 function respAuto(row, store) {
   if (!store) return "";
-  const v = analyse(row, store).verdict;
+  const an = analyse(row, store), v = an.verdict;
   if (!v) return "";
-  // 成分可否が「不可」「不明」の人は、現物・成分とも該当しない場合でも低アレルゲンコースかお持込みを優先する
-  // 品目ごとに可否が違う場合は、いちばん厳しいものに合わせる
-  const sbs = parseTags(row.allergy).map((tag) => sbOf(row, tag)); if (!sbs.length) sbs.push(row.seibun || "");
-  return v === "clear" && !sbs.some((x) => x === "不可" || x === "不明" || x === "微量不可") && store.responseOk ? "ok" : "ng";
+  if (!store.responseOk) return "ng";
+  // 通常コースを含む選択肢にするのは、すべての品目が次のどちらかのときだけ（1つでも外れれば、低アレルゲンコースかお持込み）
+  //  ・現物も成分も該当なしと確認でき、成分可否が「不可」「不明」「微量不可」でない
+  //  ・成分表にない食材（現物は使用なし・成分は確認できていない）で、成分可否が「可」
+  //  食品以外は判定に使わない。該当あり・判定できない・料理名は対象外。
+  const strict = (x) => x === "不可" || x === "不明" || x === "微量不可";
+  const ok = an.items.every((it) => {
+    if (it.kind === "nonfood") return true;
+    const sb = sbOf(row, it.tag), j = it.j;
+    if (j.clear) return !strict(sb);
+    if (!j.hit && j.g === "none" && j.s === "ext") return sb === "可";
+    return false;
+  });
+  return ok ? "ok" : "ng";
 }
 const SEIBUN = ["可", "不可", "不明", "微量不可"];
 /** その品目の成分可否：品目ごとの指定があればそれ、なければ行全体の成分可否。 */
@@ -1327,7 +1346,9 @@ function viewCase() {
         ? [(() => { const inS = i.parts.filter((p) => !(p.entry && p.entry.unlisted)); return inS.length ? h("span", { class: "chip " + i.state, title: i.tip, text: i.label + "＝" + inS.map((p) => p.name + (p.entry && p.entry.genbutsu && p.entry.seibun ? "" : "?")).join("・") }) : h("span", { class: "chip " + i.state, title: i.tip, text: i.label }); })(),
            h("span", { class: "chip ext", style: "cursor:default", title: "成分表にない食材：現物は使用なしとして扱い、文章には名前を出しません", text: "成分表外：" + i.j.extP.join("・") })]
         : [i.state === "ext"
-        ? h("button", { type: "button", class: "chip ext", title: i.tip, text: i.label + " 成分表外", onclick: () => resolveDialog(i.ja || i.tag, r, i.tag) })
+        ? (i.j.g === "used"
+          ? h("button", { type: "button", class: "chip bad", title: "成分表にない食材ですが、コースの料理名に含まれているため「現物を使用」として扱います（" + i.j.usedP.map((p) => p.entry.usedIn).join("、") + "）", text: i.label + " 料理に使用", onclick: () => resolveDialog(i.ja || i.tag, r, i.tag) })
+          : h("button", { type: "button", class: "chip ext", title: i.tip, text: i.label + " 成分表外", onclick: () => resolveDialog(i.ja || i.tag, r, i.tag) }))
         : i.state === "bad"
         ? h("button", { type: "button", class: "chip bad", title: i.tip + "（押すと判定方法を登録）", text: i.label + " 未登録", onclick: () => resolveDialog(i.ja || i.tag, r, i.tag) })
         : i.state === "maybe"
