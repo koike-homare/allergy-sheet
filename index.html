@@ -335,11 +335,11 @@ div.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute
 .lay-tab{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:var(--r) var(--r) 0 0;padding:6px 14px;font:inherit;cursor:pointer}
 .lay-tab.on{border-color:var(--accent);border-bottom-width:3px;padding:2px 4px}
 .lay-tab.on input{border:0;font-weight:700;width:120px;padding:4px 6px}
-.lay-bar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+.lay-bar{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;padding:5px 8px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
 .lay-bar .grp{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding-right:12px;border-right:1px solid var(--line)}
 .lay-bar .grp:last-child{border-right:0}
 .lay-sw{width:22px;height:22px;border:1px solid #8a93a3;border-radius:3px;padding:0;cursor:pointer}
-.lay-wrap{overflow:auto;max-height:68vh;border:1px solid var(--line);border-radius:4px;background:#fff;outline:none}
+.lay-wrap{overflow:auto;max-height:calc(100vh - 96px);min-height:320px;border:1px solid var(--line);border-radius:4px;background:#fff;outline:none}
 .lay-wrap:focus-visible{border-color:var(--accent)}
 .lay-wrap table{border-collapse:collapse;table-layout:fixed;background:#fff;color:#000;user-select:none;cursor:cell}
 .lay-canvas{position:relative;display:inline-block;padding:10px;color:#000}
@@ -362,6 +362,10 @@ div.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute
 .lay-prev td>div{overflow:hidden;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.15;white-space:pre-wrap;word-break:break-all}
 .lay-chip{border-radius:999px;padding:2px 10px;font-size:12px;color:#000;border:1px solid rgba(0,0,0,.2)}
 .pt-row{gap:6px;align-items:center}
+.seat-panel{padding:8px 12px;display:flex;flex-direction:column;gap:6px}
+.seat-cond>summary{cursor:pointer;font-size:13px;color:var(--muted)} .seat-cond[open]>summary{color:var(--ink)}
+#seat-msg:empty{display:none}
+.lay-ico{display:inline-flex;align-items:center;padding:4px 7px} .lay.stack{gap:6px} .lay-top{gap:6px 10px;align-items:center} .lay-top #lay-text{height:32px;padding:4px 8px} .lay-tab.on input{height:26px} .lay .lay-bar input[type=number]{height:28px;padding:2px 6px} .lay .lay-bar select{height:28px;padding:2px 6px}
 .pt-del{display:inline-flex;align-items:center;padding:4px 6px}
 .lay-wrap td{padding:0;overflow:hidden;position:relative}
 .lay-wrap td>div{overflow:hidden;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.15;white-space:pre-wrap;word-break:break-all}
@@ -2355,7 +2359,11 @@ function layTableEl(fl, grid) {
 /** レイアウトの編集画面。doc.floors を直接書き換え、変更のたびに onChange を呼ぶ。 */
 function layoutEditor(doc, onChange, opts = {}) {
   let fi = 0, a = { r: 0, c: 0 }, f = { r: 0, c: 0 }, zoom = 1, clip = null, drag = false, tds = new Map();
-  const undo = [];
+  // 取り消し・やり直し：階の内容と、吹き出し・配席エリアなど（あれば）をまとめて覚える
+  const undo = [], redo = [];
+  const snap = (i) => JSON.stringify({ f: doc.floors[i], n: doc.notes, a: doc.area, o: doc.orig });
+  const pushUndo = () => { undo.push([fi, snap(fi)]); if (undo.length > 60) undo.shift(); redo.length = 0; };
+  const restore = (u) => { const d = JSON.parse(u[1]); doc.floors[u[0]] = d.f; if (d.n !== undefined) doc.notes = d.n; if (d.a !== undefined) doc.area = d.a; if (d.o !== undefined) doc.orig = d.o; fi = u[0]; clampSel(); onChange(); draw(); if (opts.onRestore) opts.onRestore(); };
   const F = () => doc.floors[fi], K = (r, c) => r + "," + c;
   const tabs = h("div", { class: "lay-tabs" }), bar = h("div", { class: "lay-bar" }), wrap = h("div", { class: "lay-wrap", tabindex: "0", id: "lay-wrap" });
   const txt = h("input", { id: "lay-text", placeholder: "選んだマスの文字（ここに入力）", autocomplete: "off" });
@@ -2363,7 +2371,8 @@ function layoutEditor(doc, onChange, opts = {}) {
   const wIn = h("input", { id: "lay-cw", type: "number", min: "6", max: "400", style: "width:64px", "aria-label": "列の幅" }), hIn = h("input", { id: "lay-rh", type: "number", min: "6", max: "400", style: "width:64px", "aria-label": "行の高さ" });
   const file = h("input", { type: "file", id: "lay-file", accept: ".xlsx", hidden: true });
   wrap.tabIndex = 0;
-  const root = h("div", { class: "lay stack", id: "lay" }, tabs, bar, h("div", { class: "row" }, pos, h("div", { style: "flex:1;min-width:200px" }, txt)), wrap, file);
+  const txtBox = h("div", { style: "flex:1;min-width:220px" }, txt);
+  const root = h("div", { class: "lay stack", id: "lay" }, tabs, h("div", { class: "row lay-top" }, pos, txtBox), bar, wrap, file);
 
   const mergeAt = (r, c) => F().merges.find((m) => r >= m[0] && r <= m[2] && c >= m[1] && c <= m[3]);
   const origin = (p) => { const m = mergeAt(p.r, p.c); return m ? { r: m[0], c: m[1] } : p; };
@@ -2375,14 +2384,14 @@ function layoutEditor(doc, onChange, opts = {}) {
   const get = (r, c) => F().cells[K(r, c)];
   const put = (r, c, fn) => { const fl = F(), k = K(r, c), x = fl.cells[k] || {}; fn(x); for (const p of Object.keys(x)) if (x[p] === "" || x[p] == null || x[p] === 0 || x[p] === "0000") delete x[p]; if (Object.keys(x).length) fl.cells[k] = x; else delete fl.cells[k]; };
   const each = (fn) => { const g = range(); for (let r = g.r1; r <= g.r2; r++) for (let c = g.c1; c <= g.c2; c++) fn(r, c, g); };
-  const mutate = (fn) => { undo.push([fi, JSON.stringify(F())]); if (undo.length > 40) undo.shift(); fn(); clampSel(); onChange(); draw(); };
+  const mutate = (fn) => { pushUndo(); fn(); clampSel(); onChange(); draw(); };
   const clampSel = () => { const fl = F(); if (!fl) return; for (const p of [a, f]) { p.r = Math.max(0, Math.min(fl.rows - 1, p.r)); p.c = Math.max(0, Math.min(fl.cols - 1, p.c)); } };
   const setBd = (r, c, side, w) => { const fl = F(); if (r < 0 || c < 0 || r >= fl.rows || c >= fl.cols) return; put(r, c, (x) => { const d = (x.bd || "0000").split(""); d[side] = String(w); x.bd = d.join(""); }); };
 
   function draw() {
     const fl = F(); drawTabs();
-    if (!fl) { bar.hidden = true; txt.parentNode.parentNode.hidden = true; wrap.replaceChildren(h("div", { class: "empty", text: "この店舗のレイアウトはまだありません。「Excelから読み込む」か「階を追加」から作成してください。" })); return; }
-    bar.hidden = false; txt.parentNode.parentNode.hidden = false;
+    if (!fl) { bar.hidden = txtBox.hidden = pos.hidden = true; wrap.replaceChildren(h("div", { class: "empty", text: "この店舗のレイアウトはまだありません。「Excelから読み込む」か「階を追加」から作成してください。" })); return; }
+    bar.hidden = txtBox.hidden = pos.hidden = false;
     const made = layTableEl(fl, true), table = made.table; tds = made.tds; table.id = "lay-table";
     const canvas = h("div", { class: "lay-canvas", id: "lay-canvas" }, table, overlay()); canvas.style.zoom = zoom;
     const top = wrap.scrollTop, left = wrap.scrollLeft; wrap.replaceChildren(canvas); wrap.scrollTop = top; wrap.scrollLeft = left;
@@ -2405,13 +2414,13 @@ function layoutEditor(doc, onChange, opts = {}) {
         const tip = () => (n.tx != null ? { x: n.tx, y: n.ty } : n.r != null && n.r < fl.rows && n.c < fl.cols ? { x: X(n.c) + fl.cw[n.c] / 2, y: Y(n.r) + fl.rh[n.r] / 2 } : { x: Math.max(4, n.x - 22), y: n.y + 46 });
         const pin = h("div", { class: "lay-pin", title: "ドラッグして、線の先の位置を変える" });
         const el = h("div", { class: "lay-note", "data-note": n.id, style: `left:${n.x}px;top:${n.y}px` }, h("div", { class: "lay-note-t", text: n.text || "" }),
-          h("button", { type: "button", class: "lay-note-x", text: "×", title: "この吹き出しを消す", "aria-label": "吹き出しを消す", onpointerdown: (e) => e.stopPropagation(), onclick: () => { doc.notes.splice(doc.notes.indexOf(n), 1); onChange(); draw(); } }));
+          h("button", { type: "button", class: "lay-note-x", text: "×", title: "この吹き出しを消す", "aria-label": "吹き出しを消す", onpointerdown: (e) => e.stopPropagation(), onclick: () => { pushUndo(); doc.notes.splice(doc.notes.indexOf(n), 1); onChange(); draw(); } }));
         const aim = () => { const t = tip(); line.setAttribute("x1", n.x + el.offsetWidth / 2); line.setAttribute("y1", n.y + el.offsetHeight / 2); line.setAttribute("x2", t.x); line.setAttribute("y2", t.y); pin.style.left = t.x + "px"; pin.style.top = t.y + "px"; };
         svg.append(line);
         pin.addEventListener("pointerdown", (e) => {
           e.preventDefault(); e.stopPropagation(); pin.setPointerCapture(e.pointerId);
           const sx = e.clientX, sy = e.clientY, o = tip(); let moved = false;
-          const mv = (ev) => { moved = true; n.tx = Math.max(0, Math.round(o.x + (ev.clientX - sx) / zoom)); n.ty = Math.max(0, Math.round(o.y + (ev.clientY - sy) / zoom)); aim(); };
+          const mv = (ev) => { if (!moved) pushUndo(); moved = true; n.tx = Math.max(0, Math.round(o.x + (ev.clientX - sx) / zoom)); n.ty = Math.max(0, Math.round(o.y + (ev.clientY - sy) / zoom)); aim(); };
           const up = () => { pin.removeEventListener("pointermove", mv); pin.removeEventListener("pointerup", up); pin.removeEventListener("pointercancel", up); if (moved) onChange(); };
           pin.addEventListener("pointermove", mv); pin.addEventListener("pointerup", up); pin.addEventListener("pointercancel", up);
         });
@@ -2419,11 +2428,11 @@ function layoutEditor(doc, onChange, opts = {}) {
           if (e.target.isContentEditable) return;
           e.preventDefault(); e.stopPropagation(); el.setPointerCapture(e.pointerId);
           const sx = e.clientX, sy = e.clientY, ox = n.x, oy = n.y; let moved = false;
-          const mv = (ev) => { moved = true; n.x = Math.max(0, Math.round(ox + (ev.clientX - sx) / zoom)); n.y = Math.max(0, Math.round(oy + (ev.clientY - sy) / zoom)); el.style.left = n.x + "px"; el.style.top = n.y + "px"; aim(); };
+          const mv = (ev) => { if (!moved) pushUndo(); moved = true; n.x = Math.max(0, Math.round(ox + (ev.clientX - sx) / zoom)); n.y = Math.max(0, Math.round(oy + (ev.clientY - sy) / zoom)); el.style.left = n.x + "px"; el.style.top = n.y + "px"; aim(); };
           const up = () => { el.removeEventListener("pointermove", mv); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up); if (moved) onChange(); };
           el.addEventListener("pointermove", mv); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
         });
-        el.addEventListener("dblclick", (e) => { e.stopPropagation(); const t = el.firstElementChild; t.contentEditable = "plaintext-only"; t.focus(); t.addEventListener("blur", () => { t.contentEditable = "false"; n.text = t.innerText.trim(); onChange(); aim(); }, { once: true }); });
+        el.addEventListener("dblclick", (e) => { e.stopPropagation(); const t = el.firstElementChild; t.contentEditable = "plaintext-only"; t.focus(); t.addEventListener("blur", () => { t.contentEditable = "false"; const v = t.innerText.trim(); if (v !== n.text) { pushUndo(); n.text = v; onChange(); } aim(); }, { once: true }); });
         layer.append(el, pin); queueMicrotask(aim);
       }
     }
@@ -2444,8 +2453,8 @@ function layoutEditor(doc, onChange, opts = {}) {
       : h("button", { type: "button", class: "lay-tab", text: x.name || "階" + (i + 1), onclick: () => { fi = i; a = { r: 0, c: 0 }; f = { r: 0, c: 0 }; draw(); } })),
       h("button", { type: "button", class: "btn sm", id: "lay-add", text: "＋ 階を追加", onclick: () => { doc.floors.push(newFloor((doc.floors.length + 1) + "F")); fi = doc.floors.length - 1; a = { r: 0, c: 0 }; f = { r: 0, c: 0 }; onChange(); draw(); } }),
       h("button", { type: "button", class: "btn sm", id: "lay-xlsx", text: "Excelから読み込む", onclick: () => file.click() }),
-      h("span", { style: "margin-left:auto" }),
-      fl ? confirmBtn("この階を削除", "本当に削除", () => { doc.floors.splice(fi, 1); fi = Math.max(0, fi - 1); undo.length = 0; onChange(); draw(); }, "btn sm danger") : null].filter(Boolean));
+      h("span", { style: "margin-left:auto" }), ...(fl && opts.tools ? opts.tools() : []),
+      fl ? confirmBtn("この階を削除", "本当に削除", () => { doc.floors.splice(fi, 1); fi = Math.max(0, fi - 1); undo.length = redo.length = 0; onChange(); draw(); }, "btn sm danger") : null].filter(Boolean));
   }
 
   /* 行・列の挿入と削除（axis: 0=行, 1=列）。マス・結合・寸法をまとめてずらす。 */
@@ -2467,6 +2476,7 @@ function layoutEditor(doc, onChange, opts = {}) {
   /* 道具（ツールバー） */
   const btn = (text, title, fn, id) => h("button", { type: "button", class: "btn sm", text, title, id, onclick: () => { fn(); wrap.focus({ preventScroll: true }); } });
   const sw = (colr, title, fn) => h("button", { type: "button", class: "lay-sw", title, "aria-label": title, style: colr ? `background:${colr}` : "background:linear-gradient(135deg,#fff 45%,#d64545 45%,#d64545 55%,#fff 55%)", onclick: () => { fn(); wrap.focus({ preventScroll: true }); } });
+  const icon = (id, title, path, fn) => { const b = h("button", { type: "button", class: "btn sm lay-ico", id, title, "aria-label": title, onclick: () => { fn(); wrap.focus({ preventScroll: true }); } }); b.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`; return b; };
   const grp = (label, ...kids) => h("div", { class: "grp" }, h("span", { class: "small muted", text: label }), ...kids);
   const unmerge = () => { const g = range(), fl = F(); fl.merges = fl.merges.filter((m) => !(m[0] <= g.r2 && m[2] >= g.r1 && m[1] <= g.c2 && m[3] >= g.c1)); };
   const border = (mode) => mutate(() => {
@@ -2495,16 +2505,18 @@ function layoutEditor(doc, onChange, opts = {}) {
       btn("列を削除", "選んだ列を削除", () => { const g = range(); if (g.c2 - g.c1 + 1 >= F().cols) return toast("すべての列は削除できません"); mutate(() => remove(1, g.c1, g.c2)); }, "lay-col-del")),
     grp("大きさ", h("label", { class: "small muted", for: "lay-cw", text: "列幅" }), wIn, h("label", { class: "small muted", for: "lay-rh", text: "行高" }), hIn),
     grp("表示", sel([["0.5", "50%"], ["0.75", "75%"], ["1", "100%"], ["1.25", "125%"], ["1.5", "150%"]], "1", (v) => { zoom = +v; draw(); }, { id: "lay-zoom", "aria-label": "表示の倍率", style: "width:84px" }),
-      btn("元に戻す", "直前の操作を取り消す（Ctrl+Z）", () => doUndo(), "lay-undo")));
+      icon("lay-undo", "戻す（Ctrl+Z）", '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>', () => doUndo()),
+      icon("lay-redo", "進む（Ctrl+Y）", '<path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/>', () => doRedo())));
   wIn.addEventListener("change", () => { const v = Math.max(6, Math.min(400, +wIn.value || LAY.cw)); mutate(() => { const g = range(); for (let c = g.c1; c <= g.c2; c++) F().cw[c] = v; }); });
   hIn.addEventListener("change", () => { const v = Math.max(6, Math.min(400, +hIn.value || LAY.rh)); mutate(() => { const g = range(); for (let r = g.r1; r <= g.r2; r++) F().rh[r] = v; }); });
-  function doUndo() { const u = undo.pop(); if (!u) return toast("これ以上は戻せません"); if (!doc.floors[u[0]]) return; doc.floors[u[0]] = JSON.parse(u[1]); fi = u[0]; clampSel(); onChange(); draw(); }
+  function doUndo() { const u = undo.pop(); if (!u) return toast("これ以上は戻せません"); if (!doc.floors[u[0]]) return; redo.push([u[0], snap(u[0])]); restore(u); }
+  function doRedo() { const u = redo.pop(); if (!u) return toast("やり直せる操作はありません"); if (!doc.floors[u[0]]) return; undo.push([u[0], snap(u[0])]); restore(u); }
 
   /* 文字の入力：上の入力欄が、選んだマスの文字になる */
   let typing = false;
   txt.addEventListener("focus", () => { typing = false; });
   txt.addEventListener("input", () => {
-    if (!typing) { undo.push([fi, JSON.stringify(F())]); if (undo.length > 40) undo.shift(); typing = true; }
+    if (!typing) { pushUndo(); typing = true; }
     const o = origin(a); put(o.r, o.c, (x) => { x.v = txt.value; }); onChange();
     const td = tds.get(K(o.r, o.c)); if (td) { let d = td.firstElementChild; if (!d && txt.value) { draw(); return; } if (d) d.textContent = txt.value; }
   });
@@ -2528,7 +2540,8 @@ function layoutEditor(doc, onChange, opts = {}) {
       if (e.shiftKey) f = { r: nr, c: nc }; else { a = { r: mv[0] ? nr : a.r, c: mv[1] ? nc : a.c }; f = { ...a }; }
       paint(); const td = tds.get(K(origin(f).r, origin(f).c)); if (td) td.scrollIntoView({ block: "nearest", inline: "nearest" });
     } else if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); mutate(() => each((r, c) => put(r, c, (x) => { x.v = ""; }))); }
-    else if (mod && e.key.toLowerCase() === "z") { e.preventDefault(); doUndo(); }
+    else if (mod && e.key.toLowerCase() === "z") { e.preventDefault(); if (e.shiftKey) doRedo(); else doUndo(); }
+    else if (mod && e.key.toLowerCase() === "y") { e.preventDefault(); doRedo(); }
     else if (mod && e.key.toLowerCase() === "c") { const g = range(), fl2 = F(); clip = { h: g.r2 - g.r1 + 1, w: g.c2 - g.c1 + 1, cells: [], merges: fl2.merges.filter((m) => m[0] >= g.r1 && m[2] <= g.r2 && m[1] >= g.c1 && m[3] <= g.c2).map((m) => [m[0] - g.r1, m[1] - g.c1, m[2] - g.r1, m[3] - g.c1]) }; each((r, c) => { const x = get(r, c); if (x) clip.cells.push([r - g.r1, c - g.c1, clone(x)]); }); toast("コピーしました（Ctrl+V で貼り付け）"); }
     else if (mod && e.key.toLowerCase() === "v" && clip) {
       e.preventDefault(); const g = range();
@@ -2544,7 +2557,7 @@ function layoutEditor(doc, onChange, opts = {}) {
     toast("Excelを読み込んでいます…");
     let res; try { res = await importLayoutXlsx(fl); } catch (_) { return toast("読み込めませんでした。xlsx 形式のファイルを選んでください"); }
     if (!res.floors.length) return toast("読み込める内容がありませんでした");
-    const apply = (replace) => { if (replace) doc.floors.length = 0; doc.floors.push(...res.floors); fi = replace ? 0 : doc.floors.length - res.floors.length; a = { r: 0, c: 0 }; f = { r: 0, c: 0 }; undo.length = 0; onChange(); draw(); toast(`${res.floors.length}枚のシートを読み込みました` + (res.cut ? "（大きすぎる部分は省きました）" : "")); };
+    const apply = (replace) => { if (replace) doc.floors.length = 0; doc.floors.push(...res.floors); fi = replace ? 0 : doc.floors.length - res.floors.length; a = { r: 0, c: 0 }; f = { r: 0, c: 0 }; redo.length = undo.length = 0; onChange(); draw(); toast(`${res.floors.length}枚のシートを読み込みました` + (res.cut ? "（大きすぎる部分は省きました）" : "")); };
     if (!doc.floors.some((x) => Object.keys(x.cells).length)) return apply(true);
     const dlg = $("#dlg");
     dlg.replaceChildren(h("div", { class: "dlg", style: "max-width:460px" }, h("h3", { text: "Excelの読み込み" }),
@@ -2557,7 +2570,7 @@ function layoutEditor(doc, onChange, opts = {}) {
 
   draw();
   // 案件側の配席機能が使う入口
-  root.api = { floor: F, range, redraw: draw, snapshot: () => { undo.push([fi, JSON.stringify(F())]); if (undo.length > 40) undo.shift(); }, X, Y };
+  root.api = { floor: F, range, redraw: draw, snapshot: pushUndo, X, Y };
   return root;
 }
 
@@ -2800,7 +2813,11 @@ function viewCaseLayout() {
     return out;
   };
   const say = (t, bad) => { msg.textContent = t; msg.style.color = bad ? "var(--bad)" : "var(--ok)"; };
-  const ed = layoutEditor(lay, ch);
+  const tb = (id, text, title, fn, cls) => h("button", { type: "button", class: "btn sm" + (cls ? " " + cls : ""), id, text, title, onclick: fn });
+  const ed = layoutEditor(lay, ch, { onRestore: () => { info(); }, tools: () => [
+    tb("seat-area-set", "選んだ範囲を配席エリアにする", "下のレイアウトでドラッグして選んだ範囲を、配席エリアにする", () => { ed.api.snapshot(); const g = ed.api.range(); lay.area = { fid: ed.api.floor().id, ...g }; ch(); ed.api.redraw(); info(); }),
+    tb("seat-area-clear", "エリアを解除", "配席エリアをやめて、階の全体を対象にする", () => { ed.api.snapshot(); lay.area = null; ch(); ed.api.redraw(); info(); }),
+    tb("seat-note", "吹き出しを追加", "選んだマスの近くに吹き出しを追加する（ドラッグで移動、ダブルクリックで文字を修正）", () => { ed.api.snapshot(); const g = ed.api.range(), fl = ed.api.floor(); lay.notes.push({ id: uid("n"), fid: fl.id, x: ed.api.X(g.c1) + 20, y: Math.max(0, ed.api.Y(g.r1) - 40), text: "メモ" }); ch(); ed.api.redraw(); })] });
   const areaOf = () => (lay.area && lay.area.fid === ed.api.floor().id ? lay.area : null);
   const areaInfo = h("span", { class: "small muted", id: "seat-area" });
   const info = () => { const fl = ed.api.floor(); if (!fl) return; const ts = layTables(fl, areaOf()), cap = ts.reduce((n, t) => n + t.cap, 0); areaInfo.textContent = `${areaOf() ? "指定したエリア" : "この階の全体"}：卓 ${ts.length}・席 ${cap}　／　利用人数 ${partyTotal(c.party)}名`; };
@@ -2840,28 +2857,30 @@ ${text}
     btn.disabled = false;
   };
   const moved = c.layout.storeId !== c.storeId && base && (base.floors || []).length;
-  const panel = h("div", { class: "panel stack", id: "seat-panel" },
-    h("div", { class: "row" }, h("h3", { text: "配席の作成" }), areaInfo),
-    groups.length ? h("div", { class: "row", id: "seat-legend", style: "gap:6px 10px" }, ...groups.map((g) => h("span", { class: "lay-chip", style: `background:${g.color}`, text: `${g.label} ${g.n}名` }))) : h("div", { class: "small", style: "color:var(--warn)", text: "利用人数が未入力です。案件画面の「利用人数」に入力してください。" }),
-    h("div", { class: "stack", style: "gap:6px" }, h("div", { class: "small muted", text: "配席の条件（複数選べます）" }),
-      h("div", { class: "row", id: "seat-opts", style: "gap:6px 18px" }, ...OPTS.map(([k, label]) => h("label", { class: "row small", style: "gap:6px;cursor:pointer" },
-        h("input", { type: "checkbox", id: "seat-o-" + k, style: "width:auto", checked: lay.opts.includes(k), onchange: (e) => { lay.opts = OPTS.map((o) => o[0]).filter((x) => (x === k ? e.target.checked : lay.opts.includes(x))); ch(); showPrompt(); } }), label)))),
-    h("label", { class: "f" }, "AIに依頼する（条件のほかに頼みたいことを自由に記入）",
-      h("textarea", { id: "seat-ai", rows: 2, value: lay.ai || "", placeholder: "例：1年1組から順に左上から並べる。先生は入口に近い卓にする。", oninput: (e) => { lay.ai = e.target.value; ch(); showPrompt(); } })),
-    preview,
-    h("div", { class: "row" },
-      h("button", { type: "button", class: "btn", id: "seat-area-set", text: "選んだ範囲を配席エリアにする", onclick: () => { const g = ed.api.range(); lay.area = { fid: ed.api.floor().id, ...g }; ch(); ed.api.redraw(); info(); } }),
-      h("button", { type: "button", class: "btn", id: "seat-area-clear", text: "エリアを解除", onclick: () => { lay.area = null; ch(); ed.api.redraw(); info(); } }),
-      h("button", { type: "button", class: "btn", id: "seat-note", text: "吹き出しを追加", onclick: () => { const g = ed.api.range(), fl = ed.api.floor(); lay.notes.push({ id: uid("n"), fid: fl.id, x: ed.api.X(g.c1) + 20, y: Math.max(0, ed.api.Y(g.r1) - 40), text: "メモ" }); ch(); ed.api.redraw(); } }),
-      h("span", { style: "margin-left:auto" }),
-      h("button", { type: "button", class: "btn", id: "seat-clear", text: "配席を消す", onclick: () => { ed.api.snapshot(); clearSeating(lay); ch(); ed.api.redraw(); info(); say("配席を消して、店舗のレイアウトに戻しました。"); } }),
-      h("button", { type: "button", class: "btn primary", id: "seat-run", text: "配席を作成", onclick: (e) => run(e.target) })),
-    h("div", { class: "small muted", text: "条件と依頼文は、この案件と一緒に保存されます。配席エリアは、下のレイアウトでドラッグして範囲を選んでから指定します。吹き出しはドラッグで動かせ、ダブルクリックで文字を直せます。作成し直すと、前回の配席は消えて作り直されます。" }),
-    msg);
+  // 画面を広く使えるよう、条件の欄は折りたためる。配席を作った後は閉じた状態で開く。
+  const sum = h("summary", { id: "seat-cond-sum" });
+  const aiSum = h("summary", { id: "seat-ai-sum" });
+  const sumText = () => { aiSum.textContent = "AIに依頼する・AIへ送る指示" + ((lay.ai || "").trim() ? "（依頼文あり）" : ""); const n = lay.opts.length + ((lay.ai || "").trim() ? 1 : 0); sum.textContent = `配席の条件・AIへの依頼（${n ? n + "件 指定中" : "指定なし＝標準の並べ方"}）`; };
+  const cond = h("details", { id: "seat-cond", class: "seat-cond" }, sum,
+    h("div", { class: "stack", style: "gap:8px;padding-top:8px" },
+      groups.length ? h("div", { class: "row", id: "seat-legend", style: "gap:4px 8px" }, ...groups.map((g) => h("span", { class: "lay-chip", style: `background:${g.color}`, text: `${g.label} ${g.n}名` }))) : null,
+      h("div", { class: "row", id: "seat-opts", style: "gap:4px 16px" }, ...OPTS.map(([k, label]) => h("label", { class: "row small", style: "gap:6px;cursor:pointer" },
+        h("input", { type: "checkbox", id: "seat-o-" + k, style: "width:auto", checked: lay.opts.includes(k), onchange: (e) => { lay.opts = OPTS.map((o) => o[0]).filter((x) => (x === k ? e.target.checked : lay.opts.includes(x))); ch(); showPrompt(); sumText(); } }), label))),
+      h("details", { class: "seat-cond", id: "seat-ai-box" }, aiSum,
+        h("div", { class: "stack", style: "gap:6px;padding-top:6px" },
+          h("textarea", { id: "seat-ai", rows: 2, "aria-label": "AIに依頼する", value: lay.ai || "", placeholder: "条件のほかに頼みたいことを自由に記入　例：1年1組から順に左上から並べる。先生は入口に近い卓にする。", oninput: (e) => { lay.ai = e.target.value; ch(); showPrompt(); sumText(); } }),
+          preview))));
+  if (!Object.keys(lay.orig || {}).length) cond.open = true;
+  const panel = h("div", { class: "panel seat-panel", id: "seat-panel" },
+    h("div", { class: "row", style: "gap:6px 10px" }, h("strong", { text: "配席" }), areaInfo, h("span", { style: "margin-left:auto" }),
+      tb("seat-clear", "配席を消す", "配席を消して、店舗のレイアウトに戻す", () => { ed.api.snapshot(); clearSeating(lay); ch(); ed.api.redraw(); info(); say("配席を消して、店舗のレイアウトに戻しました。"); }),
+      tb("seat-run", "配席を作成", "条件に従って配席を作成する（前回の配席は作り直されます）", (e) => run(e.target), "primary")),
+    groups.length ? null : h("div", { class: "small", style: "color:var(--warn)", text: "利用人数が未入力です。案件画面の「利用人数」に入力してください。" }),
+    cond, msg);
+  sumText();
   queueMicrotask(info); showPrompt();
   ed.addEventListener("pointerup", () => queueMicrotask(info)); ed.addEventListener("click", () => queueMicrotask(info));
-  return [back,
-    h("h2", { text: `${c.groupName || "（団体名未入力）"} の配席レイアウト` }),
+  return [h("div", { class: "row", style: "gap:14px" }, back, h("strong", { style: "font-size:15px", text: `${c.groupName || "（団体名未入力）"} の配席レイアウト` })),
     moved ? h("div", { class: "banner warn row" }, h("span", { text: "案件の店舗が変わっています。今のレイアウトは変更前の店舗のものです。" }), h("span", { style: "margin-left:auto" }), confirmBtn("今の店舗のレイアウトで作り直す", "本当に作り直す", () => { c.layout = fresh(); ch(); draft = clone(c); app0(); }, "btn sm")) : null,
     panel, ed].filter(Boolean);
   function app0() { const a = $("#app"); a.replaceChildren(...viewCaseLayout()); }
