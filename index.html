@@ -3039,6 +3039,98 @@ function layoutPreview(lay, onOpen, title) {
   queueMicrotask(fit); requestAnimationFrame(fit); if (window.ResizeObserver) new ResizeObserver(() => { if (!zoom) fit(); }).observe(view);
   return box;
 }
+/* ---------- 配席レイアウトの出力（Excel・PDF） ---------- */
+const layFileName = (c, ext) => `【配席レイアウト】${layoutTitle(c).replace(/[\\/:*?"<>|]/g, "").replace(/　/g, "_")}.${ext}`;
+/** 階の中で、何か書かれている範囲（周りの空白を除く）。吹き出しも含める。 */
+function layFloorPx(fl) { return { W: fl.cw.reduce((n, w) => n + w, 0), H: fl.rh.reduce((n, w) => n + w, 0) }; }
+/** 吹き出しを、文字の折り返しまで決めた形にする（Excel 用の画像と PDF の両方で同じ見た目にする）。座標はマス目の左上が (0,0)。 */
+function layNoteBoxes(lay, fl, ctx) {
+  const X = (c) => fl.cw.slice(0, c).reduce((n, w) => n + w, 0), Y = (r) => fl.rh.slice(0, r).reduce((n, w) => n + w, 0);
+  ctx.font = "11px 'BIZ UDPGothic','Hiragino Sans','Yu Gothic',Meiryo,sans-serif";
+  return ((lay && lay.notes) || []).filter((n) => n.fid === fl.id).map((n) => {
+    const lines = [];
+    for (const raw of String(n.text || "").split("\n")) { let cur = ""; for (const ch of raw) { if (cur && ctx.measureText(cur + ch).width > 186) { lines.push(cur); cur = ch; } else cur += ch; } lines.push(cur); }
+    const w = Math.ceil(Math.max(10, ...lines.map((l) => ctx.measureText(l).width))) + 16, hh = Math.ceil(lines.length * 14.3) + 8, x = Math.max(0, n.x - 10), y = Math.max(0, n.y - 10);
+    const tip = n.tx != null ? { x: n.tx - 10, y: n.ty - 10 } : n.r != null && n.r < fl.rows && n.c < fl.cols ? { x: X(n.c) + fl.cw[n.c] / 2, y: Y(n.r) + fl.rh[n.r] / 2 } : null;
+    return { x, y, w, h: hh, lines, tip, loose: !!n.auto && n.r == null };
+  });
+}
+/** 吹き出しと線を canvas に描く。 */
+function layDrawNotes(ctx, boxes) {
+  ctx.font = "11px 'BIZ UDPGothic','Hiragino Sans','Yu Gothic',Meiryo,sans-serif"; ctx.textBaseline = "top";
+  for (const b of boxes) { if (!b.tip) continue; ctx.beginPath(); ctx.strokeStyle = b.loose ? "#6b7684" : "#c00000"; ctx.lineWidth = 1.5; ctx.setLineDash(b.loose ? [4, 3] : []); ctx.moveTo(b.x + b.w / 2, b.y + b.h / 2); ctx.lineTo(b.tip.x, b.tip.y); ctx.stroke(); }
+  for (const b of boxes) {
+    ctx.setLineDash(b.loose ? [4, 3] : []); ctx.beginPath(); const r = 7;
+    ctx.moveTo(b.x + r, b.y); ctx.arcTo(b.x + b.w, b.y, b.x + b.w, b.y + b.h, r); ctx.arcTo(b.x + b.w, b.y + b.h, b.x, b.y + b.h, r); ctx.arcTo(b.x, b.y + b.h, b.x, b.y, r); ctx.arcTo(b.x, b.y, b.x + b.w, b.y, r); ctx.closePath();
+    ctx.fillStyle = b.loose ? "#eef1f5" : "#fffbe6"; ctx.fill(); ctx.strokeStyle = b.loose ? "#6b7684" : "#c00000"; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = b.loose ? "#39424e" : "#000"; b.lines.forEach((l, i) => ctx.fillText(l, b.x + 8, b.y + 5 + i * 14.3));
+  }
+  ctx.setLineDash([]);
+}
+/** マスに入れる文字の大きさ（px）。配席の表記は、マスに収まる大きさにする（画面と同じ計算）。 */
+function layCellFs(fl, r, c, x) {
+  if (!x.fit) return x.fs || 12;
+  const m = fl.merges.find((q) => q[0] === r && q[1] === c), r2 = m ? m[2] : r, c2 = m ? m[3] : c; let wid = 0, hgt = 0;
+  for (let i = c; i <= c2; i++) wid += fl.cw[i]; for (let i = r; i <= r2; i++) hgt += fl.rh[i];
+  const lines = String(x.v).split("\n"), em = Math.max(...lines.map((s) => [...s].reduce((n, ch) => n + (ch.charCodeAt(0) > 255 ? 1 : 0.6), 0)));
+  return Math.max(6, Math.min(13, Math.floor(((wid - 3) / em) * 10) / 10, Math.floor(((hgt - 3) / (lines.length * 1.15)) * 10) / 10));
+}
+async function exportLayoutXlsx(c, say) {
+  const lay = c.layout; if (!lay || !dl) return say("この表示環境では保存できません。", true);
+  say("Excelを作成中…");
+  try {
+    await loadScript(LIB.exceljs);
+    const wb = new ExcelJS.Workbook(), title = layoutTitle(c), argb = (hex) => "FF" + String(hex).replace("#", "").toUpperCase().padEnd(6, "0").slice(0, 6), BS = [null, { style: "thin" }, { style: "medium" }];
+    const used = new Set();
+    for (const fl of lay.floors) {
+      let name = String(fl.name || "レイアウト").replace(/[\\/?*\[\]:]/g, "").slice(0, 28) || "レイアウト"; while (used.has(name)) name += "_"; used.add(name);
+      const ws = wb.addWorksheet(name, { pageSetup: { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1, horizontalCentered: true, margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.3, header: 0.2, footer: 0.2 } }, views: [{ showGridLines: false }] });
+      ws.columns = fl.cw.map((w) => ({ width: Math.max(0.5, (w - 5) / 7) }));
+      ws.getRow(1).height = 24; const tc = ws.getCell(1, 1); tc.value = title + (lay.floors.length > 1 ? "　" + (fl.name || "") : ""); tc.font = { name: "ＭＳ Ｐゴシック", size: 14, bold: true }; tc.alignment = { vertical: "middle" };
+      for (let r = 0; r < fl.rows; r++) ws.getRow(r + 2).height = fl.rh[r] * 0.75;
+      for (const m of fl.merges) if (m[2] < fl.rows && m[3] < fl.cols) ws.mergeCells(m[0] + 2, m[1] + 1, m[2] + 2, m[3] + 1);
+      for (const [k, x] of Object.entries(fl.cells)) {
+        const [r, cc] = k.split(",").map(Number); if (r >= fl.rows || cc >= fl.cols) continue;
+        const cell = ws.getCell(r + 2, cc + 1), bd = x.bd || "0000", border = {};
+        ["top", "right", "bottom", "left"].forEach((s, i) => { const b = BS[+bd[i] || 0]; if (b) border[s] = b; });
+        const style = { border, alignment: { horizontal: x.al === "l" ? "left" : x.al === "r" ? "right" : "center", vertical: "middle", wrapText: true }, font: { name: "ＭＳ Ｐゴシック", size: Math.max(4, Math.round(layCellFs(fl, r, cc, x) * 0.75 * 2) / 2), bold: !!x.b, ...(x.fg ? { color: { argb: argb(x.fg) } } : {}) } };
+        if (x.bg) style.fill = { type: "pattern", pattern: "solid", fgColor: { argb: argb(x.bg) } };
+        cell.style = style; // 結合したマスは同じ書式を共有するので、マスごとに新しい書式を入れる
+        if (x.v && !(cell.isMerged && cell.master !== cell)) cell.value = x.v;
+      }
+      // 吹き出しは、マス目の上に重ねる画像にする（Excel では図として動かせる）
+      const { W, H } = layFloorPx(fl), cv = document.createElement("canvas"), k = 2; cv.width = W * k; cv.height = H * k;
+      const ctx = cv.getContext("2d"); ctx.scale(k, k); const boxes = layNoteBoxes(lay, fl, ctx);
+      if (boxes.length) { layDrawNotes(ctx, boxes); const id = wb.addImage({ base64: cv.toDataURL("image/png"), extension: "png" }); ws.addImage(id, { tl: { col: 0, row: 1 }, ext: { width: W, height: H }, editAs: "oneCell" }); }
+    }
+    await dl.save({ filename: layFileName(c, "xlsx"), data: new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }) });
+    say("Excelを出力しました。");
+  } catch (e) { say(e && e.code === "declined" ? "" : e && e.code ? "この表示環境では保存できませんでした。" : "Excelを作成できませんでした。", true); }
+}
+async function exportLayoutPdf(c, say) {
+  const lay = c.layout; if (!lay || !dl) return say("この表示環境では保存できません。", true);
+  say("PDFを作成中…"); const made = [];
+  try {
+    await loadScript(LIB.h2c); await loadScript(LIB.jspdf);
+    try { await document.fonts.ready; } catch (_) {}
+    const pdf = new jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape", compress: true }), title = layoutTitle(c);
+    for (const [i, fl] of lay.floors.entries()) {
+      const { W, H } = layFloorPx(fl), { table } = layTableEl(fl, false); table.style.width = W + "px";
+      const page = h("div", { class: "lay-prev", style: `position:fixed;left:-30000px;top:0;border:0;border-radius:0;display:block;max-height:none;overflow:visible;background:#fff;color:#000;padding:14px 18px;width:${W + 36}px;box-sizing:border-box;font-family:'BIZ UDPGothic','Hiragino Sans','Yu Gothic',Meiryo,sans-serif` },
+        h("div", { style: "font-size:20px;font-weight:700;margin-bottom:8px", text: title + (lay.floors.length > 1 ? "　" + (fl.name || "") : "") }), h("div", { style: `position:relative;width:${W}px;height:${H}px` }, table));
+      document.body.append(page); made.push(page);
+      const k = Math.max(1.5, Math.min(3, 3400 / (W + 36))), shot = await html2canvas(page, { scale: k, backgroundColor: "#ffffff", logging: false, windowWidth: W + 80 }); page.remove();
+      const base = document.createElement("canvas"); base.width = shot.width; base.height = shot.height; base.getContext("2d").drawImage(shot, 0, 0);
+      // 吹き出しは、できあがった画像の上に直接描く（線が確実に出るように）
+      const tb = 18, tt = base.height / k - H - 14, ctx = base.getContext("2d"); ctx.save(); ctx.scale(k, k); ctx.translate(tb, tt); layDrawNotes(ctx, layNoteBoxes(lay, fl, ctx)); ctx.restore();
+      if (i) pdf.addPage("a4", "landscape");
+      const M = 8; let w = 297 - M * 2, hh = (base.height / base.width) * w; if (hh > 210 - M * 2) { hh = 210 - M * 2; w = (base.width / base.height) * hh; }
+      pdf.addImage(base.toDataURL("image/jpeg", 0.92), "JPEG", (297 - w) / 2, M, w, hh);
+    }
+    await dl.save({ filename: layFileName(c, "pdf"), data: pdf.output("blob") });
+    say("PDFを出力しました。");
+  } catch (e) { made.forEach((x) => x.remove()); say(e && e.code === "declined" ? "" : e && e.code ? "この表示環境では保存できませんでした。" : "PDFを作成できませんでした。", true); }
+}
 /** 案件画面の「利用人数」欄。 */
 function partyPanel(c, ch) {
   if (!c.party) c.party = newParty();
@@ -3192,6 +3284,8 @@ ${text}
   cond.open = true; // 条件の欄は開いた状態、AIへの依頼は閉じた状態が初期表示
   const panel = h("div", { class: "panel seat-panel", id: "seat-panel" },
     h("div", { class: "row", style: "gap:6px 10px" }, h("strong", { text: "配席" }), areaInfo, h("span", { style: "margin-left:auto" }),
+      tb("seat-xlsx", "Excel出力", "この配席レイアウトを Excel で保存する", async (e) => { e.target.disabled = true; await exportLayoutXlsx(c, say); e.target.disabled = false; }),
+      tb("seat-pdf", "PDF出力", "この配席レイアウトを PDF（A4横）で保存する", async (e) => { e.target.disabled = true; await exportLayoutPdf(c, say); e.target.disabled = false; }),
       tb("seat-clear", "配席を消す", "配席を消して、店舗のレイアウトに戻す", () => { ed.api.snapshot(); clearSeating(lay); ch(); ed.api.redraw(); info(); say("配席を消して、店舗のレイアウトに戻しました。"); }),
       tb("seat-run", "配席を作成", "条件に従って配席を作成する（前回の配席は作り直されます）", (e) => run(e.target), "primary")),
     groups.length ? null : h("div", { class: "small", style: "color:var(--warn)", text: "利用人数が未入力です。案件画面の「利用人数」に入力してください。" }),
