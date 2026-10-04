@@ -363,6 +363,7 @@ div.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute
 .hl-back mark{background:#ffe45c;color:transparent;border-radius:2px}
 .sb-each{margin:4px 0;padding:4px 6px;border:1px dashed var(--line);border-radius:4px;display:grid;gap:3px} .sb-each .sb-t{font-size:11px;color:var(--muted)}
 .sb-each label{display:grid;grid-template-columns:minmax(0,1fr) 98px;gap:6px;align-items:center;font-size:12px} .sb-each select{padding:2px 4px}
+.unsure,input.unsure,select.unsure,textarea.unsure{background:#fff3a3 !important}
 .srow textarea.risk{color:var(--bad,#c00000);border-color:var(--bad,#c00000);background:#fff4f2} .resp-pick{margin:0 0 4px} .resp-pick+textarea{margin-bottom:4px} .resp-pick label{display:block;font-size:11px;color:var(--muted);margin-bottom:2px}
 .lay-note.un{background:#eef1f5;border-color:#6b7684;border-style:dashed;color:#39424e} .lay-note.un .lay-note-x{color:#6b7684}
 .lay-lines line.un{stroke:#6b7684;stroke-dasharray:4 3} .lay-pin.un{background:#6b7684;box-shadow:0 0 0 1px #6b7684}
@@ -1593,7 +1594,9 @@ function pasteDialog(add) {
 const AI_PROMPT = `あなたは団体旅行の食事手配の担当者を手伝っています。渡された資料（名簿・連絡票・FAX・メールなど）から、食物アレルギーのある人の情報を1人ずつ抜き出してください。
 規則：資料に書かれていることだけを書き写し、推測で補わない。読み取れない項目は空文字にする。食材名は資料の表記のまま書く。外国語で書かれた食材名は訳さず原文のまま書き、すぐ後ろに（）で日本語訳を添える（例：lobster（ロブスター））。「ナッツ類」「甲殻類」のようなまとめた表現や、「味噌」「マヨネーズ」のような食品名も、個別の食材に言い換えずそのまま書く。アレルギーの記載がない人は含めない。選択肢に○や✓を付ける形式の用紙では、印が付いた項目だけを対象にし、印のない選択肢は書かない。手書きで読みにくい文字は、読めた範囲を書いて memo に「判読不明あり（どの項目か）」と書く。remark は、症状に対する応急処置や薬の情報だけを書く欄で、エピペンの所持、持参する薬・服用中の薬、通院中であること、発症時の対応などを、資料に実際に書かれていた内容だけ、説明の言葉（「〜との記載あり」「〜との補足あり」など）を付けずに短く書く（例：「エピペン所持」「抗ヒスタミン薬を持参」「通院中」）。該当する記載がなければ空にする。それ以外の記載（保護者のコメント、食器の希望など）と、読み取った側の注意や確認事項は remark ではなく memo に分けて書く。「微量混入で発症したことがある」に該当する人は seibun を「不可」、「いいえ」の人は「可」とする。1枚に1人の用紙が複数ある場合は、全員分を出力する。
 返答はJSONだけにしてください。形式：
-{"groupName":"団体名（なければ空）","people":[{"year":"学年（数字だけ。例：2。記載がなければ空）","kumi":"組・クラス（例：3組、A組。学年は year に書き、ここには入れない。記載がなければ空）","sex":"男 または 女 または 空","name":"氏名","allergy":"アレルギーの食材を「、」区切り。程度や条件は（）で添える","seibun":"調味料・だし・エキスなど微量成分の摂取について 可 / 不可 / 不明 / 微量不可（同じ厨房での微量の混入も不可）のいずれか。記載がなければ空。食材ごとに違う場合は、いちばん多いものを書く","seibunEach":[{"item":"allergy に書いた食材名（程度や条件の（）は付けない）","value":"可 / 不可 / 不明 / 微量不可"}],"symptom":"アレルギーの症状（じんましん、かゆみ、呼吸困難、アナフィラキシーなど、資料に書かれていた内容だけ）。症状の記載がなければ「不明」","remark":"資料メモ：エピペン所持・持参薬・服用中の薬・通院中など、応急処置や薬の情報（書かれていた内容だけ。なければ空。症状は symptom に書く）","memo":"確認メモ（社内向けの注意）：判読しにくい箇所、確認が必要な点、remark に入らないその他の記載。なければ空"}]}
+{"groupName":"団体名（なければ空）","visitDate":"利用日・食事の日を YYYY-MM-DD で（年が書かれていなければ空）","storeName":"利用する店舗名（なければ空）","courseName":"コース・メニュー名（なければ空）","party":{"classes":[{"year":"学年（数字だけ）","kumi":"組（数字や記号だけ。例：1、A）","male":"男子の人数（数字）","female":"女子の人数（数字）"}],"teacher":"引率・先生の人数","nurse":"看護師の人数","camera":"カメラマンの人数","tour":"添乗員の人数","crew":"乗務員（運転手・ガイド）の人数","others":[{"name":"上のどれにも当たらない区分名","count":"人数"}]},"unclear":["資料全体の項目のうち、読み取りに自信がないものの名前（visitDate / storeName / courseName / party / groupName）"],"people":[{"unclear":["この人の項目のうち、読み取りに自信がないものの名前（year / kumi / sex / name / allergy / seibun / symptom / remark）"],"year":"学年（数字だけ。例：2。記載がなければ空）","kumi":"組・クラス（例：3組、A組。学年は year に書き、ここには入れない。記載がなければ空）","sex":"男 または 女 または 空","name":"氏名","allergy":"アレルギーの食材を「、」区切り。程度や条件は（）で添える","seibun":"調味料・だし・エキスなど微量成分の摂取について 可 / 不可 / 不明 / 微量不可（同じ厨房での微量の混入も不可）のいずれか。記載がなければ空。食材ごとに違う場合は、いちばん多いものを書く","seibunEach":[{"item":"allergy に書いた食材名（程度や条件の（）は付けない）","value":"可 / 不可 / 不明 / 微量不可"}],"symptom":"アレルギーの症状（じんましん、かゆみ、呼吸困難、アナフィラキシーなど、資料に書かれていた内容だけ）。症状の記載がなければ「不明」","remark":"資料メモ：エピペン所持・持参薬・服用中の薬・通院中など、応急処置や薬の情報（書かれていた内容だけ。なければ空。症状は symptom に書く）","memo":"確認メモ（社内向けの注意）：判読しにくい箇所、確認が必要な点、remark に入らないその他の記載。なければ空"}]}
+party は、資料に利用人数（クラスごとの男女の人数、引率などの人数）が書かれているときだけ書く。書かれていない区分は空にし、まったく書かれていなければ classes を空の配列にする。
+unclear には、文字がつぶれている・かすれている・手書きで判読しにくい・複数の読み方ができる・記載が食い違っている・推し量って書いた、のいずれかに当たる項目の名前を入れる。はっきり読めた項目は入れない。空欄をそのまま空にした項目も入れない。
 seibunEach は、食材ごとに可否が分けて書かれているとき（例：A…成分可、B…成分不可、C…微量混入不可）だけ、その食材ぶんを書く。全部同じ、または記載がなければ空の配列にする。
 
 `;
@@ -1612,7 +1615,7 @@ async function runAi(textData, images, add, msgEl, maxImg) {
   const chunks = [];
   if (images && images.length) for (let i = 0; i < images.length; i += Math.max(1, maxImg || 4)) chunks.push(images.slice(i, i + Math.max(1, maxImg || 4)));
   else chunks.push(null);
-  const people = []; let group = "", failed = "";
+  const people = [], meta = { unclear: [] }; let group = "", failed = "";
   for (let i = 0; i < chunks.length; i++) {
     const ch = chunks[i], withText = i === 0 && textData;
     say(`読み取り中です${chunks.length > 1 ? `（${i + 1}/${chunks.length}）` : ""}。1分ほどかかることがあります…`);
@@ -1620,10 +1623,18 @@ async function runAi(textData, images, add, msgEl, maxImg) {
     try {
       const res = await sample.json(AI_PROMPT + intro, { signal: aiCtl.signal, ...(ch ? { images: ch } : {}) });
       for (const p of res && Array.isArray(res.people) ? res.people : []) {
-        const q = { year: String(p.year || "").trim(), kumi: String(p.kumi || ""), sex: normSex(String(p.sex || "")), name: String(p.name || ""), allergy: String(p.allergy || ""), seibun: SEIBUN.includes(p.seibun) ? p.seibun : "", sbMap: sbMapFrom(String(p.allergy || ""), p.seibunEach), symptom: String(p.symptom || "").trim() || "不明", remark: String(p.remark || ""), memo: String(p.memo || "") };
+        const q = { year: String(p.year || "").trim(), kumi: String(p.kumi || ""), sex: normSex(String(p.sex || "")), name: String(p.name || ""), allergy: String(p.allergy || ""), seibun: SEIBUN.includes(p.seibun) ? p.seibun : "", sbMap: sbMapFrom(String(p.allergy || ""), p.seibunEach), unclear: Array.isArray(p.unclear) ? p.unclear.map(String) : [], symptom: String(p.symptom || "").trim() || "不明", remark: String(p.remark || ""), memo: String(p.memo || "") };
         if (q.name || q.allergy) people.push(q);
       }
       if (!group && res && res.groupName) group = String(res.groupName);
+      // 団体の情報（利用日・店舗・コース・利用人数）は、最初に読み取れたものを使う
+      if (res) {
+        if (!meta.visit && /^\d{4}-\d{2}-\d{2}$/.test(String(res.visitDate || ""))) meta.visit = String(res.visitDate);
+        if (!meta.store && res.storeName) meta.store = String(res.storeName).trim();
+        if (!meta.course && res.courseName) meta.course = String(res.courseName).trim();
+        if (!meta.party && res.party && typeof res.party === "object") { const pt = partyFromAi(res.party); if (partyTotal(pt)) meta.party = pt; }
+        if (Array.isArray(res.unclear)) meta.unclear.push(...res.unclear.map(String));
+      }
     } catch (e) {
       if (e && e.code === "cancelled") return;
       failed = AI_ERR[e && e.code] || "読み取りに失敗しました。もう一度お試しください。";
@@ -1632,18 +1643,37 @@ async function runAi(textData, images, add, msgEl, maxImg) {
   }
   if (failed && !people.length) return say(failed);
   if (!people.length && !images) return say("アレルギーの記載を読み取れませんでした。");
-  reviewDialog(people, add, group, failed ? "途中で読み取りが止まりました。ここまでの結果を表示しています。残りはもう一度取り込んでください。（" + failed + "）" : "");
+  reviewDialog(people, add, group, failed ? "途中で読み取りが止まりました。ここまでの結果を表示しています。残りはもう一度取り込んでください。（" + failed + "）" : "", meta);
   return !failed;
 }
-function reviewDialog(people, add, groupName, warn) {
+/** AIが読み取った利用人数を、案件の「利用人数」の形にする。 */
+function partyFromAi(a) {
+  const n = (v) => { const x = num(v); return x ? String(x) : ""; }, d = (v) => half(v).replace(/[年組\s]/g, "");
+  const p = { classes: (Array.isArray(a.classes) ? a.classes : []).map((k) => ({ id: uid("k"), year: d(k && k.year), kumi: d(k && k.kumi), m: n(k && k.male), f: n(k && k.female) })).filter((k) => k.m || k.f), staff: {}, others: [] };
+  for (const [id] of STAFF) if (n(a[id])) p.staff[id] = n(a[id]);
+  for (const o of Array.isArray(a.others) ? a.others : []) if (o && n(o.count)) p.others.push({ id: uid("o"), name: String(o.name || "").trim(), n: n(o.count) });
+  if (!p.classes.length) p.classes.push({ id: uid("k"), year: "", kumi: "", m: "", f: "" });
+  return p;
+}
+function reviewDialog(people, add, groupName, warn, meta) {
+  meta = meta || { unclear: [] };
   const dlg = $("#dlg"); const on = people.map(() => true);
+  // 読み取りに自信がない項目は黄色にする。人が直したら色を消す。
+  const un = (list, key, el) => { if ((list || []).includes(key)) { el.classList.add("unsure"); el.title = "AIが読み取りに自信のない箇所です。原本と照合してください"; const off = () => el.classList.remove("unsure"); el.addEventListener("input", off); el.addEventListener("change", off); } return el; };
   // 案件の店舗・ご利用日・コースも、この画面で決められるようにする（取り込むときに案件へ反映）
   const hd = { store: (draft && draft.storeName) || "", visit: (draft && draft.visitDate) || "", course: draft && S.courses.has(draft.courseId) ? draft.courseId : S.courses.size ? "__" : "" }; // "__" = まだ選んでいない
   const stores = [...S.stores.values()].filter((x) => x.name).sort((a, b) => a.name.localeCompare(b.name, "ja"));
+  // 資料から読み取れた利用日・店舗・コース・利用人数を入れる（案件にすでに入っているものは変えない）
+  const filled = [];
+  if (!hd.visit && meta.visit) { hd.visit = meta.visit; filled.push("visitDate"); }
+  if (!hd.store && meta.store) { const q = norm(meta.store), hit = stores.find((x) => norm(x.name) === q) || ((l) => (l.length === 1 ? l[0] : null))(stores.filter((x) => norm(x.name).includes(q) || q.includes(norm(x.name)))); hd.store = hit ? hit.name : meta.store; filled.push("storeName"); if (!hit) meta.unclear.push("storeName"); }
+  if (hd.course === "__" && meta.course) { const q = norm(meta.course), l = [...S.courses.values()].filter((x) => x.name && (norm(x.name) === q || norm(x.name).includes(q) || q.includes(norm(x.name)))); if (l.length === 1) hd.course = l[0].id; }
+  let usePt = !!(meta.party && draft && !partyTotal(draft.party));
+  const ptText = meta.party ? partyGroups(meta.party).map((g) => `${g.label} ${g.n}名`).join("、") + `（合計 ${partyTotal(meta.party)}名）` : "";
   const head = people.length && draft ? h("div", { class: "fields", id: "rv-head" },
-    field("店舗", h("div", {}, h("input", { id: "rv-store", list: "rv-stores", value: hd.store, placeholder: "店舗名を入力、または候補から選択", autocomplete: "off", oninput: (e) => { hd.store = e.target.value; } }),
+    field("店舗", h("div", {}, un(meta.unclear, "storeName", h("input", { id: "rv-store", list: "rv-stores", value: hd.store, placeholder: "店舗名を入力、または候補から選択", autocomplete: "off", oninput: (e) => { hd.store = e.target.value; } })),
       h("datalist", { id: "rv-stores" }, ...stores.map((x) => h("option", { value: x.name }))))),
-    field("ご利用日", h("input", { id: "rv-visit", type: "date", value: hd.visit, oninput: (e) => { hd.visit = e.target.value; } })),
+    field("ご利用日", un(meta.unclear, "visitDate", h("input", { id: "rv-visit", type: "date", value: hd.visit, oninput: (e) => { hd.visit = e.target.value; } }))),
     field("コース（必須）", h("div", {}, sel([...(hd.course === "__" ? [["__", "コースを選択してください"]] : []), ...[...S.courses.values()].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja")).map((x) => [x.id, (x.name || "（名称未入力）") + (x.approved ? "【上長承認済】" : "")]), ["", "指定なし（共通設定の内容で作成）"]], hd.course, (v) => { hd.course = v; courseHint(); }, { id: "rv-course" }),
       h("div", { class: "small", id: "rv-course-hint", style: "margin-top:4px" })))) : null;
   // コースを選ぶと、そのコースの成分表で注意文と対応を作る。未選択のままだと【要確認】が多くなるので、取り込む前に必ず選んでもらう。
@@ -1658,6 +1688,7 @@ function reviewDialog(people, add, groupName, warn) {
     const name = hd.store.trim(), hit = stores.find((x) => norm(x.name) === norm(name));
     draft.storeName = hit ? hit.name : name; draft.storeId = hit ? hit.id : "";
     draft.visitDate = hd.visit;
+    if (usePt && meta.party) draft.party = clone(meta.party);
     draft.courseId = hd.course === "__" ? "" : hd.course; const m = M(draft.courseId); draft.rows.forEach((r) => regen(r, m));
   };
   const count = h("strong", {});
@@ -1667,22 +1698,26 @@ function reviewDialog(people, add, groupName, warn) {
     h("div", { class: "banner warn", text: "AIによる読み取りです。読み違いがあり得ますので、原本と照合し、この画面で直接修正してから取り込んでください。取り込んだ行には「AI読取」の印が付きます。" }),
     warn ? h("div", { class: "banner bad", text: warn }) : null,
     head,
-    groupName || people.length ? h("label", { class: "row small muted" }, "団体名の記載：", h("input", { id: "rv-group", value: groupName || "", style: "max-width:320px", oninput: (e) => { groupName = e.target.value.trim(); } })) : null,
+    groupName || people.length ? h("label", { class: "row small muted" }, "団体名の記載：", un(meta.unclear, "groupName", h("input", { id: "rv-group", value: groupName || "", style: "max-width:320px", oninput: (e) => { groupName = e.target.value.trim(); } }))) : null,
+    meta.party && draft ? h("label", { class: "row small" + (meta.unclear.includes("party") ? " unsure" : ""), id: "rv-party", style: "gap:8px;align-items:flex-start;padding:4px 6px;border-radius:4px" },
+      h("input", { type: "checkbox", id: "rv-party-on", style: "width:auto;margin-top:3px", checked: usePt, onchange: (e) => { usePt = e.target.checked; } }),
+      h("span", {}, h("strong", { text: "利用人数も取り込む：" }), ptText, partyTotal(draft.party) ? h("span", { class: "muted", text: `　※この案件にはすでに利用人数（合計 ${partyTotal(draft.party)}名）が入っています。チェックすると置き換えます。` }) : null)) : null,
+    people.some((p) => (p.unclear || []).length) || meta.unclear.length ? h("div", { class: "small", id: "rv-unsure-note" }, h("span", { class: "unsure", style: "padding:1px 8px;border-radius:3px;border:1px solid #d9b500", text: "黄色" }), " は、AIが読み取りに自信のない箇所です。原本と照合してください。") : null,
     people.length ? h("div", { class: "scroll", style: "max-height:52vh;overflow-y:auto" }, h("table", { class: "prev rv" },
       h("thead", {}, h("tr", {}, ...["", "年", "組", "性別", "氏名", "アレルギー", "成分可否", "症状", "資料メモ（PDF反映あり）", "確認メモ（社内用・PDF反映なし）"].map((t) => h("th", { text: t })))),
       h("tbody", {}, ...people.map((p, i) => h("tr", {}, h("td", { style: "min-width:0" }, h("input", { id: "rv-" + i, type: "checkbox", style: "width:auto", checked: true, onchange: (e) => { on[i] = e.target.checked; upd(); } })),
-        h("td", {}, h("input", { id: `rv-${i}-year`, "aria-label": "年", value: p.year || "", oninput: (e) => { p.year = e.target.value; } })),
-        h("td", {}, h("input", { id: `rv-${i}-kumi`, "aria-label": "組", value: p.kumi, oninput: (e) => { p.kumi = e.target.value; } })),
-        h("td", {}, sel([["", ""], "男", "女"], p.sex, (v) => { p.sex = v; }, { id: `rv-${i}-sex`, "aria-label": "性別" })),
-        h("td", {}, h("input", { id: `rv-${i}-name`, "aria-label": "氏名", value: p.name, oninput: (e) => { p.name = e.target.value; } })),
-        h("td", {}, h("textarea", { id: `rv-${i}-al`, "aria-label": "アレルギー", rows: 2, value: p.allergy, oninput: (e) => { p.allergy = e.target.value; } })),
-        h("td", {}, sel([["", ""], ...SEIBUN], p.seibun, (v) => { p.seibun = v; }, { id: `rv-${i}-sb`, "aria-label": "成分可否" })),
-        h("td", {}, h("textarea", { id: `rv-${i}-sy`, "aria-label": "症状", rows: 1, value: p.symptom || "不明", oninput: (e) => { p.symptom = e.target.value; } })),
-        h("td", {}, h("textarea", { id: `rv-${i}-rm`, "aria-label": "資料メモ", rows: 2, placeholder: "エピペン所持、薬持参、通院中など", value: p.remark, oninput: (e) => { p.remark = e.target.value; } })),
+        h("td", {}, un(p.unclear, "year", h("input", { id: `rv-${i}-year`, "aria-label": "年", value: p.year || "", oninput: (e) => { p.year = e.target.value; } }))),
+        h("td", {}, un(p.unclear, "kumi", h("input", { id: `rv-${i}-kumi`, "aria-label": "組", value: p.kumi, oninput: (e) => { p.kumi = e.target.value; } }))),
+        h("td", {}, un(p.unclear, "sex", sel([["", ""], "男", "女"], p.sex, (v) => { p.sex = v; }, { id: `rv-${i}-sex`, "aria-label": "性別" }))),
+        h("td", {}, un(p.unclear, "name", h("input", { id: `rv-${i}-name`, "aria-label": "氏名", value: p.name, oninput: (e) => { p.name = e.target.value; } }))),
+        h("td", {}, un(p.unclear, "allergy", h("textarea", { id: `rv-${i}-al`, "aria-label": "アレルギー", rows: 2, value: p.allergy, oninput: (e) => { p.allergy = e.target.value; } }))),
+        h("td", {}, un(p.unclear, "seibun", sel([["", ""], ...SEIBUN], p.seibun, (v) => { p.seibun = v; }, { id: `rv-${i}-sb`, "aria-label": "成分可否" }))),
+        h("td", {}, un(p.unclear, "symptom", h("textarea", { id: `rv-${i}-sy`, "aria-label": "症状", rows: 1, value: p.symptom || "不明", oninput: (e) => { p.symptom = e.target.value; } }))),
+        h("td", {}, un(p.unclear, "remark", h("textarea", { id: `rv-${i}-rm`, "aria-label": "資料メモ", rows: 2, placeholder: "エピペン所持、薬持参、通院中など", value: p.remark, oninput: (e) => { p.remark = e.target.value; } }))),
         h("td", {}, h("textarea", { id: `rv-${i}-mm`, "aria-label": "確認メモ", rows: 2, placeholder: "判読不明、要確認の点など", value: p.memo || "", oninput: (e) => { p.memo = e.target.value; } }))))))) : h("div", { class: "empty", text: "アレルギーの記載を読み取れませんでした。" }),
     h("div", { class: "row" }, count, h("span", { style: "margin-left:auto" }),
       h("button", { type: "button", class: "btn", text: "やめる", onclick: () => dlg.close() }),
-      h("button", { type: "button", class: "btn primary", id: "rv-ok", text: "取り込む", disabled: !people.length, onclick: () => { const list = people.filter((_, i) => on[i]); dlg.close(); if (list.length) { if (groupName && draft && !draft.groupName) draft.groupName = groupName; add(list, true); applyHead(); caseSaver.touch(); render(); } } }))));
+      h("button", { type: "button", class: "btn primary", id: "rv-ok", text: "取り込む", disabled: !people.length, onclick: () => { const list = people.filter((_, i) => on[i]).map((p) => { const q = { ...p }; delete q.unclear; return q; }); dlg.close(); if (list.length) { if (groupName && draft && !draft.groupName) draft.groupName = groupName; add(list, true); applyHead(); caseSaver.touch(); render(); } } }))));
   // 横幅は通常の約1.5倍。右端のつまみをドラッグすると変えられ、閉じるまで（次に開くときも）その幅を保つ。
   const grip = h("div", { class: "dlg-grip", id: "rv-grip", title: "ドラッグして横幅を変更" });
   const clampW = (w) => Math.max(Math.min(640, window.innerWidth - 32), Math.min(window.innerWidth - 32, w));
