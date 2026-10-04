@@ -3130,7 +3130,7 @@ function layTables(fl, area) {
   const seats = new Map(); for (const o of owner.values()) { if (!seats.has(o.i)) seats.set(o.i, []); seats.get(o.i).push({ r: o.r, c: o.c }); }
   const tables = [];
   // エリアを追加した順（エリア1 → エリア2 …）に並べ、同じエリアの中は上から・左からの順
-  cands.map((m, i) => ({ m, i, ai: areaIdx(m) })).filter((x) => seats.get(x.i)).sort((a, b) => a.ai - b.ai).forEach(({ m, i }) => { const ss = seats.get(i); tables.push({ id: "T" + (tables.length + 1), r1: m[0], c1: m[1], r2: m[2], c2: m[3], seats: ss.sort((a, b) => a.c - b.c || a.r - b.r), cap: ss.length }); });
+  cands.map((m, i) => ({ m, i, ai: areaIdx(m) })).filter((x) => seats.get(x.i)).sort((a, b) => a.ai - b.ai).forEach(({ m, i }) => { const ss = seats.get(i); tables.push({ id: "T" + (tables.length + 1), ai: Math.max(0, areaIdx(m)), r1: m[0], c1: m[1], r2: m[2], c2: m[3], seats: ss.sort((a, b) => a.c - b.c || a.r - b.r), cap: ss.length }); });
   return tables;
 }
 /** 案件のレイアウトの上下左右に、空白の行・列を n ずつ足す（吹き出しを置く場所を確保する）。位置を持つものはすべて同じだけずらす。 */
@@ -3169,6 +3169,14 @@ function stripTitle(lay) {
 function layoutTitle(c) {
   const d = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(c.visitDate || "");
   return [(S.stores.get(c.storeId) || {}).name || c.storeName || "", c.groupName || "", d ? `${+d[1]}年${+d[2]}月${+d[3]}日` : ""].filter(Boolean).join("　") || "配席レイアウト";
+}
+/** 卓を「詰める順」に並べ替える。opts は fromR（右から）・fromB（下から）・dirV（縦向き）。指定がなければ左上から横向き。
+    位置が1マスずれているだけの卓は、同じ行・同じ列として扱う。エリアが複数あるときは、エリアの順が先。 */
+function orderTables(tables, opts) {
+  const band = (vals) => { const s = [...new Set(vals)].sort((a, b) => a - b), m = new Map(); let k = 0; s.forEach((v, i) => { if (i && v - s[i - 1] > 1) k++; m.set(v, k); }); return m; };
+  const rb = band(tables.map((x) => x.r1)), cb = band(tables.map((x) => x.c1));
+  const R = (x) => rb.get(x.r1) * (opts.includes("fromB") ? -1 : 1), C = (x) => cb.get(x.c1) * (opts.includes("fromR") ? -1 : 1), v = opts.includes("dirV");
+  return tables.slice().sort((a, b) => (a.ai || 0) - (b.ai || 0) || (v ? C(a) - C(b) || R(a) - R(b) : R(a) - R(b) || C(a) - C(b)));
 }
 /** 前回の配席で書き換えたマスを、店舗レイアウトの状態に戻す（自動で付けた吹き出しも消す）。 */
 function clearSeating(lay) {
@@ -3452,7 +3460,14 @@ function viewCaseLayout() {
   // 初期値：「アレルギー対応者を固める」以外はすべてチェック。依頼文は前回のものを引き継ぐ。
   if (!Array.isArray(lay.opts)) { lay.opts = OPTS.map((o) => o[0]).filter((k) => k !== "altogether"); try { const d = JSON.parse(localStorage.getItem("seatPrompt") || "null"); if (d && !lay.ai) lay.ai = String(d.ai || ""); } catch (_) {} }
   const remember = () => { try { localStorage.setItem("seatPrompt", JSON.stringify({ opts: lay.opts, ai: lay.ai || "" })); } catch (_) {} };
-  const instruction = () => [...OPTS.filter((o) => lay.opts.includes(o[0])).map((o) => "・" + o[2]), (lay.ai || "").trim() ? "・" + lay.ai.trim() : ""].filter(Boolean).join("\n");
+  // 詰め方：左右・上下・向きは、それぞれどちらか一方だけ選べる。選んだ組み合わせを1つの文にして指示に入れ、卓もその順に並べて渡す。
+  const DIRS = [["fromL", "左から詰める", "fromR"], ["fromR", "右から詰める", "fromL"], ["fromT", "上から詰める", "fromB"], ["fromB", "下から詰める", "fromT"], ["dirH", "横向きに詰める", "dirV"], ["dirV", "縦向きに詰める", "dirH"]];
+  const dirText = () => {
+    if (!DIRS.some((d) => lay.opts.includes(d[0]))) return "";
+    const hz = lay.opts.includes("fromR") ? "右" : "左", vt = lay.opts.includes("fromB") ? "下" : "上", oh = hz === "左" ? "右" : "左", ov = vt === "上" ? "下" : "上";
+    return lay.opts.includes("dirV") ? `卓は${hz}${vt}の角から始め、縦向き（${vt}から${ov}へ）に詰める。1列が埋まったら${oh}隣の列へ進む` : `卓は${hz}${vt}の角から始め、横向き（${hz}から${oh}へ）に詰める。1行が埋まったら${ov}の行へ進む`;
+  };
+  const instruction = () => [...OPTS.filter((o) => lay.opts.includes(o[0])).map((o) => "・" + o[2]), dirText() ? "・" + dirText() : "", (lay.ai || "").trim() ? "・" + lay.ai.trim() : ""].filter(Boolean).join("\n");
   const preview = h("div", { class: "small muted", id: "seat-prompt", style: "white-space:pre-wrap" });
   const showPrompt = () => { const t = instruction(); preview.textContent = t ? "AIへ送る指示：\n" + t : "条件が選ばれていないため、AIを使わず標準の並べ方（クラス・男女ごとに卓を分け、職員等は最後）で作成します。"; };
   /** 「アレルギー対応者を固める」のときは、対応者を元の区分から切り出して別の区分にする。 */
@@ -3499,7 +3514,7 @@ function viewCaseLayout() {
       return;
     }
     ed.api.snapshot(); clearSeating(lay); // 前回の配席を消してから卓を探す
-    const tables = layTables(fl, areaOf()); if (!tables.length) { ed.api.redraw(); return say("卓が見つかりません。卓（四角）の隣に席の印（○）があるレイアウトで、配席エリアを確かめてください。", true); }
+    const tables = orderTables(layTables(fl, areaOf()), lay.opts); if (!tables.length) { ed.api.redraw(); return say("卓が見つかりません。卓（四角）の隣に席の印（○）があるレイアウトで、配席エリアを確かめてください。", true); }
     const text = instruction(); remember();
     if (!text) return finish(fl, tables, seatDefault(tables, groups).plan, "条件が選ばれていないため、標準の並べ方（クラス・男女ごとに卓を分け、職員等は最後）で作成しました。");
     const gs = seatGroups();
@@ -3508,7 +3523,7 @@ function viewCaseLayout() {
     try {
       const allergy = lay.opts.includes("altogether") ? [] : (c.rows || []).filter((r) => (r.name || "").trim() && (r.allergy || "").trim()).map((r) => { const g = groupOfRow(r, groups); return g ? `${g.key}に1名` : ""; }).filter(Boolean);
       const res = await sample.json(`飲食店の団体予約の配席を作ります。卓の一覧と、座る人の区分ごとの人数、担当者からの指示を渡します。指示に従って、どの卓にどの区分を何名座らせるかを決めてください。
-規則：各卓の人数は定員（cap）以内。各区分の合計は、渡した人数とちょうど同じにする（席が足りない場合だけ、入り切らない分を残してよい）。指示にないことは、同じ区分を近い卓にまとめ、できるだけ1つの卓に1つの区分にする。卓の位置は row（上からの行）と col（左からの列）で、数字が近いほど近くにある。
+規則：各卓の人数は定員（cap）以内。各区分の合計は、渡した人数とちょうど同じにする（席が足りない場合だけ、入り切らない分を残してよい）。指示にないことは、同じ区分を近い卓にまとめ、できるだけ1つの卓に1つの区分にする。卓の一覧は、使う順（詰める順）に並べてある。詰め方の指示があるときは、この並び順のとおりに前から卓を使う。卓の位置は row（上からの行）と col（左からの列）で、数字が近いほど近くにある。
 卓：${JSON.stringify(tables.map((t) => ({ id: t.id, cap: t.cap, row: t.r1 + 1, col: t.c1 + 1 })))}
 区分：${JSON.stringify(gs.map((g) => ({ key: g.key, name: g.ai || g.label, count: g.n })))}
 ${allergy.length ? "食物アレルギー対応者のいる区分：" + allergy.join("、") + "\n" : ""}担当者からの指示：
@@ -3532,7 +3547,12 @@ ${text}
     h("div", { class: "stack", style: "gap:8px;padding-top:8px" },
       groups.length ? h("div", { class: "row", id: "seat-legend", style: "gap:4px 8px" }, ...groups.map((g) => h("span", { class: "lay-chip", style: `background:${g.color}`, text: `${g.label} ${g.n}名` }))) : null,
       h("div", { class: "row", id: "seat-opts", style: "gap:4px 16px" }, ...OPTS.map(([k, label]) => h("label", { class: "row small", style: "gap:6px;cursor:pointer" },
-        h("input", { type: "checkbox", id: "seat-o-" + k, style: "width:auto", checked: lay.opts.includes(k), onchange: (e) => { lay.opts = OPTS.map((o) => o[0]).filter((x) => (x === k ? e.target.checked : lay.opts.includes(x))); ch(); showPrompt(); sumText(); } }), label))),
+        h("input", { type: "checkbox", id: "seat-o-" + k, style: "width:auto", checked: lay.opts.includes(k), onchange: (e) => { lay.opts = [...OPTS, ...DIRS].map((o) => o[0]).filter((x) => (x === k ? e.target.checked : lay.opts.includes(x))); ch(); showPrompt(); sumText(); } }), label))),
+      h("div", { class: "row", id: "seat-dirs", style: "gap:4px 16px" }, ...DIRS.map(([k, label, other]) => h("label", { class: "row small", style: "gap:6px;cursor:pointer" },
+        h("input", { type: "checkbox", id: "seat-o-" + k, style: "width:auto", checked: lay.opts.includes(k), onchange: (e) => {
+          lay.opts = [...OPTS, ...DIRS].map((o) => o[0]).filter((x) => (x === k ? e.target.checked : x === other && e.target.checked ? false : lay.opts.includes(x)));
+          const o = $("#seat-o-" + other); if (o && e.target.checked) o.checked = false; // 反対向きは同時に選べない
+          ch(); showPrompt(); sumText(); } }), label))),
       h("details", { class: "seat-cond", id: "seat-ai-box" }, aiSum,
         h("div", { class: "stack", style: "gap:6px;padding-top:6px" },
           h("textarea", { id: "seat-ai", rows: 2, "aria-label": "AIに依頼する", value: lay.ai || "", placeholder: "条件のほかに頼みたいことを自由に記入　例：1年1組から順に左上から並べる。先生は入口に近い卓にする。", oninput: (e) => { lay.ai = e.target.value; ch(); showPrompt(); sumText(); } }),
