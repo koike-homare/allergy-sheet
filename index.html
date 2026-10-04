@@ -2611,7 +2611,15 @@ const pjDate = (iso) => { const m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(iso || "
 const PJ_AREA = { KANSAI: "関西", KIX: "関西", HANEDA: "羽田", HND: "羽田", NARITA: "成田", NRT: "成田", CHUBU: "中部", NGO: "中部", FUKUOKA: "福岡", FUK: "福岡", CHITOSE: "新千歳", CTS: "新千歳", NAHA: "那覇", OKA: "那覇", KOBE: "神戸", ITAMI: "伊丹" };
 /** フォルダ・ファイルの名前：「2026.10.6 A7CGH - Aeroworks1 関西」の形（オーダーナンバーの先頭の「JAPAN-」は省く）。 */
 const pjName = (c) => [pjDate(c.visitDate), String(c.flight || "").replace(/\s*[（(].*$/, ""), c.orderNo ? "- " + String(c.orderNo).replace(/^JAPAN\s*-\s*/i, "") : "", PJ_AREA[String(c.area || "").trim().toUpperCase()] || c.area].filter(Boolean).join(" ") || "PJ案件";
-const PJ_PACKS = ["オーブン対応容器", "電子レンジ対応容器"];
+const PJ_PACKS = ["オーブン対応容器", "電子レンジ対応容器", "オーブン対応アルミ容器", "弁当箱"];
+/** 依頼全体の梱包容器の指定（表の下などに書かれる OVEN TIN など）を日本語にする。見つからなければ空の配列。 */
+function pjPackNote(text) {
+  const out = [], s = String(text || "");
+  if (/oven\s*-?\s*(tin|tray|safe|proof|able)|alumin(i)?um|foil\s*(tin|tray|container)/i.test(s)) out.push("オーブン対応アルミ容器");
+  if (/microwav/i.test(s)) out.push("電子レンジ対応容器");
+  if (/bento/i.test(s) || /弁当/.test(s)) out.push("弁当箱");
+  return out;
+}
 function viewPj() {
   const list = [...S.cases.values()].filter((c) => c.kind === "pj").sort((a, b) => (b.visitDate || "9").localeCompare(a.visitDate || "9") || (b.updatedAt || "").localeCompare(a.updatedAt || ""));
   const file = h("input", { type: "file", id: "pj-file", accept: ".pdf,.xlsx,.xls,.csv,.tsv,.txt,image/*", multiple: true, hidden: true, onchange: (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) pjImport(fs); } });
@@ -2690,7 +2698,7 @@ ${texts.length ? "資料：\n" + texts.join("\n\n").slice(0, 60000) : "添付の
     let hd = {};
     try {
       hd = await sample.json(`プライベートジェットのケータリング依頼の、見出し部分と品目の一部です。次の項目を読み取ってください。書かれていない項目は空文字にし、推測で補わない。
-返答はJSONだけ。形式：{"date":"利用日を YYYY-MM-DD で","flight":"フライトナンバー（機体記号を含む。例：HRT389 (C-FGGH)）","orderNo":"オーダーナンバー（例：JAPAN- IAJ1）","area":"配達エリア（例：KANSAI）","time":"配達時間（例：11:30）","place":"受け渡し場所","contact":"担当者氏名","phone":"電話番号","notesEn":"特記事項の原文。SPECIAL NOTES の記載に加えて、品目の見出しなどに書かれたアレルギー・食べられないもの・NO PORK・NO ALCOHOL などの注意も、原文のまま改行区切りで入れる","notesJa":"notesEn の日本語訳（厨房の担当者に伝わる、簡潔で正確な日本語。1文ずつ改行）","extra":"人数など、そのほかの補足を日本語で（なければ空）"}
+返答はJSONだけ。形式：{"date":"利用日を YYYY-MM-DD で","flight":"フライトナンバー（機体記号を含む。例：HRT389 (C-FGGH)）","orderNo":"オーダーナンバー（例：JAPAN- IAJ1）","area":"配達エリア（例：KANSAI）","time":"配達時間（例：11:30）","place":"受け渡し場所","contact":"担当者氏名","phone":"電話番号","notesEn":"特記事項の原文。SPECIAL NOTES の記載に加えて、品目の見出しなどに書かれたアレルギー・食べられないもの・NO PORK・NO ALCOHOL などの注意も、原文のまま改行区切りで入れる","notesJa":"notesEn の日本語訳（厨房の担当者に伝わる、簡潔で正確な日本語。1文ずつ改行）","extra":"乗客・乗員の人数など、料理を用意するうえで必要な補足を日本語で。なければ空（「記載なし」などの説明は書かない。梱包容器のことも書かない）"}
 見出し部分：
 ${top.slice(0, 6000)}
 品目の見出し：
@@ -2719,10 +2727,14 @@ ${foot.slice(0, 2000)}`, opt());
     }
     const items = rows.map((x, i) => { const t = out.get(i) || {}, qty = String(t.qty != null && String(t.qty).trim() !== "" ? t.qty : x.qty || "");
       return x.sec ? { id: uid("i"), sec: true, en: x.en, ja: String(t.ja || "") } : { id: uid("i"), en: x.en, ja: String(t.ja || ""), qty, qty0: String(x.qty || ""), instr: x.instr || "", instrJa: String(t.instrJa || ""), pack: PJ_PACKS.includes(t.pack) ? t.pack : String(t.pack || ""), ...(t.pj ? { pj: true } : {}) }; });
+    // 梱包容器：依頼全体への指定（表の下・見出し部分・特記事項）があれば特記事項に追記し、なければ「梱包容器未定」と書く
+    const packs = pjPackNote([foot, top, hd.notesEn].join("\n")), packSrc = foot.split("\n").filter((l) => pjPackNote(l).length), footRest = foot.split("\n").filter((l) => l.trim() && !pjPackNote(l).length).join("\n");
+    hd.notesEn = [String(hd.notesEn || "").trim(), ...packSrc.filter((l) => !String(hd.notesEn || "").includes(l))].filter(Boolean).join("\n");
+    hd.notesJa = [String(hd.notesJa || "").trim(), packs.length ? "梱包容器：" + packs.join("、") : "梱包容器未定"].filter(Boolean).join("\n");
     const s = (v) => String(v == null ? "" : v).trim(), dm = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s(hd.date)) || /(\d{4})[./-](\d{1,2})[./-](\d{1,2})/.exec(top);
     dlg.close();
     pjOpen({ visitDate: dm ? `${dm[1]}-${String(dm[2]).padStart(2, "0")}-${String(dm[3]).padStart(2, "0")}` : "", flight: s(hd.flight), orderNo: s(hd.orderNo), area: s(hd.area), time: s(hd.time), place: s(hd.place), contact: s(hd.contact), phone: s(hd.phone),
-      notesEn: s(hd.notesEn), notesJa: s(hd.notesJa), extra: [s(hd.extra), foot ? "表の下の記載：" + foot : ""].filter(Boolean).join("\n"), items, srcName: files.map((f) => f.name).join("、"), ai: true });
+      notesEn: s(hd.notesEn), notesJa: s(hd.notesJa), extra: [s(hd.extra), footRest ? "表の下の記載：" + footRest : ""].filter(Boolean).join("\n"), items, srcName: files.map((f) => f.name).join("、"), ai: true });
     toast(failed ? "一部の行は和訳できませんでした。空欄の行を確認してください" : `${items.filter((x) => !x.sec).length}品目を読み取りました。内容を原本と照合してください`);
   } catch (e) {
     if (e && e.code === "cancelled") return;
