@@ -437,6 +437,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" id="bell" title="特定原材料のお知らせ" hidden><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span>お知らせ</span><b id="bell-n"></b></button>
     <nav id="nav" hidden>
       <button type="button" data-v="list">案件</button>
+      <button type="button" data-v="layouts">レイアウト作成</button>
       <button type="button" data-v="stores">店舗マスタ</button>
       <button type="button" data-v="courses">コース成分表</button>
       <button type="button" data-v="spec">特定原材料</button>
@@ -1017,6 +1018,7 @@ function startData() {
     S.got.cases = true;
     if (first) render();
     else if (view.name === "list") renderListBody();
+    else if (view.name === "layouts") render();
     else if (view.name === "case" && draft) {
       const r = S.cases.get(draft.id);
       if (r && r.editedBy !== clientId && r.updatedAt !== draft.updatedAt && !caseSaver.busy) { draft = clone(r); render(); toast("他の方の変更を反映しました"); }
@@ -1162,7 +1164,9 @@ $("#open-settings").addEventListener("click", async () => {
   approvalDialog("共通設定を開く", "共通設定の閲覧・変更には、上長承認のパスワードが必要です。", () => go({ name: "settings" }));
 });
 function render() {
-  const cur = view.name === "case" || view.name === "clayout" ? "list" : view.name === "layout" ? "stores" : view.name;
+  // 「レイアウト作成」で作ったもの（kind:"layout"）は、案件と同じ仕組みで保存するが、メニューは別にする
+  const isLayCase = (view.name === "case" || view.name === "clayout") && ((draft && draft.id === view.id ? draft : S.cases.get(view.id)) || {}).kind === "layout";
+  const cur = view.name === "case" || view.name === "clayout" ? (isLayCase ? "layouts" : "list") : view.name === "layout" ? "stores" : view.name;
   for (const b of $("#nav").children) { if (b.dataset.v === cur) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); }
   const app = $("#app");
   $("#nav").hidden = authState !== "open"; $("#logout").hidden = authState !== "open" || !dataKey;
@@ -1173,6 +1177,7 @@ function render() {
   const top = localOnly ? [h("div", { class: "banner warn", text: "共有データに接続できていません。この画面で入力した内容は、閉じると消えます。" })]
     : readOnly ? [h("div", { class: "banner info", text: "閲覧専用で共有されています。内容の確認とPDFの出力はできますが、ここで入力・変更した内容は保存されません。編集するには、このページの持ち主に「編集」の権限で共有してもらってください。" })] : [];
   if (view.name === "list") app.replaceChildren(...top, ...viewList());
+  else if (view.name === "layouts") app.replaceChildren(...top, ...viewLayouts());
   else if (view.name === "case") app.replaceChildren(...top, ...viewCase());
   else if (view.name === "stores") app.replaceChildren(...top, ...viewStores());
   else if (view.name === "courses") app.replaceChildren(...top, ...viewCourses());
@@ -1203,10 +1208,10 @@ function caseNeeds(c) { const st = M(c.courseId); return (c.rows || []).filter((
 function renderListBody() {
   const box = $("#listbody"); if (!box) return;
   const q = norm(listQuery);
-  const list = [...S.cases.values()].filter((c) => !q || norm(c.groupName + (S.stores.get(c.storeId)?.name || "") + (c.storeName || "")).includes(q))
+  const list = [...S.cases.values()].filter((c) => c.kind !== "layout").filter((c) => !q || norm(c.groupName + (S.stores.get(c.storeId)?.name || "") + (c.storeName || "")).includes(q))
     .sort((a, b) => (b.visitDate || "9").localeCompare(a.visitDate || "9") || (b.updatedAt || "").localeCompare(a.updatedAt || ""));
   if (!list.length) {
-    box.replaceChildren(h("div", { class: "empty" }, S.cases.size ? "該当する案件がありません。" : "まだ案件がありません。「新しい案件を作る」から、団体ごとの対応シートを作成します。"));
+    box.replaceChildren(h("div", { class: "empty" }, [...S.cases.values()].some((c) => c.kind !== "layout") ? "該当する案件がありません。" : "まだ案件がありません。「新しい案件を作る」から、団体ごとの対応シートを作成します。"));
     return;
   }
   const tb = h("tbody");
@@ -1254,8 +1259,63 @@ let exportArmed = false;
 function newRow(p = {}) {
   return { id: uid("r"), special: "", kumi: "", sex: "", name: "", allergy: "", seibun: "", element: "", response: "", year: "", symptom: "", remark: "", memo: "", elementAuto: true, responseAuto: true, ...p };
 }
+/* ---------- レイアウト作成（対応シートを作らず、配席レイアウトだけを作る） ---------- */
+function viewLayouts() {
+  const list = [...S.cases.values()].filter((c) => c.kind === "layout").sort((a, b) => (b.visitDate || "9").localeCompare(a.visitDate || "9") || (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+  const tb = h("tbody");
+  for (const c of list) tb.append(h("tr", { class: "click", onclick: () => go({ name: "case", id: c.id }) },
+    h("td", { text: c.visitDate ? c.visitDate.replace(/-/g, "/") : "—" }), h("td", {}, h("strong", { text: c.locked ? c.groupName : c.groupName || "（団体名未入力）" })),
+    h("td", { text: S.stores.get(c.storeId)?.name || c.storeName || "—" }), h("td", { text: partyTotal(c.party) ? partyTotal(c.party) + "名" : "—" }),
+    h("td", {}, c.layout && Object.keys(c.layout.orig || {}).length ? h("span", { class: "pill ok", text: "配席済み" }) : h("span", { class: "pill plain", text: "未配席" })),
+    h("td", { class: "muted small", text: c.updatedAt ? c.updatedAt.slice(0, 10).replace(/-/g, "/") : "" })));
+  return [
+    h("div", { class: "row" }, h("h2", { text: "レイアウト作成" }),
+      h("button", { type: "button", class: "btn primary", id: "lay-new", style: "margin-left:auto", text: "新しいレイアウトを作る", onclick: () => { const id = uid("c"); view = { name: "case", id }; draft = { id, kind: "layout", groupName: "", visitDate: "", storeId: "", storeName: "", createdDate: today(), rows: [] }; render(); } })),
+    h("div", { class: "muted small", style: "max-width:90ch", text: "アレルギー対応シートを作らずに、配席レイアウトだけを作ります。店舗を選び、利用人数を入力（または資料を取り込み）してから、レイアウトを開いて配席エリアを指定し、配席を作成します。" }),
+    h("div", { class: "panel scroll", id: "laylist", style: "padding:4px 8px" }, list.length
+      ? h("table", { class: "list" }, h("thead", {}, h("tr", {}, ...["ご利用日", "団体名", "店舗", "利用人数", "状態", "更新"].map((x) => h("th", { text: x })))), tb)
+      : h("div", { class: "empty", text: "まだレイアウトがありません。「新しいレイアウトを作る」から作成します。" })),
+  ];
+}
+function viewLayoutCase(c) {
+  const ch = () => caseSaver.touch(), aiOk = !!sample;
+  const stores = [...S.stores.values()].filter((x) => x.name).sort((a, b) => a.name.localeCompare(b.name, "ja")), hasLay = (id) => !!((S.layouts.get(id) || {}).floors || []).length;
+  const body = h("div", {});
+  const inp = (r, key, ph, w) => h("input", { id: r.id + "-" + key, value: r[key] || "", placeholder: ph || "", style: w ? `width:${w}px` : "", "aria-label": ph, oninput: (e) => { r[key] = e.target.value; ch(); } });
+  const drawRows = () => body.replaceChildren(...(c.rows.length ? [h("table", { class: "prev", id: "lc-rows" },
+    h("thead", {}, h("tr", {}, ...["年", "組", "性別", "氏名", "アレルギー", "吹き出しに書く対応（任意）", ""].map((x) => h("th", { text: x })))),
+    h("tbody", {}, ...c.rows.map((r) => h("tr", {},
+      h("td", {}, inp(r, "year", "年", 52)), h("td", {}, inp(r, "kumi", "組", 70)),
+      h("td", {}, sel([["", ""], "男", "女"], r.sex, (v) => { r.sex = v; ch(); }, { id: r.id + "-sex", "aria-label": "性別", style: "width:64px" })),
+      h("td", {}, inp(r, "name", "氏名")), h("td", {}, inp(r, "allergy", "例：えび、かに")), h("td", {}, inp(r, "final", "例：低アレルゲンコース")),
+      h("td", {}, confirmBtn("×", "削除", () => { c.rows.splice(c.rows.indexOf(r), 1); drawRows(); ch(); }, "x"))))))]
+    : [h("div", { class: "empty", text: "アレルギー対応者はまだいません。いなければ、このままで構いません（★と吹き出しが付かないだけです）。" })]));
+  const addPeople = (people) => { for (const p of people) c.rows.push(newRow({ ...p, final: "" })); drawRows(); ch(); toast(`${people.length}名を追加しました`); };
+  const fileAny = h("input", { type: "file", id: "f-any", accept: ".pdf,.xlsx,.xls,.csv,.tsv,.txt,image/*", multiple: true, hidden: true, onchange: (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) importAny(fs, addPeople); } });
+  drawRows();
+  return [
+    h("div", {}, h("button", { type: "button", class: "linkbtn", text: "← レイアウト一覧", onclick: () => go({ name: "layouts" }) })),
+    h("div", { class: "panel fields", id: "lc-head" },
+      field("店舗（レイアウトを登録済みの店舗）", h("div", {}, sel([["", "店舗を選択してください"], ...stores.map((x) => [x.id, x.name + (hasLay(x.id) ? "" : "（レイアウト未登録）")]), ...(c.storeId || !c.storeName ? [] : [["__", c.storeName + "（店舗マスタにない店舗名）"]])], c.storeId || (c.storeName ? "__" : ""), (v) => { if (v === "__") return; c.storeId = v; c.storeName = v ? S.stores.get(v).name : ""; ch(); render(); }, { id: "c-store" }),
+        c.layout && c.layout.storeId !== c.storeId ? h("div", { class: "small", style: "color:var(--warn);margin-top:4px", text: "作成済みのレイアウトは、変更前の店舗のものです。レイアウトを開くと、今の店舗のレイアウトで作り直せます。" }) : null)),
+      field("団体名", h("input", { id: "c-group", value: c.groupName, placeholder: "例：○○高等学校", oninput: (e) => { c.groupName = e.target.value; ch(); } })),
+      field("ご利用日", h("input", { id: "c-visit", type: "date", value: c.visitDate, oninput: (e) => { c.visitDate = e.target.value; ch(); } }))),
+    partyPanel(c, ch),
+    h("div", { class: "panel drop", id: "drop",
+      ondragover: (e) => { e.preventDefault(); e.currentTarget.classList.add("over"); }, ondragleave: (e) => e.currentTarget.classList.remove("over"),
+      ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove("over"); const fs = [...(e.dataTransfer?.files || [])]; if (fs.length) importAny(fs, addPeople); } },
+      h("div", { class: "row" }, h("h3", { text: "データ取込" }), h("span", { text: aiOk ? "資料（PDF・Excel・CSV・画像）をここにドロップすると、AIが利用人数とアレルギー対応者を読み取ります。手で入力する場合は、上の「利用人数」と下の表に入力します。" : "この表示環境ではAIの読み取りが使えません。上の「利用人数」と下の表に手で入力してください。" })),
+      h("div", { class: "row" }, aiOk ? h("button", { type: "button", class: "btn primary", text: "ファイルを選択", onclick: () => fileAny.click() }) : null,
+        aiOk ? h("button", { type: "button", class: "btn", text: "テキスト貼り付け", onclick: () => pasteDialog(addPeople) }) : null,
+        h("button", { type: "button", class: "btn", id: "lc-add", text: "アレルギー対応者を1名追加", onclick: () => { c.rows.push(newRow()); drawRows(); ch(); } }), fileAny)),
+    h("div", { class: "panel stack" }, h("h3", { text: "アレルギー対応者（配席で★と吹き出しを付ける人）" }), h("div", { class: "scroll" }, body)),
+    h("div", { class: "row" }, h("span", { class: "muted small", text: "配席エリアの指定と配席の作成は、「利用人数」の「レイアウト作成（レイアウトを開く）」から行います。" }), h("span", { style: "margin-left:auto" }),
+      confirmBtn("このレイアウトを削除", "本当に削除する", async () => { const id = c.id; draft = null; S.cases.delete(id); try { if (db) await db.doc("cases/" + id).delete(); } catch (_) { toast("削除できませんでした"); } go({ name: "layouts" }); })),
+  ];
+}
 function viewCase() {
   if (!draft) { const c = S.cases.get(view.id); if (!c) return [h("div", { class: "empty" }, "この案件は見つかりません。")]; if (c.locked) return [h("div", { class: "banner bad", text: "この案件は現在のパスワードの鍵では開けません。" })]; draft = clone(c); draft.rows ||= []; }
+  if (draft.kind === "layout") return viewLayoutCase(draft);
   const c = draft, store = M(c.courseId), storeRec = S.stores.get(c.storeId);
   const bar = h("div", { class: "stack", id: "exportbar", style: "gap:6px" });
   const ch = () => { exportArmed = false; caseSaver.touch(); drawBar(); };
@@ -1750,7 +1810,7 @@ function reviewDialog(people, add, groupName, warn, meta) {
   const same = people.map((p) => (nameKey(p.name) && have.has(nameKey(p.name)) ? draft.rows.filter((r) => nameKey(r.name) === nameKey(p.name)) : []));
   const dup = same.map((l) => l.length > 0), on = people.map((_, i) => !dup[i]);
   const oldLine = (r) => [[r.year ? half(r.year) + "年" : "", r.kumi || ""].join(""), r.sex || "", r.name || "", "／ " + (r.allergy || "（アレルギーの記載なし）"), r.seibun ? "／ 成分" + r.seibun : ""].filter(Boolean).join(" ");
-  const hasMeta = !!(draft && (meta.visit || meta.store || meta.party));
+  const hasMeta = !!(draft && (meta.visit || meta.store || meta.party)), isLay = !!(draft && draft.kind === "layout"); // レイアウトだけ作るときは、コースを選ばない
   // 読み取りに自信がない項目は黄色にする。人が直したら色を消す。
   const un = (list, key, el) => { if ((list || []).includes(key)) { el.classList.add("unsure"); el.title = "AIが読み取りに自信のない箇所です。原本と照合してください"; const off = () => el.classList.remove("unsure"); el.addEventListener("input", off); el.addEventListener("change", off); } return el; };
   // 案件の店舗・ご利用日・コースも、この画面で決められるようにする（取り込むときに案件へ反映）
@@ -1767,14 +1827,14 @@ function reviewDialog(people, add, groupName, warn, meta) {
     field("店舗", h("div", {}, un(meta.unclear, "storeName", h("input", { id: "rv-store", list: "rv-stores", value: hd.store, placeholder: "店舗名を入力、または候補から選択", autocomplete: "off", oninput: (e) => { hd.store = e.target.value; } })),
       h("datalist", { id: "rv-stores" }, ...stores.map((x) => h("option", { value: x.name }))))),
     field("ご利用日", un(meta.unclear, "visitDate", h("input", { id: "rv-visit", type: "date", value: hd.visit, oninput: (e) => { hd.visit = e.target.value; } }))),
-    field("コース（必須）", h("div", {}, sel([...(hd.course === "__" ? [["__", "コースを選択してください"]] : []), ...[...S.courses.values()].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja")).map((x) => [x.id, (x.name || "（名称未入力）") + (x.approved ? "【上長承認済】" : "")]), ["", "指定なし（共通設定の内容で作成）"]], hd.course, (v) => { hd.course = v; courseHint(); }, { id: "rv-course" }),
+    isLay ? null : field("コース（必須）", h("div", {}, sel([...(hd.course === "__" ? [["__", "コースを選択してください"]] : []), ...[...S.courses.values()].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja")).map((x) => [x.id, (x.name || "（名称未入力）") + (x.approved ? "【上長承認済】" : "")]), ["", "指定なし（共通設定の内容で作成）"]], hd.course, (v) => { hd.course = v; courseHint(); }, { id: "rv-course" }),
       h("div", { class: "small", id: "rv-course-hint", style: "margin-top:4px" })))) : null;
   // コースを選ぶと、そのコースの成分表で注意文と対応を作る。未選択のままだと【要確認】が多くなるので、取り込む前に必ず選んでもらう。
   const courseHint = () => {
     const el = $("#rv-course-hint"), ok = $("#rv-ok"); if (!el) return;
     el.style.color = hd.course ? "var(--muted)" : "var(--warn)";
     el.textContent = hd.course === "__" ? "コースを選ぶと、そのコースの成分表で注意文と対応を作成します。" : hd.course ? "このコースの成分表で注意文と対応を作成します。" : "コースの成分表を使わないため、成分表にない食材は【要確認】になります。";
-    if (ok) ok.disabled = people.length ? hd.course === "__" : !hasMeta; // 人数や利用日だけの資料は、コースを選ばなくても取り込める
+    if (ok) ok.disabled = people.length ? !isLay && hd.course === "__" : !hasMeta; // 人数や利用日だけの資料は、コースを選ばなくても取り込める
   };
   const applyHead = () => {
     if (!head || !draft) return;
@@ -1782,7 +1842,7 @@ function reviewDialog(people, add, groupName, warn, meta) {
     draft.storeName = hit ? hit.name : name; draft.storeId = hit ? hit.id : "";
     draft.visitDate = hd.visit;
     if (usePt && meta.party) draft.party = clone(meta.party);
-    draft.courseId = hd.course === "__" ? "" : hd.course; const m = M(draft.courseId); draft.rows.forEach((r) => regen(r, m));
+    if (!isLay) { draft.courseId = hd.course === "__" ? "" : hd.course; const m = M(draft.courseId); draft.rows.forEach((r) => regen(r, m)); }
   };
   const count = h("strong", {});
   const upd = () => { const k = on.filter(Boolean).length; count.textContent = k ? `${k}名を取り込みます` : hasMeta ? "店舗・ご利用日・利用人数だけを取り込みます" : "0名を取り込みます"; };
@@ -1815,7 +1875,7 @@ function reviewDialog(people, add, groupName, warn, meta) {
     dup.some(Boolean) ? h("div", { class: "small", id: "rv-dup-note", style: "color:var(--warn)", text: `同じ氏名の人がこの案件にすでにいる${dup.filter(Boolean).length}名は、登録済みの内容を下に表示しています。「取り込まない」か「別人として取り込む」を選んでください（初めは「取り込まない」）。同じ人の内容が変わった場合は、案件の画面でその人の行を直してください。` }) : null,
     h("div", { class: "row" }, count, h("span", { style: "margin-left:auto" }),
       h("button", { type: "button", class: "btn", text: "やめる", onclick: () => dlg.close() }),
-      h("button", { type: "button", class: "btn primary", id: "rv-ok", text: "取り込む", disabled: !(people.length || hasMeta), onclick: () => { const list = people.filter((_, i) => on[i]).map((p) => { const q = { ...p }; delete q.unclear; return q; }); dlg.close(); if (list.length || hasMeta) { if (groupName && draft && !draft.groupName) draft.groupName = groupName; if (list.length) add(list, true); applyHead(); caseSaver.touch(); render(); if (!list.length) toast("店舗・ご利用日・利用人数を取り込みました"); } } }))));
+      h("button", { type: "button", class: "btn primary", id: "rv-ok", text: "取り込む", disabled: !(people.length || hasMeta) || (!isLay && people.length > 0 && hd.course === "__"), onclick: () => { const list = people.filter((_, i) => on[i]).map((p) => { const q = { ...p }; delete q.unclear; return q; }); dlg.close(); if (list.length || hasMeta) { if (groupName && draft && !draft.groupName) draft.groupName = groupName; if (list.length) add(list, true); applyHead(); caseSaver.touch(); render(); if (!list.length) toast("店舗・ご利用日・利用人数を取り込みました"); } } }))));
   // 横幅は通常の約1.5倍。右端のつまみをドラッグすると変えられ、閉じるまで（次に開くときも）その幅を保つ。
   const grip = h("div", { class: "dlg-grip", id: "rv-grip", title: "ドラッグして横幅を変更" });
   const clampW = (w) => Math.max(Math.min(640, window.innerWidth - 32), Math.min(window.innerWidth - 32, w));
@@ -3371,7 +3431,7 @@ function partyPanel(c, ch) {
 /** 案件ごとのレイアウト画面：店舗のレイアウトを写し、利用人数から配席を作る。 */
 function viewCaseLayout() {
   if (!draft) { const c0 = S.cases.get(view.id); if (!c0 || c0.locked) return [h("div", { class: "empty", text: "この案件は見つかりません。" })]; draft = clone(c0); }
-  const c = draft, ch = () => caseSaver.touch(), back = h("div", {}, h("button", { type: "button", class: "linkbtn", text: "← 案件に戻る", onclick: () => go({ name: "case", id: c.id }) }));
+  const c = draft, ch = () => caseSaver.touch(), back = h("div", {}, h("button", { type: "button", class: "linkbtn", text: c.kind === "layout" ? "← 利用人数の入力に戻る" : "← 案件に戻る", onclick: () => go({ name: "case", id: c.id }) }));
   const base = S.layouts.get(c.storeId), fresh = () => padLayout(stripTitle({ storeId: c.storeId, floors: clone(base.floors), notes: [], areas: [], orig: {}, ai: (c.layout && c.layout.ai) || "", ...(c.layout && Array.isArray(c.layout.opts) ? { opts: c.layout.opts } : {}) }));
   if (!c.layout) {
     if (!base || !(base.floors || []).length) return [back, h("div", { class: "banner warn", text: "この店舗にはレイアウトが登録されていません。店舗マスタの「レイアウト」で登録してください。" })];
@@ -3501,7 +3561,7 @@ window.addEventListener("drop", (e) => e.preventDefault());
 (function init() {
   const hsh = (location.hash || "").slice(1);
   if (hsh.startsWith("case-")) view = { name: "case", id: hsh.slice(5) };
-  else if (["stores", "courses", "spec"].includes(hsh)) view = { name: hsh };
+  else if (["stores", "courses", "spec", "layouts"].includes(hsh)) view = { name: hsh };
   boot();
 })();
 </script>
