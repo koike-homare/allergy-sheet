@@ -458,7 +458,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <span id="save"></span>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 107</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 110</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -2933,6 +2933,7 @@ function viewPjSheet(c) {
       h("button", { type: "button", class: "btn", id: "pj-sync", text: "シートから読み直す", title: "利用日・フライトナンバーなど、一覧に出す項目をスプレッドシートから読み直す", onclick: () => sync(false) }),
       h("button", { type: "button", class: "btn", id: "pj-hist", text: "変更履歴", title: "いつ・だれが・どのセルを・何から何に変えたかを見る", onclick: async (e) => { e.target.disabled = true; const ok = await sync(true); e.target.disabled = false; say(""); pjHistDialog(c, ok ? "" : "今のスプレッドシートを読めなかったため、前回までの記録を表示しています（Google にログインすると、最新の直接編集も記録されます）。"); } }),
       h("span", { style: "margin-left:auto" }),
+      h("button", { type: "button", class: "btn", id: "pj-deliv", text: "検品・納品書", title: "クライアントへ渡す検品・納品書を PDF（A4縦）で保存する。取り消した品目（取り消し線の行）は載せません", onclick: async (e) => { e.target.disabled = true; await pjDeliveryPdf(c, say); drawHead(); e.target.disabled = false; } }),
       xBtn, pBtn,
       h("a", { class: "btn", href: url, target: "_blank", rel: "noopener", id: "pj-open", text: "別タブで開く" }),
       c.drive.folderUrl ? h("a", { class: "btn", href: c.drive.folderUrl, target: "_blank", rel: "noopener", text: "フォルダを開く" }) : null, file),
@@ -2952,6 +2953,67 @@ function pjChangeText(c, say, done) {
   dlg.showModal(); ta.focus();
 }
 /** 変更の依頼を読み、今のシートと比べた変更点をAIに出させ、確認の画面を出す。 */
+/* ----- PJ管理：検品・納品書（クライアントへ渡す PDF・A4縦） -----
+   今のスプレッドシートを読み、取り消し線の行（取り消した品目）を除いて作る。受領サインの欄は1ページ目の右上。 */
+async function pjDeliveryPdf(c, say) {
+  if (!dl) return say("この表示環境では保存できません。", true);
+  const made = [];
+  try {
+    say("スプレッドシートを読んでいます…"); const sh = await pjSheetRead(c); pjTakeHead(c, sh);
+    if (sh.hi < 0) return say("スプレッドシートに「Catering Item」の行が見つかりません。表の見出しを消していないか確かめてください。", true);
+    const fm = await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${c.drive.sheetId}?ranges=${encodeURIComponent("'" + sh.main.title.replace(/'/g, "''") + "'!A1:A800")}&fields=${encodeURIComponent("sheets(data(rowData(values(effectiveFormat(textFormat(strikethrough))))))")}`);
+    const rd = ((((fm.sheets || [])[0] || {}).data || [])[0] || {}).rowData || [], struck = (r) => !!((((rd[r] || {}).values || [])[0] || {}).effectiveFormat || {}).textFormat?.strikethrough;
+    const rows = sh.rows.filter((x) => !struck(x.r)); if (!rows.some((x) => !x.sec)) return say("スプレッドシートに品目がありません。", true);
+    say("検品・納品書を作成中…"); await loadScript(LIB.h2c); await loadScript(LIB.jspdf); try { await document.fonts.ready; } catch (_) {}
+    const NV = "#1b3358", LN = "#c9d1dc", PW = 794, PH = 1123, PAD = 46, FOOT = 46;
+    const ja = (t) => { const en = pjEn(t), all = String(t || "").trim(); return all.length > en.length ? all.slice(all.indexOf(en) + en.length).trim() : ""; };
+    const two = (t, big) => { const e = pjEn(t), j = ja(t); return [h("div", { style: `font-size:${big ? 11.5 : 10.5}px;font-weight:${big ? 600 : 400};color:#111;white-space:pre-wrap;line-height:1.35`, text: e }), j ? h("div", { style: `font-size:${big ? 11 : 9.5}px;color:${big ? "#222" : "#55606e"};white-space:pre-wrap;line-height:1.35;margin-top:${big ? 2 : 1}px`, text: j }) : null]; };
+    const lab = (en, j) => h("div", { style: "font-size:8.5px;letter-spacing:.06em;color:#6b7684;text-transform:uppercase;white-space:nowrap" }, en, h("span", { style: "margin-left:5px;letter-spacing:0", text: j }));
+    const hd = sh.head, info = [["Date", "利用日", hd.visitDate ? hd.visitDate.replace(/-/g, ".") : ""], ["Flight No.", "フライトナンバー", hd.flight], ["Order No.", "オーダーナンバー", hd.orderNo], ["Delivery Area", "配達エリア", hd.area], ["Delivery Time", "配達時間", hd.time]];
+    const th = (en, j, w, al) => h("th", { style: `border-bottom:1.5px solid ${NV};padding:6px 6px 5px;text-align:${al || "left"};vertical-align:bottom;${w ? "width:" + w + "px;" : ""}font-weight:600` }, h("div", { style: `font-size:8.5px;letter-spacing:.06em;color:${NV};text-transform:uppercase`, text: en }), h("div", { style: "font-size:8.5px;color:#6b7684;font-weight:400", text: j }));
+    const pages = [], today = new Date(), p2 = (n) => String(n).padStart(2, "0");
+    const newPage = () => {
+      const first = !pages.length, body = h("tbody");
+      const table = h("table", { style: "width:100%;border-collapse:collapse;table-layout:fixed;margin-top:" + (first ? 16 : 12) + "px" }, h("thead", {}, h("tr", {}, th("Check", "検品", 38, "center"), th("Catering Item", "品目"), th("Qty", "数量", 46, "center"), th("Special Instructions", "特記事項", 196), th("Packing", "梱包容器", 124))), body);
+      const top = first ? [
+        h("div", { style: "display:flex;gap:24px;align-items:flex-start" },
+          h("div", { style: "flex:1;min-width:0" },
+            h("div", { style: `font-size:21px;font-weight:700;letter-spacing:.05em;color:${NV};line-height:1.15`, text: "DELIVERY & INSPECTION NOTE" }),
+            h("div", { style: "font-size:12.5px;color:#333;margin-top:3px;letter-spacing:.12em", text: "検品・納品書" }),
+            h("div", { style: `height:2px;background:${NV};width:64px;margin:10px 0 12px` }),
+            h("div", { style: "display:grid;grid-template-columns:auto 1fr;column-gap:14px;row-gap:5px;align-items:baseline" }, ...info.flatMap(([en, j, v]) => [lab(en, j), h("div", { style: "font-size:12px;font-weight:600;color:#111", text: v || "—" })]))),
+          h("div", { style: `width:262px;border:1px solid ${NV};flex:none` },
+            h("div", { style: `background:${NV};color:#fff;font-size:9.5px;letter-spacing:.1em;padding:5px 10px;font-weight:600` }, "RECEIVED BY", h("span", { style: "margin-left:8px;letter-spacing:.05em;font-weight:400", text: "受領サイン" })),
+            ...[["Date & Time", "受領日時", 30], ["Signature", "サイン", 78]].map(([en, j, hh], i) => h("div", { style: `height:${hh}px;padding:4px 10px;${i ? "border-top:1px solid " + LN : ""}` }, lab(en, j))),
+            h("div", { style: `border-top:1px solid ${LN};padding:5px 10px;font-size:8px;color:#55606e;line-height:1.45` }, "Please check each item upon receipt and sign above.", h("br"), "各品目をご確認のうえ、ご署名をお願いいたします。"))),
+        (() => { const nt = String(sh.notes || "").split("\n").slice(1).join("\n").trim(); return nt ? h("div", { style: `margin-top:14px;border-left:3px solid ${NV};background:#f4f6f9;padding:7px 12px` }, lab("Special Notes", "特記事項"), h("div", { style: "font-size:10.5px;color:#111;white-space:pre-wrap;line-height:1.45;margin-top:3px", text: nt })) : null; })(),
+      ] : [h("div", { style: `display:flex;align-items:baseline;gap:12px;border-bottom:1px solid ${LN};padding-bottom:7px` }, h("div", { style: `font-size:12px;font-weight:700;letter-spacing:.05em;color:${NV}`, text: "DELIVERY & INSPECTION NOTE" }), h("div", { style: "font-size:10px;color:#333", text: "検品・納品書" }), h("div", { style: "margin-left:auto;font-size:10px;color:#333", text: [hd.visitDate && hd.visitDate.replace(/-/g, "."), hd.flight, hd.orderNo].filter(Boolean).join("　/　") }))];
+      const inner = h("div", {}, ...top.filter(Boolean), table), pno = h("span", {});
+      const page = h("div", { style: `position:fixed;left:-30000px;top:0;width:${PW}px;height:${PH}px;box-sizing:border-box;padding:${PAD}px ${PAD}px 0;background:#fff;color:#111;overflow:hidden;font-family:'BIZ UDPGothic','Hiragino Sans','Yu Gothic',Meiryo,sans-serif` }, inner,
+        h("div", { style: `position:absolute;left:${PAD}px;right:${PAD}px;bottom:22px;border-top:1px solid ${LN};padding-top:6px;display:flex;font-size:8.5px;color:#6b7684` }, h("span", { text: "株式会社HASSIN" }), h("span", { style: "margin-left:14px", text: `Issued 発行日 ${today.getFullYear()}.${today.getMonth() + 1}.${today.getDate()}` }), h("span", { style: "margin-left:auto" }, pno)));
+      document.body.append(page); made.push(page); const pg = { page, inner, body, pno }; pages.push(pg); return pg;
+    };
+    const td = (kids, st) => h("td", { style: `border-bottom:1px solid ${LN};padding:6px 6px;vertical-align:top;${st || ""}` }, ...[].concat(kids).filter(Boolean));
+    const rowEl = (x) => x.sec
+      ? h("tr", {}, h("td", { colspan: "5", style: `background:#eef2f7;border-bottom:1px solid ${LN};padding:5px 8px;font-size:10px;font-weight:700;letter-spacing:.04em;color:${NV}`, text: x.a.replace(/\n/g, "　") }))
+      : h("tr", {}, td(h("div", { style: "width:14px;height:14px;border:1px solid #5b6675;margin:1px auto 0" })), td(two(x.a, true)), td(h("div", { style: "font-size:12px;font-weight:700;text-align:center", text: x.b })), td(two(x.c)), td(h("div", { style: "font-size:10px;color:#111;white-space:pre-wrap;line-height:1.35", text: x.d })));
+    const fits = (pg) => pg.inner.getBoundingClientRect().height <= PH - PAD - FOOT;
+    let pg = newPage();
+    for (let i = 0; i < rows.length; i++) {
+      const x = rows[i], tr = rowEl(x); pg.body.append(tr);
+      // 見出しだけがページの最後に残らないよう、見出しは次の品目と一緒に送る
+      let nx = null; if (x.sec && rows[i + 1] && !rows[i + 1].sec) { nx = rowEl(rows[i + 1]); pg.body.append(nx); }
+      if (!fits(pg) && pg.body.children.length > (nx ? 2 : 1)) { tr.remove(); if (nx) nx.remove(); pg = newPage(); pg.body.append(tr); if (nx) pg.body.append(nx); }
+      if (nx) i++;
+    }
+    pages.forEach((q, i) => { q.pno.textContent = `Page ${i + 1} / ${pages.length}`; });
+    const pdf = new jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "portrait", compress: true });
+    for (const [i, q] of pages.entries()) { const shot = await html2canvas(q.page, { scale: 2.5, backgroundColor: "#ffffff", logging: false, windowWidth: PW + 80 }); q.page.remove(); if (i) pdf.addPage("a4", "portrait"); pdf.addImage(shot.toDataURL("image/jpeg", 0.93), "JPEG", 0, 0, 210, 297); }
+    await dl.save({ filename: ("検品・納品書 " + pjName(c)).replace(/[\\/:*?"<>|]/g, "") + ".pdf", data: pdf.output("blob") });
+    say(`検品・納品書を出力しました（${pages.length}ページ）。`);
+  } catch (e) { made.forEach((x) => x.remove()); say(e && e.code === "declined" ? "" : e && e.code ? "この表示環境では保存できませんでした。" : String((e && e.message) || "検品・納品書を作成できませんでした。"), true); }
+}
+
 /* ----- PJ管理：変更履歴 -----
    取り込みによる変更は、反映した時点で「いつ・だれが・どのセルを・何から何に」をそのまま記録する。
    シートを直接編集した分は、Google がセル単位の記録を外へ出さないため、T-CORE がシートを読むたびに内容を控え（snap）、前回との違いを記録する。
