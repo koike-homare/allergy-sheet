@@ -466,7 +466,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <span id="save"></span>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 126</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 127</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -2138,7 +2138,11 @@ function renderStoreList() {
   const sq = norm(storeQuery);
   const list = [...S.stores.values()].filter((x) => !sq || norm(x.name).includes(sq)).sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja"));
   box.replaceChildren(...list.map((x) => h("div", { class: "nrow" },
-    h("input", { id: "sn-" + x.id, value: x.name || "", "aria-label": "店舗名", placeholder: "店舗名", onchange: (e) => { const v = e.target.value.trim(); if (v !== (x.name || "")) saveStore({ id: x.id, name: v }); } }),
+    h("input", { id: "sn-" + x.id, value: x.name || "", "aria-label": "店舗名", placeholder: "店舗名", onchange: (e) => { const v = e.target.value.trim();
+      // 店舗名を空にすると一覧や候補から見えなくなるため、空では保存しない（消すときは × で削除する）
+      if (!v && x.name) { e.target.value = x.name; return toast("店舗名は空にできません。店舗を消すときは、右の × を使ってください"); }
+      if (v && [...S.stores.values()].some((y) => y.id !== x.id && norm(y.name) === norm(v))) { e.target.value = x.name || ""; return toast("同じ名前の店舗が登録済みです"); }
+      if (v !== (x.name || "")) saveStore({ ...x, name: v }); } }),
     h("button", { type: "button", class: "btn sm", "data-lay": x.id, text: (S.layouts.get(x.id)?.floors || []).length ? "レイアウト ✓" : "レイアウト", title: "この店舗の座席レイアウトを作成・編集", onclick: () => go({ name: "layout", id: x.id }) }),
     confirmBtn("×", "削除", async () => { S.stores.delete(x.id); try { if (db) { await db.doc("stores/" + x.id).delete(); if (S.layouts.has(x.id)) await db.doc("layouts/" + x.id).delete(); } } catch (_) { toast("削除できませんでした"); } render(); }, "x"))));
   if (!list.length) box.append(h("div", { class: "empty", text: S.stores.size ? "該当する店舗がありません。" : "店舗がまだありません。下の欄から追加してください。" }));
