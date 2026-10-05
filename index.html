@@ -355,6 +355,7 @@ div.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute
 .lay-wrap table{border-collapse:collapse;table-layout:fixed;background:#fff;color:#000;user-select:none;cursor:cell}
 .lay-canvas{position:relative;display:inline-block;padding:10px;color:#000}
 .lay-over{position:absolute;inset:0;pointer-events:none}
+.lay-under{position:absolute;opacity:.3;pointer-events:none;object-fit:fill}
 .lay-area{position:absolute;border:2px dashed #d97706;background:rgba(217,119,6,.06);box-sizing:border-box}
 .lay-area-n{position:absolute;left:0;top:-17px;font-size:11px;font-weight:700;color:#b45309;background:#fff7e6;border:1px solid #d97706;border-radius:3px;padding:0 5px;line-height:15px;white-space:nowrap}
 .lay-area-x{position:absolute;right:-1px;top:-18px;width:17px;height:17px;border:1px solid #d97706;border-radius:3px;background:#fff7e6;color:#b45309;font-size:12px;line-height:1;padding:0;cursor:pointer;pointer-events:auto}
@@ -466,7 +467,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <span id="save"></span>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 127</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 128</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -3669,6 +3670,95 @@ async function importLayoutXlsx(file) {
   return { floors, cut };
 }
 
+/** AIが図面から読み取った卓・席・文字（位置は 0〜1000 の割合）を、マス目の階に直す。卓＝太枠の四角、席＝隣の○。W,H は図面の縦横比に使う。 */
+function layFromDraw(spec, name, W, H) {
+  const ar = (H || 1) / (W || 1), CELL = 22, fr = (v) => Math.max(0, Math.min(1, (+v || 0) / 1000)), cnt = (v) => Math.max(0, Math.min(30, Math.round(+v || 0)));
+  const ts = (Array.isArray(spec && spec.tables) ? spec.tables : []).map((t) => ({ x: fr(t.x), y: fr(t.y), w: fr(t.w), h: fr(t.h), label: String(t.label == null ? "" : t.label).trim().slice(0, 12), s: [cnt(t.top), cnt(t.right), cnt(t.bottom), cnt(t.left)] })).filter((t) => t.w > 0 && t.h > 0 && t.s.some(Boolean)).sort((p, q) => p.y - q.y || p.x - q.x);
+  const maxN = Math.max(10, Math.floor(Math.min(LAY.maxC - 4, (LAY.maxR - 4) / ar)));
+  let N = Math.min(40, maxN);
+  for (const t of ts) N = Math.max(N, Math.ceil(Math.max(1, t.s[0], t.s[2]) / t.w * 0.9), Math.ceil(Math.max(1, t.s[1], t.s[3]) / (t.h * ar) * 0.9));
+  N = Math.min(N, maxN);
+  const K = (r, c) => r + "," + c, OFF = []; for (let dr = -8; dr <= 8; dr++) for (let dc = -8; dc <= 8; dc++) OFF.push([dr, dc]); OFF.sort((p, q) => (p[0] * p[0] + p[1] * p[1]) - (q[0] * q[0] + q[1] * q[1]));
+  let fl, skipped;
+  for (;;) {
+    const cols = N + 4, rows = Math.max(6, Math.ceil(N * ar) + 4), used = new Set(), near = new Set(); skipped = 0;
+    fl = { id: uid("f"), name, rows, cols, cw: Array(cols).fill(CELL), rh: Array(rows).fill(CELL), cells: {}, merges: [] };
+    for (const t of ts) {
+      const w = Math.max(1, t.s[0], t.s[2], Math.round(t.w * N)), hh = Math.max(1, t.s[1], t.s[3], Math.round(t.h * N * ar));
+      const r0 = Math.round((t.y + t.h / 2) * N * ar + 2 - hh / 2), c0 = Math.round((t.x + t.w / 2) * N + 2 - w / 2);
+      const seatsAt = (r1, c1) => { const out = [], r2 = r1 + hh - 1, c2 = c1 + w - 1, along = (k, len, fn) => { for (let i = 0; i < k; i++) fn(Math.floor((i + 0.5) * len / k)); };
+        along(t.s[0], w, (i) => out.push([r1 - 1, c1 + i])); along(t.s[2], w, (i) => out.push([r2 + 1, c1 + i])); along(t.s[3], hh, (i) => out.push([r1 + i, c1 - 1])); along(t.s[1], hh, (i) => out.push([r1 + i, c2 + 1])); return out; };
+      const ok = (r1, c1) => { const r2 = r1 + hh - 1, c2 = c1 + w - 1; if (r1 < 1 || c1 < 1 || r2 > rows - 2 || c2 > cols - 2) return false;
+        for (let r = r1 - 1; r <= r2 + 1; r++) for (let c = c1 - 1; c <= c2 + 1; c++) if (used.has(K(r, c))) return false;
+        return seatsAt(r1, c1).every(([r, c]) => !near.has(K(r, c))); };
+      const hit = OFF.find(([dr, dc]) => ok(r0 + dr, c0 + dc)); if (!hit) { skipped++; continue; }
+      const r1 = r0 + hit[0], c1 = c0 + hit[1], r2 = r1 + hh - 1, c2 = c1 + w - 1;
+      for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) { fl.cells[K(r, c)] = { bd: [r === r1 ? 2 : 0, c === c2 ? 2 : 0, r === r2 ? 2 : 0, c === c1 ? 2 : 0].join("") }; used.add(K(r, c)); }
+      if (r1 !== r2 || c1 !== c2) fl.merges.push([r1, c1, r2, c2]); else fl.cells[K(r1, c1)].bd = "2222";
+      if (t.label) Object.assign(fl.cells[K(r1, c1)], { v: t.label, fs: 10 });
+      for (let r = r1 - 1; r <= r2 + 1; r++) for (let c = c1 - 1; c <= c2 + 1; c++) near.add(K(r, c));
+      for (const [r, c] of seatsAt(r1, c1)) { fl.cells[K(r, c)] = { v: "○" }; used.add(K(r, c)); }
+    }
+    if (!skipped || N >= maxN) {
+      // 部屋の外枠（細い線）。卓や席のマスには線を足すだけで、中身は変えない
+      for (const m of Array.isArray(spec && spec.rooms) ? spec.rooms : []) {
+        const r1 = Math.max(0, Math.round(fr(m.y) * N * ar) + 2), c1 = Math.max(0, Math.round(fr(m.x) * N) + 2), r2 = Math.min(rows - 1, Math.round((fr(m.y) + fr(m.h)) * N * ar) + 1), c2 = Math.min(cols - 1, Math.round((fr(m.x) + fr(m.w)) * N) + 1);
+        if (r2 - r1 < 2 || c2 - c1 < 2) continue;
+        const line = (r, c, side) => { const k = K(r, c), x = fl.cells[k] || (fl.cells[k] = {}), d = (x.bd || "0000").split(""); if (d[side] === "0") d[side] = "1"; x.bd = d.join(""); };
+        for (let c = c1; c <= c2; c++) { line(r1, c, 0); line(r2, c, 2); } for (let r = r1; r <= r2; r++) { line(r, c1, 3); line(r, c2, 1); }
+      }
+      // 卓以外の文字（入口・厨房・部屋の名前など）。空いているマスにだけ置く
+      for (const m of Array.isArray(spec && spec.labels) ? spec.labels : []) {
+        const text = String(m.text == null ? "" : m.text).trim().slice(0, 20); if (!text) continue;
+        const len = Math.max(1, Math.min(cols - 2, Math.ceil(text.length * 13 / CELL))), r = Math.max(0, Math.min(rows - 1, Math.round(fr(m.y) * N * ar) + 2)), c = Math.max(0, Math.min(cols - len, Math.round(fr(m.x) * N) + 2 - Math.floor(len / 2)));
+        let free = true; for (let cc = c; cc < c + len; cc++) { const x = fl.cells[K(r, cc)]; if (used.has(K(r, cc)) || (x && x.v) || fl.merges.some((g) => r >= g[0] && r <= g[2] && cc >= g[1] && cc <= g[3])) free = false; }
+        if (!free) continue;
+        fl.cells[K(r, c)] = { ...(fl.cells[K(r, c)] || {}), v: text, fs: 11 }; if (len > 1) fl.merges.push([r, c, r, c + len - 1]);
+      }
+      fl.under = { x: 2 * CELL, y: 2 * CELL, w: N * CELL, h: Math.round(N * ar * CELL) };
+      break;
+    }
+    N = Math.min(maxN, Math.ceil(N * 1.2));
+  }
+  const found = layTables(fl), seats = found.reduce((n, t) => n + t.cap, 0);
+  return { floor: fl, tables: found.length, seats, skipped, want: ts.length, wantSeats: ts.reduce((n, t) => n + t.s.reduce((p, q) => p + q, 0), 0) };
+}
+const LAY_DRAW_PROMPT = `飲食店の座席レイアウトの図面（画像）です。配席に使うため、卓（テーブル・カウンター・座卓）と席の数を読み取ってください。
+規則：
+・位置と大きさは、画像の左上を(0,0)、右下を(1000,1000)とした数値で答える。x,y は卓の左上、w,h は卓の幅と高さ（椅子は含めない、卓の天板だけ）。
+・卓ごとに、上・右・下・左の各辺に付いている席（椅子・座布団）の数を top,right,bottom,left に入れる。席が描かれていない辺は 0。
+・丸い卓は、外接する四角として答え、席は近い辺に振り分ける。カウンターは細長い1つの卓として答え、客が座る側の辺に席数を入れる。
+・席が描かれておらず「4名」「6人」のように人数だけ書かれている卓は、その人数を長い辺の両側に振り分ける。
+・卓に書かれた番号や名前（例：A1、3番、桜）は label に入れる。なければ空文字。
+・席のない台（配膳台・レジ・厨房の作業台など）は tables に入れない。
+・壁で区切られた部屋（個室・座敷・ホールなど）が分かる場合は rooms に外枠を入れる。分からなければ空の配列。
+・卓以外の文字（入口、厨房、トイレ、階段、部屋の名前など）は labels に、文字の中心の位置を入れる。
+・図に描かれていないものを推測で足さない。読み取れない部分は note に書く。
+返答はJSONだけ。形式：{"name":"階や図面の名前（分かれば。例：1F）","tables":[{"x":0,"y":0,"w":0,"h":0,"label":"","top":0,"right":0,"bottom":0,"left":0}],"rooms":[{"x":0,"y":0,"w":0,"h":0}],"labels":[{"x":0,"y":0,"text":""}],"note":"気づいた点を1〜2文で"}`;
+/** PDF・画像の図面をAIが読み、ページごとに1つの階として取り込む。元の図面は「下絵」として階に持たせる（見比べ用。案件には写さない）。 */
+async function importLayoutDraw(file, say) {
+  if (!sample) throw new Error("この表示環境ではAIの読み取りが使えません。");
+  const pages = [];
+  if (isPdf(file)) {
+    await loadScript(LIB.pdf); await loadScript(LIB.pdfw); const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer(), isEvalSupported: false }).promise;
+    for (let n = 1; n <= Math.min(pdf.numPages, 5); n++) { const page = await pdf.getPage(n), base = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: Math.min(3, 2000 / Math.max(base.width, base.height)) }); const cv = h("canvas", { width: Math.round(vp.width), height: Math.round(vp.height) }); const cx = cv.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, cv.width, cv.height); await page.render({ canvasContext: cx, viewport: vp }).promise; pages.push(cv); }
+    if (pdf.numPages > 5) say.cut = true;
+  } else {
+    const bm = await createImageBitmap(file), k = Math.min(1, 2000 / Math.max(bm.width, bm.height)), cv = h("canvas", { width: Math.round(bm.width * k), height: Math.round(bm.height * k) }); const cx = cv.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(bm, 0, 0, cv.width, cv.height); pages.push(cv);
+  }
+  const out = [];
+  for (const [i, cv] of pages.entries()) {
+    say(`AIが図面を読んでいます…${pages.length > 1 ? `（${i + 1}/${pages.length}）` : ""}　1分ほどかかることがあります`);
+    const blob = await new Promise((ok) => cv.toBlob(ok, "image/jpeg", 0.9));
+    const spec = await sample.json(LAY_DRAW_PROMPT, { images: [blob] });
+    const res = layFromDraw(spec || {}, String((spec && spec.name) || "").trim().slice(0, 20) || (pages.length > 1 ? `${i + 1}ページ` : "1F"), cv.width, cv.height);
+    const k = Math.min(1, 900 / Math.max(cv.width, cv.height)), sm = h("canvas", { width: Math.round(cv.width * k), height: Math.round(cv.height * k) }); sm.getContext("2d").drawImage(cv, 0, 0, sm.width, sm.height);
+    res.floor.under.src = sm.toDataURL("image/jpeg", 0.5); res.note = String((spec && spec.note) || "").trim();
+    out.push(res);
+  }
+  return out;
+}
+
 /** 階1枚ぶんのマス目（table）を作る。編集画面と、案件画面のプレビューの両方で使う。grid=false なら薄い目盛り線を出さない。 */
 function layTableEl(fl, grid) {
   const K = (r, c) => r + "," + c, BD = [grid ? "1px dotted #cfd5df" : "0", "1px solid #222", "2px solid #111"];
@@ -3718,7 +3808,8 @@ function layoutEditor(doc, onChange, opts = {}) {
   const txt = h("input", { id: "lay-text", placeholder: "選んだマスの文字（ここに入力）", autocomplete: "off" });
   const pos = h("span", { class: "small muted", id: "lay-pos", style: "min-width:64px" });
   const wIn = h("input", { id: "lay-cw", type: "number", min: "6", max: "400", style: "width:64px", "aria-label": "列の幅" }), hIn = h("input", { id: "lay-rh", type: "number", min: "6", max: "400", style: "width:64px", "aria-label": "行の高さ" });
-  const file = h("input", { type: "file", id: "lay-file", accept: ".xlsx", hidden: true });
+  const file = h("input", { type: "file", id: "lay-file", accept: ".xlsx,.pdf,image/*", hidden: true });
+  let underOn = true;
   wrap.tabIndex = 0;
   const txtBox = h("div", { style: "flex:1;min-width:220px" }, txt);
   const unPop = h("div", { class: "lay-unpop", id: "lay-unpop", role: "alert", hidden: true });
@@ -3742,7 +3833,7 @@ function layoutEditor(doc, onChange, opts = {}) {
 
   function draw() {
     const fl = F(); drawTabs();
-    if (!fl) { bar.hidden = txtBox.hidden = pos.hidden = true; wrap.replaceChildren(h("div", { class: "empty", text: "この店舗のレイアウトはまだありません。「Excelから読み込む」か「階を追加」から作成してください。" })); return; }
+    if (!fl) { bar.hidden = txtBox.hidden = pos.hidden = true; wrap.replaceChildren(h("div", { class: "empty", text: "この店舗のレイアウトはまだありません。「ファイルから読み込む」（Excel・PDF・画像）か「階を追加」から作成してください。" })); return; }
     bar.hidden = txtBox.hidden = pos.hidden = false;
     const made = layTableEl(fl, true), table = made.table; tds = made.tds; table.id = "lay-table";
     const canvas = h("div", { class: "lay-canvas", id: "lay-canvas" }, table, overlay()); canvas.style.zoom = zoom;
@@ -3756,6 +3847,7 @@ function layoutEditor(doc, onChange, opts = {}) {
   const Y = (r) => { const fl = F(); let y = PAD; for (let i = 0; i < r; i++) y += fl.rh[i]; return y; };
   function overlay() {
     const fl = F(), layer = h("div", { class: "lay-over" });
+    if (fl.under && fl.under.src && underOn) layer.append(h("img", { class: "lay-under", id: "lay-under", src: fl.under.src, alt: "", style: `left:${PAD + fl.under.x}px;top:${PAD + fl.under.y}px;width:${fl.under.w}px;height:${fl.under.h}px` }));
     layer.append(mvH);
     /** 吹き出しと席の結び付きを外す。配席で★にした席は、ほかの吹き出しが指していなければ○に戻す。 */
     const unlink = (n) => {
@@ -3927,7 +4019,9 @@ function layoutEditor(doc, onChange, opts = {}) {
       ? h("span", { class: "lay-tab on" }, h("input", { id: "lay-name", value: x.name || "", "aria-label": "階の名前", placeholder: "階の名前（例：1F）", onchange: (e) => { x.name = e.target.value.trim() || "階" + (i + 1); onChange(); } }))
       : h("button", { type: "button", class: "lay-tab", text: x.name || "階" + (i + 1), onclick: () => { fi = i; a = { r: 0, c: 0 }; f = { r: 0, c: 0 }; draw(); } })),
       h("button", { type: "button", class: "btn sm", id: "lay-add", text: "＋ 階を追加", onclick: () => { doc.floors.push(newFloor((doc.floors.length + 1) + "F")); fi = doc.floors.length - 1; a = { r: 0, c: 0 }; f = { r: 0, c: 0 }; onChange(); draw(); } }),
-      h("button", { type: "button", class: "btn sm", id: "lay-xlsx", text: "Excelから読み込む", onclick: () => file.click() }),
+      h("button", { type: "button", class: "btn sm", id: "lay-xlsx", text: "ファイルから読み込む", title: "Excel・PDF・画像（写真）から読み込む。PDF・画像はAIが図面を読んで卓と席を作ります", onclick: () => file.click() }),
+      fl && fl.under && fl.under.src ? h("button", { type: "button", class: "btn sm", id: "lay-under-btn", text: underOn ? "下絵を隠す" : "下絵を表示", title: "読み込んだ元の図面を、薄く重ねて見比べる", onclick: () => { underOn = !underOn; draw(); } }) : null,
+      fl && fl.under && fl.under.src ? confirmBtn("下絵を消す", "本当に消す", () => { delete fl.under; onChange(); draw(); }, "btn sm") : null,
       h("span", { style: "margin-left:auto" }), ...(fl && opts.tools ? opts.tools() : []),
       fl ? h("button", { type: "button", class: "btn sm", id: "lay-seat-add", text: "席を追加する", title: "卓と席（○）をまとめて追加する", onclick: (e) => seatDialog(e.currentTarget) }) : null,
       fl ? confirmBtn("この階を削除", "本当に削除", () => { doc.floors.splice(fi, 1); fi = Math.max(0, fi - 1); undo.length = redo.length = 0; onChange(); draw(); }, "btn sm danger") : null].filter(Boolean));
@@ -4072,6 +4166,7 @@ function layoutEditor(doc, onChange, opts = {}) {
   /* Excel からの読み込み */
   file.addEventListener("change", async () => {
     const fl = file.files[0]; file.value = ""; if (!fl) return;
+    if (isPdf(fl) || /^image\//.test(fl.type) || /\.(png|jpe?g|webp|gif|bmp|heic)$/i.test(fl.name)) return drawImport(fl);
     toast("Excelを読み込んでいます…");
     let res; try { res = await importLayoutXlsx(fl); } catch (_) { return toast("読み込めませんでした。xlsx 形式のファイルを選んでください"); }
     if (!res.floors.length) return toast("読み込める内容がありませんでした");
@@ -4085,6 +4180,27 @@ function layoutEditor(doc, onChange, opts = {}) {
         h("button", { type: "button", class: "btn primary", id: "lay-imp-rep", text: "置き換える", onclick: () => { dlg.close(); apply(true); } }))));
     dlg.style.width = "min(480px,calc(100vw - 32px))"; dlg.addEventListener("close", () => (dlg.style.width = ""), { once: true }); dlg.showModal();
   });
+
+  /* PDF・画像の図面：AIが読み、卓数・席数を見せてから取り込む */
+  async function drawImport(fl) {
+    const dlg = $("#dlg"), msg = h("div", { id: "lay-draw-msg", text: "図面を準備しています…" }), say = (t) => (msg.textContent = t);
+    dlg.replaceChildren(h("div", { class: "dlg", style: "max-width:520px" }, h("h3", { text: "図面の読み込み" }), msg));
+    dlg.style.width = "min(540px,calc(100vw - 32px))"; dlg.addEventListener("close", () => (dlg.style.width = ""), { once: true }); dlg.showModal();
+    let res; try { res = await importLayoutDraw(fl, say); } catch (e) { if (dlg.open) dlg.close(); return toast((e && /AI/.test(e.message || "") && e.message) || "図面を読み取れませんでした。もう一度お試しください"); }
+    if (!dlg.open) return; // 途中で閉じたときは取り込まない
+    const good = res.filter((x) => x.tables);
+    if (!good.length) { dlg.close(); return toast("図面から卓と席を読み取れませんでした。卓と席がはっきり写っている図面でお試しください"); }
+    const apply = (replace) => { if (replace) doc.floors.length = 0; for (const x of good) { let nm = x.floor.name, k = 2; while (doc.floors.some((y) => y.name === nm)) nm = `${x.floor.name}（${k++}）`; x.floor.name = nm; doc.floors.push(x.floor); } fi = replace ? 0 : doc.floors.length - good.length; a = { r: 0, c: 0 }; f = { r: 0, c: 0 }; redo.length = undo.length = 0; underOn = true; onChange(); draw(); toast("図面を取り込みました。下絵と見比べて、卓と席を確かめてください"); };
+    const has = doc.floors.some((x) => Object.keys(x.cells).length);
+    dlg.replaceChildren(h("div", { class: "dlg stack", style: "max-width:520px" }, h("h3", { text: "図面の読み込み" }),
+      h("div", { text: "AIが図面から読み取った内容です。卓数・席数が図面と合っているか確かめてください。" }),
+      h("table", { class: "list", id: "lay-draw-res" }, h("thead", {}, h("tr", {}, h("th", { text: "階" }), h("th", { text: "卓" }), h("th", { text: "席" }), h("th", { text: "AIのメモ" }))),
+        h("tbody", {}, ...res.map((x) => h("tr", {}, h("td", { text: x.floor.name }), h("td", { text: String(x.tables) }), h("td", { text: String(x.seats) }), h("td", { class: "small", text: [x.skipped ? `置けなかった卓が${x.skipped}個あります（手で追加してください）` : "", x.seats !== x.wantSeats && !x.skipped ? `読み取った席は${x.wantSeats}でしたが、${x.seats}になりました` : "", x.note].filter(Boolean).join("　") }))))),
+      h("div", { class: "small muted", text: "取り込んだあと、元の図面が「下絵」として薄く重なります。位置や席数のずれは、下絵を見ながら直してください。下絵は店舗マスタの中だけで、案件の配席には写りません。" + (say.cut ? "（PDFは最初の5ページまでを読みました）" : "") }),
+      h("div", { class: "row" }, h("button", { type: "button", class: "btn", text: "やめる", onclick: () => dlg.close() }), h("span", { style: "margin-left:auto" }),
+        has ? h("button", { type: "button", class: "btn", id: "lay-imp-add", text: "階として追加", onclick: () => { dlg.close(); apply(false); } }) : null,
+        h("button", { type: "button", class: "btn primary", id: "lay-imp-rep", text: has ? "置き換える" : "取り込む", onclick: () => { dlg.close(); apply(true); } }))));
+  }
 
   draw();
   // 案件側の配席機能が使う入口
@@ -4498,7 +4614,7 @@ function partyPanel(c, ch) {
 /** 店舗マスタの座席図を、案件へ写し取る。写した時点の更新日時（srcAt）を控えておき、あとで店舗マスタが書き換わったことに気づけるようにする。 */
 function layFresh(c) {
   const base = S.layouts.get(c.storeId);
-  return padLayout(stripTitle({ storeId: c.storeId, srcAt: base.updatedAt || "", floors: clone(base.floors), notes: [], areas: [], orig: {}, ai: (c.layout && c.layout.ai) || "", ...(c.layout && Array.isArray(c.layout.opts) ? { opts: c.layout.opts } : {}) }));
+  return padLayout(stripTitle({ storeId: c.storeId, srcAt: base.updatedAt || "", floors: clone(base.floors).map((x) => { delete x.under; return x; }), notes: [], areas: [], orig: {}, ai: (c.layout && c.layout.ai) || "", ...(c.layout && Array.isArray(c.layout.opts) ? { opts: c.layout.opts } : {}) }));
 }
 /** 最新の店舗レイアウトを、別ウィンドウで見る（見るだけ）。別ウィンドウを開けない表示環境では、この画面の中に表示する。 */
 function layOpenWindow(c) {
