@@ -498,7 +498,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <span id="save"></span>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 130</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 131</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -2980,17 +2980,34 @@ function pjOpen(p) {
   render(); if (Object.keys(p).length) caseSaver.touch();
 }
 /** 依頼のExcelを、上の見出し部分（top）と品目の行（rows）に分ける。「Catering Item」の行より上が見出し部分。 */
+/** 英語と日本語が1つのマスに一緒に書かれた文章を、英語と日本語に分ける（日本語がなければ ja は空）。 */
+function pjSplitLang(text) {
+  const JA = /[\u3040-\u30ff\u3400-\u9fff々〆]/, lines = String(text || "").split("\n").map((x) => x.trim()).filter(Boolean), en = [], ja = [];
+  const pureEn = lines.some((l) => !JA.test(l)); // 英語だけの行があるなら、日本語を含む行はまるごと日本語の行として扱う
+  for (const l of lines) {
+    if (!JA.test(l)) { en.push(l); continue; }
+    const m = lines.length > 1 && pureEn ? null : /^(.*?[A-Za-z].*?)[\s\-‐－–—:：/／]*([（(]?[\u3040-\u30ff\u3400-\u9fff々〆].*)$/.exec(l);
+    if (!m || !/[A-Za-z]{2}/.test(m[1])) { ja.push(l); continue; }
+    en.push(m[1].trim()); ja.push(/^[（(]/.test(m[2]) && /[）)]$/.test(m[2]) && !/[）)].*[（(]/.test(m[2].slice(1, -1)) ? m[2].slice(1, -1).trim() : m[2].trim());
+  }
+  return { en: en.join("\n"), ja: ja.join("\n") };
+}
 function pjParseGrid(grid) {
   const txt = (v) => String(v == null ? "" : v).replace(/\r/g, "").trim();
-  const hi = grid.findIndex((r) => /catering\s*item/i.test(txt(r[0])));
+  // 「Catering Item」の列は、左に No. などの列が足されていることがあるので、見出しの行から探す（品目・数量・指示は、その列から右へ順に並ぶ）
+  const hi = grid.findIndex((r) => r.some((v) => /catering\s*item/i.test(txt(v)))), k0 = hi < 0 ? 0 : grid[hi].findIndex((v) => /catering\s*item/i.test(txt(v)));
+  const noteCol = hi < 0 ? -1 : grid[hi].findIndex((v, i) => i > k0 + 2 && /^(備考|remarks?|notes?)$/i.test(txt(v)));
   const top = grid.slice(0, hi < 0 ? 0 : hi).map((r) => r.map(txt).filter(Boolean).join(" | ")).filter(Boolean).join("\n");
-  const rows = [], foot = []; let done = false;
+  const rows = [], foot = []; let done = false, own = false;
   for (const r of grid.slice(hi + 1)) {
-    const a = txt(r[0]), b = txt(r[1]), c = txt(r[2]); if (!a && !b && !c) continue;
+    const a = txt(r[k0]), b = txt(r[k0 + 1]), note = noteCol < 0 ? "" : txt(r[noteCol]), c = txt(r[k0 + 2]); if (!a && !b && !c) continue;
     if (/^total\b/i.test(a)) { done = true; continue; }
     if (done) { if (a) foot.push(a); continue; } // 合計より下は補足（例：OVEN TIN）
     if (!a) continue;
-    if (/^qty$/i.test(b) || (!b && !c)) rows.push({ sec: true, en: a }); else rows.push({ en: a, qty: b, instr: /^unit$/i.test(c) ? "" : c });
+    const A = pjSplitLang(a);
+    if (/^qty$/i.test(b) || (!b && !c)) { own = /PJ様/.test(a); rows.push({ sec: true, en: A.en || a, ...(A.en && A.ja ? { jaSrc: A.ja } : {}) }); }
+    else { const C = pjSplitLang(/^unit$/i.test(c) ? "" : c), ij = [C.en ? C.ja : "", note ? "※" + note.replace(/\n/g, " ") : ""].filter(Boolean).join("\n");
+      rows.push({ en: A.en || a, qty: b, instr: C.en || (/^unit$/i.test(c) ? "" : c), ...(A.en && A.ja ? { jaSrc: A.ja } : {}), ...(ij ? { instrJaSrc: ij } : {}), ...(own ? { pj: true } : {}) }); }
   }
   return { top, rows, foot: foot.join("\n") };
 }
@@ -3058,7 +3075,8 @@ ${foot.slice(0, 2000)}`, opt());
       } catch (e) { if (e && e.code === "cancelled") return; if (AI_ERR[e && e.code] && !out.size) { say(AI_ERR[e.code]); return; } failed++; }
     }
     const items = rows.map((x, i) => { const t = out.get(i) || {}, qty = String(t.qty != null && String(t.qty).trim() !== "" ? t.qty : x.qty || "");
-      return x.sec ? { id: uid("i"), sec: true, en: x.en, ja: String(t.ja || "") } : { id: uid("i"), en: x.en, ja: String(t.ja || ""), qty, qty0: String(x.qty || ""), instr: x.instr || "", instrJa: String(t.instrJa || ""), pack: PJ_PACKS.includes(t.pack) ? t.pack : String(t.pack || ""), ...(t.pj ? { pj: true } : {}) }; });
+      // 依頼の表に日本語が併記されているときは、その日本語をそのまま使う（AIの訳で置き換えない）
+      return x.sec ? { id: uid("i"), sec: true, en: x.en, ja: String(x.jaSrc || t.ja || "") } : { id: uid("i"), en: x.en, ja: String(x.jaSrc || t.ja || ""), qty, qty0: String(x.qty || ""), instr: x.instr || "", instrJa: String(x.instrJaSrc || t.instrJa || ""), pack: PJ_PACKS.includes(t.pack) ? t.pack : String(t.pack || ""), ...(t.pj || x.pj ? { pj: true } : {}) }; });
     // 梱包容器：依頼全体への指定（表の下・見出し部分・特記事項）があれば特記事項に追記し、なければ「梱包容器未定」と書く
     const packs = pjPackNote([foot, top, hd.notesEn].join("\n")), packSrc = foot.split("\n").filter((l) => pjPackNote(l).length), footRest = foot.split("\n").filter((l) => l.trim() && !pjPackNote(l).length).join("\n");
     hd.notesEn = [String(hd.notesEn || "").trim(), ...packSrc.filter((l) => !String(hd.notesEn || "").includes(l))].filter(Boolean).join("\n");
