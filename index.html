@@ -432,6 +432,37 @@ dialog{border:1px solid var(--line);border-radius:8px;background:var(--surface);
 dialog::backdrop{background:rgba(10,15,25,.5)}
 .dlg{display:flex;flex-direction:column;gap:14px;padding:18px}
 /* 読み取り結果の確認：右端をドラッグして横幅を変えられる */
+.lg{display:flex;flex-direction:column;max-height:calc(100vh - 42px)}
+.lg-head{padding:16px 20px 0}.lg-head h3{margin:0;font-size:17px}
+.lg-tabs{display:flex;gap:4px;padding:10px 20px 0;border-bottom:1px solid var(--line)}
+.lg-tab{border:0;background:none;padding:8px 14px;cursor:pointer;font:inherit;color:var(--muted);border-bottom:3px solid transparent}
+.lg-tab.on{color:var(--accent);font-weight:700;border-bottom-color:var(--accent)}
+.lg-n{font-size:11px;background:var(--sunken);border-radius:99px;padding:0 7px;margin-left:4px;color:var(--muted);font-weight:400}
+.lg-body{padding:14px 20px;overflow:auto;flex:1;min-height:200px}.lg-foot{padding:12px 20px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.lg-filter{margin-bottom:12px}
+.lg-imp{border:1px solid var(--line);border-radius:8px;margin-bottom:10px;background:var(--surface)}
+.lg-imp>summary{list-style:none;cursor:pointer;padding:10px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.lg-imp>summary::-webkit-details-marker{display:none}.lg-imp>summary::before{content:"▸";color:var(--muted)}.lg-imp[open]>summary::before{content:"▾"}
+.lg-imp[open]>summary{border-bottom:1px solid var(--line);background:var(--bg)}
+.lg-lab{min-width:0;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lg-in{padding:14px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:16px}
+.lg-h{font-size:12px;color:var(--muted);font-weight:700;margin:0 0 6px}
+.lg-src{background:var(--sunken);border-radius:6px;padding:10px;font-size:13px;white-space:pre-wrap;max-height:260px;overflow:auto}
+.lg-file{display:flex;gap:8px;align-items:center;border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-bottom:6px}
+.lg-file a.btn{text-decoration:none}
+.lg-ic{width:34px;height:40px;border-radius:4px;display:grid;place-items:center;color:#fff;font-size:10px;font-weight:700;flex:none}
+.lg-ic.pdf{background:#c0392b}.lg-ic.img{background:#2e7d5b}.lg-ic.xls{background:#1d6f42}
+.lg-nm{flex:1;min-width:0}.lg-nm>div:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lg-view{margin-bottom:8px}.lg-view img{max-width:100%;border:1px solid var(--line)}.lg-view iframe{width:100%;height:420px;border:1px solid var(--line)}
+.lg-from{color:var(--bad);text-decoration:line-through;white-space:pre-wrap}.lg-to{color:var(--ok);font-weight:700;white-space:pre-wrap}
+.lg-tl{position:relative;padding-left:22px}.lg-tl::before{content:"";position:absolute;left:6px;top:6px;bottom:6px;width:2px;background:var(--line)}
+.lg-ev{position:relative;padding:5px 0 9px}.lg-ev::before{content:"";position:absolute;left:-21px;top:11px;width:10px;height:10px;border-radius:50%;background:var(--muted);border:2px solid var(--surface);box-shadow:0 0 0 1px var(--line)}
+.lg-ev.ap::before{background:var(--ok)}.lg-ev.un::before{background:var(--bad)}.lg-ev.out::before{background:#7a5cc0}.lg-ev.imp::before{background:var(--accent)}
+.lg-day{font-weight:700;margin:10px 0 2px;font-size:13px}.lg-t{font-variant-numeric:tabular-nums;color:var(--muted);margin-right:8px}
+.pill.acc{background:var(--accent-soft);color:var(--accent)}
+.btn.lgb{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);font-weight:700}
+.lg-rowbtn{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap}
+@media(max-width:800px){.lg-in{grid-template-columns:1fr}}
 .dlg-grip{position:absolute;top:0;right:0;bottom:0;width:12px;cursor:ew-resize;touch-action:none;display:flex;align-items:center;justify-content:center}
 .dlg-grip::after{content:"";width:4px;height:44px;border-radius:4px;background:var(--line)}
 .dlg-grip:hover::after,.dlg-grip.drag::after{background:var(--accent)}
@@ -467,7 +498,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <span id="save"></span>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 128</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 129</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1013,6 +1044,7 @@ function makeSaver(run) {
 }
 const caseSaver = makeSaver(async (d) => {
   if (!draft) return;
+  caseTrack(draft, "手入力");
   draft.updatedAt = new Date().toISOString(); draft.editedBy = clientId;
   const body = clone(draft); const id = body.id; delete body.id;
   S.cases.set(id, clone(draft));
@@ -1287,9 +1319,178 @@ function renderListBody() {
 }
 function newCase() {
   const id = uid("c");
-  const c = { id, groupName: "", visitDate: "", storeId: "", storeName: "", createdDate: today(), rows: [] };
+  const c = { id, groupName: "", visitDate: "", storeId: "", storeName: "", createdDate: today(), rows: [], acts: [{ at: new Date().toISOString(), t: "案件を作成", d: "" }] };
   // 何か入力するまでは保存しない（開いただけ・取込をやめただけで空の案件が残らないようにする）
   view = { name: "case", id }; draft = clone(c); render();
+}
+
+/* ---------- 取込データ・履歴 ----------
+   案件ごとに、取り込んだ資料（c.imps）、項目の変更（c.hist）、操作（c.acts）を残す。いずれも見るだけで、画面から消したり直したりはできない。
+   貼り付けた文章とAIの読み取り結果は案件の中に持ち、元のファイル（PDF・画像・Excel）は Googleドライブの保管フォルダに置く。 */
+let trk = null, impSrc = null, lgRedraw = null;
+const impFiles = new Map(); // 取込の id + ":" + 番号 → 元のファイル（この画面を開いている間だけ持つ。保管のやり直しに使う）
+const HIST_MAX = 600, ACT_MAX = 300, IMP_MAX = 60;
+const fmtAt = (iso) => { const d = new Date(iso); if (isNaN(d)) return ""; const z = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}/${z(d.getMonth() + 1)}/${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`; };
+const TRK_F = [["year", "年"], ["kumi", "組"], ["sex", "性別"], ["name", "氏名"], ["allergy", "アレルギー"], ["seibun", "成分可否"], ["sb", "品目ごとの成分可否"], ["element", "アレルゲンの要素（手修正）"], ["response", "対応の文章（手修正）"], ["final", "最終的な対応"], ["caution", "注意文（手修正）"], ["symptom", "症状"], ["remark", "資料メモ"], ["memo", "確認メモ"]];
+const TRK_H = [["groupName", "団体名"], ["visitDate", "ご利用日"], ["store", "店舗"], ["course", "コース"]];
+const trkRow = (r) => ({ year: r.year || "", kumi: r.kumi || "", sex: r.sex || "", name: r.name || "", allergy: r.allergy || "", seibun: r.seibun || "", sb: Object.entries(r.sbMap || {}).filter(([, v]) => v).map(([k, v]) => k + "：" + v).join("、"), element: r.elementAuto === false ? r.element || "" : "", response: r.responseAuto === false ? r.response || "" : "", final: r.final || "", caution: r.cautionAuto === false ? r.caution || "" : "", symptom: r.symptom || "", remark: r.remark || "", memo: r.memo || "" });
+const trkSnap = (c) => ({ head: { groupName: c.groupName || "", visitDate: c.visitDate || "", store: (S.stores.get(c.storeId) || {}).name || c.storeName || "", course: c.courseId ? (S.courses.get(c.courseId) || {}).name || "" : "" }, rows: Object.fromEntries((c.rows || []).map((r) => [r.id, trkRow(r)])) });
+function caseTrackInit(c) { trk = c && !c.kind ? { ref: c, snap: trkSnap(c) } : null; }
+/** 前に見たときからの違いを、変更履歴に足す。src は「手入力」「取込」「自動更新」。同じ項目を続けて直したときは1行にまとめる。 */
+function caseTrack(c, src, no) {
+  if (!c || c.kind) return;
+  if (!trk || trk.ref !== c) return caseTrackInit(c);
+  const now = trkSnap(c), old = trk.snap, at = new Date().toISOString(), out = [];
+  for (const [k, label] of TRK_H) if (old.head[k] !== now.head[k]) out.push({ rid: "", name: "（案件）", f: label, a: old.head[k], b: now.head[k] });
+  for (const [rid, n] of Object.entries(now.rows)) { const o = old.rows[rid];
+    if (!o) { out.push({ rid, name: n.name, f: "（新規登録）", a: "", b: n.allergy || "（アレルギーの記載なし）", one: true }); continue; }
+    for (const [k, label] of TRK_F) if (o[k] !== n[k]) out.push({ rid, name: n.name || o.name, f: label, a: o[k], b: n[k] }); }
+  for (const [rid, o] of Object.entries(old.rows)) if (!now.rows[rid]) out.push({ rid, name: o.name, f: "（削除）", a: o.allergy || "（アレルギーの記載なし）", b: "", one: true });
+  trk.snap = now; if (!out.length) return;
+  c.hist = Array.isArray(c.hist) ? c.hist : [];
+  for (const e of out) {
+    let last = null; for (let i = c.hist.length - 1; i >= 0; i--) if (c.hist[i].rid === e.rid && c.hist[i].f === e.f) { last = c.hist[i]; break; }
+    if (!e.one && last && last.src === src && (last.no || 0) === (no || 0) && last.b === e.a && Date.parse(at) - Date.parse(last.at) < 600000) { last.b = e.b; last.at = at; last.name = e.name; if (last.a === last.b) c.hist.splice(c.hist.indexOf(last), 1); }
+    else c.hist.push({ at, rid: e.rid, name: e.name, f: e.f, a: e.a, b: e.b, src, ...(no ? { no } : {}) });
+  }
+  if (c.hist.length > HIST_MAX) c.hist.splice(0, c.hist.length - HIST_MAX);
+}
+/** 操作の記録を足す。k は印の色（ap=承認、un=取り消し、out=出力、imp=取込）。p は関係する人の行ID。 */
+function caseAct(c, t, d, k, p) {
+  if (!c || c.kind) return;
+  c.acts = Array.isArray(c.acts) ? c.acts : []; c.acts.push({ at: new Date().toISOString(), t, d: d || "", ...(k ? { k } : {}), ...(p && p.length ? { p } : {}) });
+  if (c.acts.length > ACT_MAX) c.acts.splice(0, c.acts.length - ACT_MAX);
+}
+const impKind = (files) => { const ks = new Set(files.map((f) => (isPdf(f) ? "PDF" : /^image\//.test(f.type) ? "画像" : "Excel・CSV"))); return ks.size === 1 ? [...ks][0] : "ファイル"; };
+const impRead = (p) => [String(p.allergy || "").trim(), p.seibun ? "成分" + p.seibun : "", p.symptom && p.symptom !== "不明" ? "症状：" + p.symptom : "", p.choice ? "希望：" + p.choice : "", String(p.remark || "").trim() ? "資料メモ：" + String(p.remark).trim() : "", String(p.memo || "").trim() ? "確認メモ：" + String(p.memo).trim() : ""].filter(Boolean).join(" ／ ") || "（記載なし）";
+function impBegin(c) { if (!c || c.kind) return null; caseTrack(c, "手入力"); return { ids: new Set((c.rows || []).map((r) => r.id)) }; }
+/** 取込を1回ぶん記録する。items = [{ p, act: "new"|"merge"|"skip", rid }]。新しく入った行は、取込前にいなかった行を順に当てる。 */
+function impEnd(c, b, items) {
+  if (!c || !b) return;
+  const src = impSrc || {}; impSrc = null;
+  const fresh = c.rows.filter((r) => !b.ids.has(r.id)); let fi = 0;
+  const rows = items.map((it) => ({ rid: it.act === "new" ? (fresh[fi++] || {}).id || "" : it.rid || "", name: String(it.p.name || ""), act: it.act, read: impRead(it.p).slice(0, 400) }));
+  c.imps = Array.isArray(c.imps) ? c.imps : [];
+  const no = c.imps.reduce((m, x) => Math.max(m, x.no || 0), 0) + 1, id = uid("i"), files = (src.files || []).filter(Boolean);
+  const rec = { id, no, at: new Date().toISOString(), kind: src.text != null && !files.length ? "貼り付けテキスト" : files.length ? impKind(files) : "入力", label: files.length ? files.map((f) => f.name).join("、").slice(0, 200) : src.text != null ? "貼り付けた文章" : "", rows,
+    ...(src.text != null && !files.length ? { text: String(src.text).slice(0, 30000), ...(String(src.text).length > 30000 ? { cut: true } : {}) } : {}),
+    files: files.map((f) => ({ name: f.name, size: f.size, type: f.type || "", st: "wait" })) };
+  files.forEach((f, i) => impFiles.set(id + ":" + i, f));
+  c.imps.push(rec); if (c.imps.length > IMP_MAX) c.imps.splice(0, c.imps.length - IMP_MAX);
+  caseTrack(c, "取込", no);
+  const nn = rows.filter((r) => r.act === "new").length, nm = rows.filter((r) => r.act === "merge").length, ns = rows.filter((r) => r.act === "skip").length;
+  caseAct(c, `資料を取り込んだ（${no}回目）`, [rec.kind, [nn ? `${nn}名を追加` : "", nm ? `${nm}名に反映` : "", ns ? `${ns}名は取り込まない` : ""].filter(Boolean).join("、") || "店舗・ご利用日・利用人数のみ"].join(" ／ "), "imp", rows.filter((r) => r.act !== "skip" && r.rid).map((r) => r.rid));
+  if (files.length) impUpload(c.id, id);
+}
+/** 案件を、いま開いている下書き（なければ保存済みの内容）に対して直し、保存する。別の画面へ移った後に終わる処理（ドライブへの保管）で使う。 */
+async function casePatch(caseId, fn) {
+  if (draft && draft.id === caseId) { fn(draft); caseSaver.touch(); return; }
+  const cur = S.cases.get(caseId); if (!cur || cur.locked) return;
+  const c = clone(cur); fn(c); c.updatedAt = new Date().toISOString(); c.editedBy = clientId; S.cases.set(caseId, clone(c));
+  try { if (db && !readOnly) { const body = clone(c); delete body.id; await db.doc("cases/" + caseId).set(dataKey ? await seal(body) : body); } } catch (_) {}
+}
+/** 取り込んだ元のファイルを、Googleドライブの保管フォルダ（案件ごとのフォルダ）に置く。失敗しても取込は成立させ、「未保管」として残す。 */
+async function impUpload(caseId, recId) {
+  const cur = () => (draft && draft.id === caseId ? draft : S.cases.get(caseId)), recOf = (c) => ((c && c.imps) || []).find((x) => x.id === recId);
+  const rec0 = recOf(cur()); if (!rec0) return;
+  const todo = rec0.files.map((f, i) => i).filter((i) => !rec0.files[i].id && impFiles.has(recId + ":" + i)); if (!todo.length) return;
+  const set = (i, o) => casePatch(caseId, (c) => { const r = recOf(c); if (r && r.files[i]) { Object.assign(r.files[i], o); if (o.st === "ok") delete r.files[i].err; } }).then(() => lgRedraw && lgRedraw());
+  await casePatch(caseId, (c) => { const r = recOf(c); if (r) todo.forEach((i) => { r.files[i].st = "wait"; delete r.files[i].err; }); }); if (lgRedraw) lgRedraw();
+  try {
+    const m = /folders\/([\w-]+)/.exec(String(S.settings.gImpFolderId || "")), parent = m ? m[1] : String(S.settings.gImpFolderId || "").trim();
+    if (!parent) throw new Error("共通設定の「Googleドライブ連携」に、取込資料の保管フォルダが登録されていません。");
+    const tok = await gToken(), au = { Authorization: "Bearer " + tok };
+    const fail = async (res, what) => { let t = ""; try { t = ((await res.json()).error || {}).message || ""; } catch (_) {} return new Error(`${what}できませんでした（${res.status}）。${res.status === 404 ? "保管フォルダが見つからないか、このアカウントに権限がありません。" : res.status === 403 ? "このアカウントに、保管フォルダへ書き込む権限がありません。" : ""}${t ? " " + t : ""}`); };
+    let folder = (cur() || {}).impFolderId;
+    if (!folder) {
+      const c = cur() || {}, name = `${(c.visitDate || "").replace(/-/g, "") || "利用日未入力"}_${(c.groupName || "団体名未入力").replace(/[\\/:*?"<>|]/g, "")}`;
+      const res = await fetch("https://www.googleapis.com/drive/v3/files?supportsAllDrives=true&fields=id", { method: "POST", headers: { ...au, "Content-Type": "application/json" }, body: JSON.stringify({ name, mimeType: "application/vnd.google-apps.folder", parents: [parent] }) });
+      if (!res.ok) throw await fail(res, "案件のフォルダを作成");
+      folder = (await res.json()).id; await casePatch(caseId, (x) => { x.impFolderId = folder; });
+    }
+    const stamp = fmtAt(rec0.at).replace(/[\/:]/g, "").replace(" ", "-");
+    for (const i of todo) {
+      const f = impFiles.get(recId + ":" + i), meta = { name: `${rec0.no}回目_${stamp}_${f.name}`, parents: [folder] }, type = f.type || "application/octet-stream";
+      let res;
+      if (f.size <= 4 * 1024 * 1024) {
+        const bd = "tcore" + Math.random().toString(36).slice(2), body = new Blob(["--" + bd + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" + JSON.stringify(meta) + "\r\n--" + bd + "\r\nContent-Type: " + type + "\r\n\r\n", f, "\r\n--" + bd + "--"]);
+        res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,webViewLink", { method: "POST", headers: { ...au, "Content-Type": "multipart/related; boundary=" + bd }, body });
+      } else { // 大きいファイルは、分けずに送れる方式（resumable）で送る
+        const st = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,webViewLink", { method: "POST", headers: { ...au, "Content-Type": "application/json; charset=UTF-8", "X-Upload-Content-Type": type }, body: JSON.stringify(meta) });
+        if (!st.ok) throw await fail(st, "Googleドライブに保管");
+        const loc = st.headers.get("Location"); if (!loc) throw new Error("Googleドライブに保管できませんでした（送り先を取得できませんでした）。");
+        res = await fetch(loc, { method: "PUT", headers: { "Content-Type": type }, body: f });
+      }
+      if (!res.ok) { if (res.status === 404) await casePatch(caseId, (x) => { delete x.impFolderId; }); throw await fail(res, "Googleドライブに保管"); }
+      const j = await res.json(); await set(i, { st: "ok", id: j.id, url: j.webViewLink || "https://drive.google.com/file/d/" + j.id + "/view" });
+    }
+  } catch (e) {
+    const err = String((e && e.message) || "Googleドライブに保管できませんでした。").slice(0, 240);
+    await casePatch(caseId, (c) => { const r = recOf(c); if (r) r.files.forEach((f) => { if (!f.id) { f.st = "ng"; f.err = err; } }); }); if (lgRedraw) lgRedraw();
+    toast("取込は完了しました。元の資料は Googleドライブに保管できていません（「取込データ確認」から保管し直せます）");
+  }
+}
+const IMP_ACT = { new: ["新しく取り込む", "ok"], merge: ["登録済みの人に反映", "acc"], skip: ["取り込まない", "plain"] };
+/** 取込データ・変更履歴・アクション履歴を見る画面。rid を渡すと、その人に関係するものだけに絞る。 */
+function caseLogDialog(c, tab, rid) {
+  const dlg = $("#dlg"); let who = rid || "", srcF = "", noF = 0; const shown = new Set(), opened = new Set();
+  const pane = h("div", { id: "lg-pane" }), tabs = h("div", { class: "lg-tabs" }), filt = h("div", { class: "row lg-filter" }), sub = h("div", { class: "muted small", id: "lg-sub" });
+  const nameOf = (id) => ((c.rows || []).find((r) => r.id === id) || {}).name || "";
+  const pill = (cls, text) => h("span", { class: "pill " + cls, text });
+  const fileEl = (rec, f, i) => {
+    const key = rec.id + ":" + i, local = impFiles.get(key), isImg = /^image\//.test(f.type) || /\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name), isP = /pdf/i.test(f.type) || /\.pdf$/i.test(f.name), box = h("div", { class: "lg-view", hidden: !shown.has(key) });
+    const fill = () => { if (box.firstChild) return; if (local && isImg) box.append(h("img", { src: URL.createObjectURL(local), alt: f.name })); else if (local && isP) box.append(h("iframe", { src: URL.createObjectURL(local), title: f.name })); else if (f.id) box.append(h("iframe", { src: "https://drive.google.com/file/d/" + f.id + "/preview", title: f.name })); };
+    if (shown.has(key)) fill();
+    const pick = h("input", { type: "file", hidden: true, onchange: (e) => { const x = e.target.files[0]; e.target.value = ""; if (!x) return; impFiles.set(key, x); impUpload(c.id, rec.id); } });
+    return h("div", { class: "lg-fwrap" }, h("div", { class: "lg-file" },
+      h("span", { class: "lg-ic " + (isP ? "pdf" : isImg ? "img" : "xls"), text: isP ? "PDF" : isImg ? "画像" : "表" }),
+      h("span", { class: "lg-nm" }, h("div", { text: f.name }), h("div", { class: "small muted" }, (f.size ? (f.size >= 1048576 ? (f.size / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(f.size / 1024)) + " KB") + "　／　" : ""),
+        f.st === "ok" ? h("span", { style: "color:var(--ok)", text: "Googleドライブに保管済み" }) : f.st === "wait" && local ? h("span", { text: "Googleドライブに保管しています…" }) : h("span", { style: "color:var(--bad);font-weight:700", text: "未保管" }))),
+      (isImg || isP) && (f.id || local) ? h("button", { type: "button", class: "btn sm", text: shown.has(key) ? "表示を閉じる" : "ここで表示", onclick: (e) => { if (shown.has(key)) shown.delete(key); else shown.add(key); box.hidden = !shown.has(key); e.target.textContent = shown.has(key) ? "表示を閉じる" : "ここで表示"; fill(); } }) : null,
+      f.url ? h("a", { class: "btn sm", href: f.url, target: "_blank", rel: "noopener", text: "開く" }) : null,
+      !f.id && !(f.st === "wait" && local) ? h("button", { type: "button", class: "btn sm primary", text: local ? "保管し直す" : "ファイルを選んで保管", title: local ? "" : "元のファイルをもう一度選ぶと、Googleドライブに保管します", onclick: () => (local ? impUpload(c.id, rec.id) : pick.click()) }) : null, pick),
+      !f.id && f.err && f.st === "ng" ? h("div", { class: "small", style: "color:var(--bad);margin:-2px 0 6px", text: f.err }) : null, box);
+  };
+  function draw() {
+    const cc = draft && draft.id === c.id ? draft : c; c = cc;
+    const imps = (c.imps || []).filter((x) => !who || (x.rows || []).some((r) => r.rid === who)).slice().reverse();
+    const chgAll = (c.hist || []).filter((x) => !who || x.rid === who), chgs = chgAll.filter((x) => (!srcF || x.src === srcF) && (!noF || x.no === noF)).slice().reverse();
+    const acts = (c.acts || []).filter((x) => !who || (x.p || []).includes(who)).slice().reverse();
+    tabs.replaceChildren(...[["imp", "取込データ", imps.length], ["chg", "変更履歴", chgAll.length], ["act", "アクション履歴", acts.length]].map(([k, t, n]) => h("button", { type: "button", class: "lg-tab" + (tab === k ? " on" : ""), id: "lg-tab-" + k, onclick: () => { tab = k; draw(); } }, t, h("span", { class: "lg-n", text: String(n) }))));
+    sub.textContent = [c.groupName || "団体名未入力", c.visitDate || ""].filter(Boolean).join("　") + (who ? `　／　${nameOf(who) || "（氏名なし）"} に関係するものだけを表示中` : "");
+    filt.replaceChildren(h("span", { class: "small muted", text: "表示する人" }), sel([["", "全員（案件全体）"], ...(c.rows || []).map((r) => [r.id, r.name || "（氏名なし）"])], who, (v) => { who = v; draw(); }, { id: "lg-who", style: "width:auto;min-width:180px" }),
+      ...(tab === "chg" ? [h("span", { class: "small muted", text: "きっかけ" }), sel([["", "すべて"], ["取込", "取込による変更"], ["手入力", "手入力"], ["自動更新", "自動更新"]], srcF, (v) => { srcF = v; draw(); }, { id: "lg-src", style: "width:auto" }),
+        noF ? h("span", { class: "pill acc" }, `取込 ${noF}回目のみ `, h("button", { type: "button", class: "linkbtn", text: "解除", onclick: () => { noF = 0; draw(); } })) : null] : []).filter(Boolean));
+    if (tab === "imp") pane.replaceChildren(...(imps.length ? imps.map((x, k) => { const key = x.id; if (k === 0 && !opened.has("_init")) { opened.add(key); }
+        const rows = (x.rows || []).filter((r) => !who || r.rid === who), cnt = (a) => (x.rows || []).filter((r) => r.act === a).length;
+        const d = h("details", { class: "lg-imp", id: "lg-imp-" + x.no, open: opened.has(key), ontoggle: (e) => { if (e.target.open) opened.add(key); else opened.delete(key); } },
+          h("summary", {}, h("strong", { text: `${x.no}回目` }), h("span", { text: fmtAt(x.at) }), pill("plain", x.kind || ""), h("span", { class: "lg-lab", text: x.label || "" }),
+            h("span", { class: "small muted", style: "margin-left:auto", text: [cnt("new") ? `${cnt("new")}名を追加` : "", cnt("merge") ? `${cnt("merge")}名に反映` : "", cnt("skip") ? `${cnt("skip")}名は取り込まない` : ""].filter(Boolean).join("・") || "店舗・ご利用日・利用人数のみ" }),
+            (x.files || []).some((f) => !f.id) ? pill("bad", "未保管あり") : null),
+          h("div", { class: "lg-in" },
+            h("div", {}, h("p", { class: "lg-h", text: "届いた資料（そのまま保管）" }),
+              x.text != null ? h("div", {}, h("div", { class: "lg-src", text: x.text }), h("div", { class: "small muted", style: "margin-top:6px", text: "貼り付けた文章は T-CORE の中に保管しています。" + (x.cut ? "（長いため、先頭の3万字までを保管しました）" : "") })) : null,
+              ...(x.files || []).map((f, i) => fileEl(x, f, i)),
+              x.text == null && !(x.files || []).length ? h("div", { class: "muted small", text: "元の資料は残っていません。" }) : null),
+            h("div", {}, h("p", { class: "lg-h", text: "読み取った内容と、そのときの扱い" }),
+              rows.length ? h("table", { class: "list" }, h("thead", {}, h("tr", {}, ...["氏名", "読み取った内容", "扱い"].map((t) => h("th", { text: t })))),
+                h("tbody", {}, ...rows.map((r) => h("tr", {}, h("td", { style: "white-space:nowrap", text: r.name || "（氏名なし）" }), h("td", { style: "white-space:pre-wrap", text: r.read }), h("td", {}, pill((IMP_ACT[r.act] || ["", "plain"])[1], (IMP_ACT[r.act] || [r.act])[0])))))) : h("div", { class: "muted small", text: "人の情報は取り込んでいません。" }),
+              h("div", { style: "margin-top:10px" }, h("button", { type: "button", class: "btn sm", text: "この取込で変わった項目を見る →", onclick: () => { tab = "chg"; srcF = ""; noF = x.no; draw(); } })))));
+        return d; }) : [h("div", { class: "empty", text: who ? "この人に関係する取込データはありません。" : "取り込んだデータはまだありません。これから取り込む資料が、ここに残ります。" })]));
+    else if (tab === "chg") pane.replaceChildren(chgs.length ? h("table", { class: "list", id: "lg-chg" }, h("thead", {}, h("tr", {}, ...["日時", "氏名", "項目", "変更前", "", "変更後", "きっかけ"].map((t) => h("th", { text: t })))),
+        h("tbody", {}, ...chgs.map((x) => h("tr", {}, h("td", { style: "white-space:nowrap", text: fmtAt(x.at) }), h("td", { style: "white-space:nowrap", text: x.name || nameOf(x.rid) || "（氏名なし）" }), h("td", { style: "white-space:nowrap", text: x.f }),
+          h("td", {}, x.a ? h("span", { class: "lg-from", text: x.a }) : h("span", { class: "muted", text: "（なし）" })), h("td", { class: "muted", text: "→" }), h("td", {}, x.b ? h("span", { class: "lg-to", text: x.b }) : h("span", { class: "muted", text: "（なし）" })),
+          h("td", { style: "white-space:nowrap" }, x.src === "取込" ? pill("acc", `取込 ${x.no || ""}回目`) : pill("plain", x.src || "手入力")))))) : h("div", { class: "empty", text: "該当する変更はありません。" }));
+    else { let day = ""; pane.replaceChildren(acts.length ? h("div", { class: "lg-tl", id: "lg-act" }, ...acts.flatMap((x) => { const [d, t] = fmtAt(x.at).split(" "), head = d !== day ? [h("div", { class: "lg-day", text: d })] : []; day = d; return [...head, h("div", { class: "lg-ev " + (x.k || "") }, h("span", { class: "lg-t", text: t }), h("strong", { text: x.t }), x.d ? h("span", { class: "muted", text: "　" + x.d }) : null)]; })) : h("div", { class: "empty", text: who ? "この人に関係する操作はありません。" : "操作の記録はまだありません。" })); }
+    opened.add("_init");
+  }
+  dlg.replaceChildren(h("div", { class: "lg" },
+    h("div", { class: "lg-head" }, h("h3", { text: "取込データ・履歴" }), sub), tabs,
+    h("div", { class: "lg-body" }, filt, pane),
+    h("div", { class: "lg-foot" }, h("span", { class: "small muted", text: "記録は見るだけで、消したり書き換えたりはできません。この機能が入る前の取込・変更は残っていません。" }), h("span", { style: "margin-left:auto" }), h("button", { type: "button", class: "btn", text: "閉じる", onclick: () => dlg.close() }))));
+  lgRedraw = () => { if (dlg.open && $("#lg-pane")) draw(); };
+  dlg.style.width = "min(1120px,calc(100vw - 32px))"; dlg.addEventListener("close", () => { dlg.style.width = ""; lgRedraw = null; }, { once: true });
+  draw(); if (!dlg.open) dlg.showModal();
 }
 
 /* ---------- 案件編集 ---------- */
@@ -1367,7 +1568,7 @@ function viewLayoutCase(c) {
   ];
 }
 function viewCase() {
-  if (!draft) { const c = S.cases.get(view.id); if (!c) return [h("div", { class: "empty" }, "この案件は見つかりません。")]; if (c.locked) return [h("div", { class: "banner bad", text: "この案件は現在のパスワードの鍵では開けません。" })]; draft = clone(c); draft.rows ||= []; }
+  if (!draft) { const c = S.cases.get(view.id); if (!c) return [h("div", { class: "empty" }, "この案件は見つかりません。")]; if (c.locked) return [h("div", { class: "banner bad", text: "この案件は現在のパスワードの鍵では開けません。" })]; draft = clone(c); draft.rows ||= []; caseTrackInit(draft); }
   if (draft.kind === "layout") return viewLayoutCase(draft);
   if (draft.kind === "pj") return viewPjCase(draft);
   const c = draft, store = M(c.courseId), storeRec = S.stores.get(c.storeId);
@@ -1376,7 +1577,7 @@ function viewCase() {
   // 内容が変わって無効になった承認は外す
   if (c.approvals && Object.keys(c.approvals).length) {
     const ok = validApprovals(c).map((a) => a.name), gone = Object.keys(c.approvals).filter((k) => !ok.includes(k));
-    if (gone.length) { gone.forEach((k) => delete c.approvals[k]); caseSaver.touch(); queueMicrotask(() => toast("内容が変わったため、承認が外れました：" + gone.join("、"))); }
+    if (gone.length) { gone.forEach((k) => delete c.approvals[k]); caseAct(c, "承認が外れた", "内容が変わったため：" + gone.join("、"), "un"); caseSaver.touch(); queueMicrotask(() => toast("内容が変わったため、承認が外れました：" + gone.join("、"))); }
   }
   function drawBar() {
     const aps = validApprovals(c), done = aps.length >= NEED_APPROVALS;
@@ -1387,12 +1588,12 @@ function viewCase() {
       const as = c.rows.map((r) => analyse(r, store)), un = as.filter((x) => x.tags.length && !x.confirmed).length, pd = as.filter((x) => x.pending).length;
       const who = sel(names, names[0], () => {}, { id: "ap-who" });
       approvalDialog("この案件を承認します", "承認後に内容を変更すると、承認は自動で外れます。", () => {
-        c.approvals ||= {}; c.approvals[who.value] = { at: today(), sig: caseSig(c) }; caseSaver.touch(); drawBar(); toast(`${who.value}の承認を記録しました`);
+        c.approvals ||= {}; c.approvals[who.value] = { at: today(), sig: caseSig(c) }; caseAct(c, "承認", who.value + " 承認済", "ap"); caseSaver.touch(); drawBar(); toast(`${who.value}の承認を記録しました`);
       }, h("div", { class: "stack", style: "gap:8px" },
         un || pd ? h("div", { class: "banner warn", text: `確認が残っています：${[un ? `原本未照合 ${un}件` : "", pd ? `判定保留・未登録 ${pd}件` : ""].filter(Boolean).join("、")}` }) : null,
         field("承認者", who)));
     };
-    const revoke = (name) => approvalDialog(`${name}の承認を取り消します`, "取り消すと、PDFは出力できなくなります。", () => { delete c.approvals[name]; caseSaver.touch(); drawBar(); toast("承認を取り消しました"); });
+    const revoke = (name) => approvalDialog(`${name}の承認を取り消します`, "取り消すと、PDFは出力できなくなります。", () => { delete c.approvals[name]; caseAct(c, "承認を取り消した", name, "un"); caseSaver.touch(); drawBar(); toast("承認を取り消しました"); });
     bar.replaceChildren(
       h("div", { class: "row" },
         dl ? h("button", { type: "button", class: "btn primary", id: "btn-pdf", text: "PDFで出力", disabled: !done, onclick: () => exportCasePdf(c) }) : h("span", { class: "muted small", text: "この表示環境ではPDF出力が使えません。" }),
@@ -1400,7 +1601,7 @@ function viewCase() {
         ...aps.map((a) => h("span", { class: "row", style: "gap:4px" }, h("span", { class: "pill ok", text: `${a.name} 承認済` }), h("button", { type: "button", class: "linkbtn", text: "取り消す", onclick: () => revoke(a.name) }))),
         h("span", { id: "export-msg", class: "small" }),
         h("span", { style: "margin-left:auto" }),
-        h("button", { type: "button", class: "btn", text: "複製", onclick: () => { const n = clone(c); n.id = uid("c"); n.groupName += "（複製）"; n.createdDate = today(); delete n.approvals; caseSaver.flush().then(() => { S.cases.set(n.id, n); view = { name: "case", id: n.id }; draft = n; caseSaver.touch(); render(); toast("複製しました"); }); } }),
+        h("button", { type: "button", class: "btn", text: "複製", onclick: () => { const n = clone(c); n.id = uid("c"); n.groupName += "（複製）"; n.createdDate = today(); delete n.approvals; delete n.imps; delete n.hist; delete n.impFolderId; n.acts = [{ at: new Date().toISOString(), t: "複製して作成", d: "元の案件：" + (c.groupName || "団体名未入力") }]; caseSaver.flush().then(() => { S.cases.set(n.id, n); view = { name: "case", id: n.id }; draft = n; caseSaver.touch(); render(); toast("複製しました"); }); } }),
         confirmBtn("この案件を削除", "本当に削除する", async () => { const id = c.id; draft = null; S.cases.delete(id); try { if (db) await db.doc("cases/" + id).delete(); } catch (_) { toast("削除できませんでした"); } go({ name: "list" }); })),
       done ? h("div", { class: "small", style: "color:var(--ok)", text: "上長2名が承認済みです。" })
         : h("div", { class: "small", id: "ap-note", style: "color:var(--bad);font-weight:700", text: "※上長が承認していません。" + (aps.length ? `（あと${NEED_APPROVALS - aps.length}名）` : "") }));
@@ -1408,7 +1609,7 @@ function viewCase() {
   drawBar();
   // 自動作成の文章は、コース成分表や共通設定の変更に合わせて開いた時点で最新にする（手修正した文章は変えない）
   const outdated = c.rows.filter((r) => (r.elementAuto !== false && r.element !== genElement(r, store)) || (r.responseAuto !== false && r.response !== genResponse(r, store))).length;
-  if (outdated) { c.rows.forEach((r) => regen(r, store)); caseSaver.touch(); if (!readOnly && c.rows.some((r) => r.name || r.allergy)) queueMicrotask(() => toast(`コース成分表・共通設定の内容に合わせて、${outdated}名分の文章を更新しました`)); }
+  if (outdated) { caseTrack(c, "手入力"); c.rows.forEach((r) => regen(r, store)); caseTrack(c, "自動更新"); caseSaver.touch(); if (!readOnly && c.rows.some((r) => r.name || r.allergy)) queueMicrotask(() => toast(`コース成分表・共通設定の内容に合わせて、${outdated}名分の文章を更新しました`)); }
   const stale = 0;
   const summary = h("div", { class: "row", id: "summary" });
   const updSummary = () => {
@@ -1491,9 +1692,9 @@ function viewCase() {
       for (const i of a.items) if (i.kind === "nonfood") { const hint = nonFoodHint(i.tag); if (hint) st.push(h("span", { class: "pill warn", style: "white-space:normal;border-radius:6px", title: "社内向けの注意です（資料には出ません）", text: hint })); }
       if (a.verdict) st.push(h("span", { class: "pill " + { hit: "bad", clear: "ok", unknown: "warn", ext: "plain" }[a.verdict], title: "コースの成分表・共通設定との照合結果", text: { hit: "該当あり", clear: "該当なし", unknown: "判定保留", ext: "成分表外" }[a.verdict] }));
       if (r.ai) st.push(h("span", { class: "pill warn", text: "AI読取" }));
-      if (a.tags.length && !a.confirmed) st.push(h("button", { type: "button", class: "btn sm primary", title: "原本と照合したら押してください", text: "原本照合済", onclick: () => { r.okSig = a.sig; if (r.ai) { delete r.ai; r.aiWas = true; } delete r.recheck; upd(); ch(); } }));
+      if (a.tags.length && !a.confirmed) st.push(h("button", { type: "button", class: "btn sm primary", title: "原本と照合したら押してください", text: "原本照合済", onclick: () => { r.okSig = a.sig; if (r.ai) { delete r.ai; r.aiWas = true; } delete r.recheck; caseAct(c, "照合済にした", r.name || "（氏名なし）", "", [r.id]); upd(); ch(); } }));
       else if (a.confirmed) st.push(h("span", { class: "pill ok", text: "✓ 照合済" }),
-        h("button", { type: "button", class: "linkbtn", title: "照合前の状態に戻します", text: "取り消す", onclick: () => { delete r.okSig; if (r.aiWas) { r.ai = true; delete r.aiWas; } else r.recheck = true; upd(); ch(); } }));
+        h("button", { type: "button", class: "linkbtn", title: "照合前の状態に戻します", text: "取り消す", onclick: () => { delete r.okSig; if (r.aiWas) { r.ai = true; delete r.aiWas; } else r.recheck = true; caseAct(c, "照合済を取り消した", r.name || "（氏名なし）", "un", [r.id]); upd(); ch(); } }));
       state.replaceChildren(...st);
       marks(); drawResp(); fit(elTa); fit(reTa); updSummary();
     }
@@ -1510,7 +1711,10 @@ function viewCase() {
       h("div", { class: "w" }, lab("対応"), selBox,
         h("div", { class: "resp-pick" }, h("label", { for: r.id + "-fin", text: "最終的な対応" }), finSel, finIn, docHint), cauBox),
       h("div", { class: "w" }, lab("症状"), h("textarea", { id: r.id + "-sy", rows: 1, value: r.symptom || "", placeholder: "不明", "aria-label": "症状", oninput: (e) => { r.symptom = e.target.value; ch(); } })),
-      h("div", { class: "w" }, lab("備考"), h("div", { class: "memo src" }, h("label", { for: r.id + "-rm", text: "資料メモ（PDF反映あり）" }),
+      h("div", { class: "w" }, lab("備考"), h("div", { class: "lg-rowbtn" },
+          h("button", { type: "button", class: "btn sm lgb", id: r.id + "-imp", title: "この人について取り込んだ資料を見る", text: `取込データ確認 ${(c.imps || []).filter((x) => (x.rows || []).some((y) => y.rid === r.id)).length}`, onclick: () => caseLogDialog(c, "imp", r.id) }),
+          h("button", { type: "button", class: "btn sm lgb", id: r.id + "-hist", title: "この人の変更履歴を見る", text: "履歴", onclick: () => { caseTrack(c, "手入力"); caseLogDialog(c, "chg", r.id); } })),
+        h("div", { class: "memo src" }, h("label", { for: r.id + "-rm", text: "資料メモ（PDF反映あり）" }),
           h("textarea", { id: r.id + "-rm", rows: 1, value: r.remark, placeholder: "エピペン・薬など", title: "エピペン所持、薬持参、通院中など、症状に対する応急処置や服薬の情報", oninput: (e) => { r.remark = e.target.value; ch(); } })),
         h("div", { class: "memo" }, h("label", { for: r.id + "-mm", text: "確認メモ（社内用・PDF反映なし）" }),
           h("textarea", { id: r.id + "-mm", rows: 1, value: r.memo || "", placeholder: "要確認の点など", title: "判読不明の箇所や確認が必要な点など、社内向けの注意", oninput: (e) => { r.memo = e.target.value; caseSaver.touch(); } }))),
@@ -1662,7 +1866,9 @@ function viewCase() {
         h("button", { type: "button", class: "linkbtn", text: "Excel・CSVの列を自分で指定して取り込む", onclick: () => fileXls.click() }),
         fileXls, fileAny),
       aiOk && !canImages ? h("div", { class: "muted small", text: "スキャンしたPDF・FAX・写真はここでは読み取れません。Claudeのチャットで文字にして、「テキスト貼り付け」に貼ると取り込めます。" }) : null),
-    summary,
+    h("div", { class: "row" }, summary, h("span", { style: "margin-left:auto" }),
+      h("button", { type: "button", class: "btn sm lgb", id: "lg-open-imp", text: `取込データ確認（${(c.imps || []).length}回）`, onclick: () => caseLogDialog(c, "imp", "") }),
+      h("button", { type: "button", class: "btn sm lgb", id: "lg-open-hist", text: "履歴", onclick: () => { caseTrack(c, "手入力"); caseLogDialog(c, "chg", ""); } })),
     h("div", { class: "sheet scroll" }, h("div", { class: "sheet-in" },
       h("div", { class: "srow head" }, ...["年", "組", "性別", "氏名（敬称略）", "アレルギー", "成分可否", "アレルゲンの要素", "対応", "症状", "備考", ""].map((t) => h("div", { text: t }))),
       body)),
@@ -1710,6 +1916,7 @@ function gridToPeople(grid, hdr, roles, onlyAllergy) {
   return out;
 }
 async function importTable(file, add) {
+  impSrc = { files: [file] };
   try {
     await loadScript(LIB.xlsx);
     const buf = await file.arrayBuffer(); let wb;
@@ -1747,7 +1954,7 @@ function mapDialog(sheets, add) {
       h("div", { class: "scroll", style: "max-height:44vh;overflow-y:auto" }, table),
       h("div", { class: "row" }, h("strong", { text: `${people.length}名を取り込みます` }), h("span", { style: "margin-left:auto" }),
         h("button", { type: "button", class: "btn", text: "やめる", onclick: () => dlg.close() }),
-        h("button", { type: "button", class: "btn primary", id: "map-ok", text: "取り込む", disabled: !people.length, onclick: () => { dlg.close(); add(people, false); } }))));
+        h("button", { type: "button", class: "btn primary", id: "map-ok", text: "取り込む", disabled: !people.length, onclick: () => { dlg.close(); const b = impBegin(draft); add(people, false); impEnd(draft, b, people.map((q) => ({ p: q, act: "new" }))); if (b) render(); } }))));
   }
   pick(); draw(); if (!dlg.open) dlg.showModal();
 }
@@ -1766,6 +1973,7 @@ function pasteDialog(add) {
   const msg = h("span", { class: "small muted" });
   const asTable = async (quiet) => {
     const t = ta.value.replace(/\r/g, ""); if (!t.trim()) return false;
+    impSrc = { text: ta.value };
     let grid;
     try { await loadScript(LIB.xlsx); grid = pasteToGrid(t); } catch (_) { grid = []; }
     const cols = grid.length ? Math.max(...grid.map((r) => r.length)) : 0;
@@ -1972,10 +2180,10 @@ function reviewDialog(people, add, groupName, warn, meta) {
     dup.some(Boolean) ? h("div", { class: "small", id: "rv-dup-note", style: "color:var(--warn)", text: `同じ氏名の人がこの案件にすでにいる${dup.filter(Boolean).length}名は、登録済みの内容を下に表示しています。新しい食材・資料メモ・食事の指定が届いた人は、初めに「登録済みの人に反映する」が選ばれています（登録済みの内容は消さずに足します）。同姓同名の別の人であれば「別人として取り込む」、取り込まないときは「取り込まない」を選んでください。` }) : null,
     h("div", { class: "row" }, count, h("span", { style: "margin-left:auto" }),
       h("button", { type: "button", class: "btn", text: "やめる", onclick: () => dlg.close() }),
-      h("button", { type: "button", class: "btn primary", id: "rv-ok", text: "取り込む", disabled: !(people.length || hasMeta) || (!isLay && people.length > 0 && hd.course === "__"), onclick: () => { const list = people.filter((_, i) => on[i]).map((p) => { const q = { ...p }; delete q.unclear; return q; }); const fins = people.map((p, i) => (fin[i] ? [p, same[i]] : null)).filter(Boolean); dlg.close(); if (list.length || hasMeta || fins.length) { if (groupName && draft && !draft.groupName) draft.groupName = groupName; if (list.length) add(list, true);
+      h("button", { type: "button", class: "btn primary", id: "rv-ok", text: "取り込む", disabled: !(people.length || hasMeta) || (!isLay && people.length > 0 && hd.course === "__"), onclick: () => { const list = people.filter((_, i) => on[i]).map((p) => { const q = { ...p }; delete q.unclear; return q; }); const fins = people.map((p, i) => (fin[i] ? [p, same[i]] : null)).filter(Boolean); dlg.close(); if (list.length || hasMeta || fins.length) { const ib = impBegin(draft), its = people.map((p, i) => (on[i] ? { p, act: "new" } : fin[i] ? { p, act: "merge", rid: pick(p, i).id } : { p, act: "skip", rid: dup[i] ? pick(p, i).id : "" })); if (groupName && draft && !draft.groupName) draft.groupName = groupName; if (list.length) add(list, true);
         // 同じ氏名が複数いるときは、年・組が合う人へ。合う人がいなければ最初の人へ
         const done = []; for (const [p, rs] of fins) { const r = rs.find((x) => norm(x.kumi) === norm(p.kumi) && half(x.year || "") === half(p.year || "")) || rs.find((x) => norm(x.kumi) === norm(p.kumi)) || rs[0]; mergePerson(r, p); done.push(r); }
-        applyHead(); if (done.length) { const m = M(draft.courseId); done.forEach((r) => regen(r, m)); } caseSaver.touch(); render(); if (!list.length) toast(fins.length ? `${fins.length}名の登録済みの内容に反映しました` : "店舗・ご利用日・利用人数を取り込みました"); } } }))));
+        applyHead(); if (done.length) { const m = M(draft.courseId); done.forEach((r) => regen(r, m)); } impEnd(draft, ib, its); caseSaver.touch(); render(); if (!list.length) toast(fins.length ? `${fins.length}名の登録済みの内容に反映しました` : "店舗・ご利用日・利用人数を取り込みました"); } } }))));
   // 横幅は通常の約1.5倍。右端のつまみをドラッグすると変えられ、閉じるまで（次に開くときも）その幅を保つ。
   const grip = h("div", { class: "dlg-grip", id: "rv-grip", title: "ドラッグして横幅を変更" });
   const clampW = (w) => Math.max(Math.min(640, window.innerWidth - 32), Math.min(window.innerWidth - 32, w));
@@ -2003,6 +2211,7 @@ async function tableText(f) {
 }
 /** どの形式でもAIに読ませる。AIが使えない表示環境では、表ファイルだけ列指定の取込に回す。 */
 async function importAny(files, add) {
+  impSrc = { files: [...files] };
   if (!sample) { const t = files.find(isTable); return t ? importTable(t, add) : toast("この表示環境ではAIの読み取りが使えません。Excel・CSVを選んでください"); }
   const dlg = $("#dlg"); const msg = h("div", { style: "white-space:pre-wrap", text: "ファイルを準備しています…" });
   dlg.replaceChildren(h("div", { class: "dlg" }, h("h3", { text: "資料を読み取っています" }), msg, h("div", { class: "row" }, h("button", { type: "button", class: "btn", text: "閉じる", onclick: () => { aiCtl?.abort(); dlg.close(); } }))));
@@ -2102,6 +2311,7 @@ async function doExport(c) {
     const buf = await wb.xlsx.writeBuffer();
     const fn = `【アレルギー対応シート】${(c.visitDate || "").replace(/-/g, "")}${(c.groupName || "団体名未入力").replace(/[\\/:*?"<>|]/g, "")}さま.xlsx`;
     await dl.save({ filename: fn, data: new Blob([buf]) });
+    caseAct(c, "Excelで出力", `対応シート（${(c.rows || []).length}名）`, "out"); if (draft === c) caseSaver.touch();
     msg.textContent = "出力しました。";
   } catch (e) {
     msg.textContent = e && e.code === "declined" ? "" : e && e.code ? "この表示環境では保存できませんでした。" : "Excelファイルを作成できませんでした。";
@@ -2487,6 +2697,7 @@ async function exportCasePdf(c) {
         const pdf = new jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape", compress: true });
         canvases.forEach((cv, i) => { if (i) pdf.addPage("a4", "landscape"); let w = 297, hh = (cv.height / cv.width) * 297; if (hh > 210) { w = (210 / hh) * 297; hh = 210; } pdf.addImage(imgs[i], "JPEG", (297 - w) / 2, 0, w, hh); });
         await dl.save({ filename: `【アレルギー対応シート】${(c.visitDate || "").replace(/-/g, "")}${(c.groupName || "団体名未入力").replace(/[\\/:*?"<>|]/g, "")}さま.pdf`, data: pdf.output("blob") });
+        caseAct(c, "PDFで出力", `対応シート（${(c.rows || []).length}名）`, "out"); if (draft === c) caseSaver.touch();
         dlg.close(); msg.textContent = "出力しました。";
       } catch (e) { dmsg.style.color = "var(--bad)"; dmsg.textContent = e && e.code === "declined" ? "" : e && e.code ? "この表示環境では保存できませんでした。" : "PDFを作成できませんでした。"; save.disabled = false; }
     } });
@@ -2570,11 +2781,13 @@ function viewSettings() {
       h("label", { class: "row" }, h("input", { id: "set-fruitMode", type: "checkbox", style: "width:auto", checked: s.fruitMode !== false, onchange: (e) => { s.fruitMode = e.target.checked; ch(); } }), "ソース類の果物は種類を特定できないため、果物はすべて「果物」の成分ありとして扱う"),
       h("div", { class: "muted small", text: "コースを指定した案件に適用されます。果物の申告は、調味料・ソース・調理油の成分を「果物」と表記して「該当あり」と判定します。成分表にない果物（パイナップルなど）は、現物は使用なしとして扱います。" }),
       field("果物として扱う食材（「、」で区切る。特定原材料の「別の呼び方」も含まれます）", ta("fruits", 4))),
-    h("div", { class: "panel stack", id: "gdrive" }, h("h3", { text: "Googleドライブ連携（PJ管理）" }),
-      h("div", { class: "muted small", text: "PJ管理の案件から、Googleドライブにフォルダとスプレッドシートを作るための設定です。操作する人が自分の Google アカウントでログインし、その人の権限で、下の保存先フォルダの中に作ります。クライアントIDは Google Cloud の「OAuth クライアントID（ウェブ アプリケーション）」で、パスワードのような秘密の値ではありません。Google Cloud のプロジェクトでは「Google Drive API」と「Google Sheets API」の両方を有効にしてください。" }),
+    h("div", { class: "panel stack", id: "gdrive" }, h("h3", { text: "Googleドライブ連携" }),
+      h("div", { class: "muted small", text: "PJ管理の案件のフォルダとスプレッドシート、アレルギー対応の案件で取り込んだ資料を、Googleドライブに置くための設定です。操作する人が自分の Google アカウントでログインし、その人の権限で、下の保存先フォルダの中に作ります。クライアントIDは Google Cloud の「OAuth クライアントID（ウェブ アプリケーション）」で、パスワードのような秘密の値ではありません。Google Cloud のプロジェクトでは「Google Drive API」と「Google Sheets API」の両方を有効にしてください。" }),
       h("div", { class: "fields" },
         field("OAuth クライアントID", h("input", { id: "set-gClientId", value: s.gClientId || "", placeholder: "例：1234567890-xxxxxxxx.apps.googleusercontent.com", autocomplete: "off", oninput: (e) => { s.gClientId = e.target.value.trim(); ch(); } })),
-        field("保存先フォルダ（フォルダのURL、またはID）", h("input", { id: "set-gFolderId", value: s.gFolderId || "", placeholder: "例：https://drive.google.com/drive/folders/xxxxxxxx", autocomplete: "off", oninput: (e) => { s.gFolderId = e.target.value.trim(); ch(); } })))),
+        field("保存先フォルダ（フォルダのURL、またはID）", h("input", { id: "set-gFolderId", value: s.gFolderId || "", placeholder: "例：https://drive.google.com/drive/folders/xxxxxxxx", autocomplete: "off", oninput: (e) => { s.gFolderId = e.target.value.trim(); ch(); } })),
+        field("取込資料の保管フォルダ（アレルギー対応の案件。フォルダのURL、またはID）", h("input", { id: "set-gImpFolderId", value: s.gImpFolderId || "", placeholder: "例：https://drive.google.com/drive/folders/xxxxxxxx", autocomplete: "off", oninput: (e) => { s.gImpFolderId = e.target.value.trim(); ch(); } }))),
+      h("div", { class: "muted small", text: "「取込資料の保管フォルダ」には、アレルギー対応の案件で取り込んだ元の資料（PDF・画像・Excel）を、案件ごとのフォルダに分けて保管します。個人の健康情報が入るため、フォルダの共有は担当者だけに絞ってください。" })),
     h("div", { class: "panel stack", id: "invset" }, h("h3", { text: "請求書の発行元（PJ管理）" }),
       h("div", { class: "muted small", text: "PJ管理の請求書に載せる、発行元の情報と、決まった請求先です。空の項目は請求書に載せません。請求先は初期値で、請求書を作る画面で案件ごとに変えられます。" }),
       h("div", { class: "fields" }, field("ご請求先（初期値。「御中」は自動で付きます）", inp("invTo")), field("ご請求先の登録番号・MAILなど（初期値）", ta("invToInfo", 2))),
