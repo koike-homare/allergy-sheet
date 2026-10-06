@@ -498,7 +498,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <span id="save"></span>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 129</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 130</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -3364,8 +3364,15 @@ function pjInvTotals(inv) {
 function pjInvName(a) {
   const enT = pjEn(a), all = String(a || "").trim(), jaT = all.length > enT.length ? all.slice(all.indexOf(enT) + enT.length).trim() : "";
   const en = enT.split("\n").map((x) => x.trim()).filter(Boolean), ja = jaT.split("\n").map((x) => x.trim()).filter(Boolean), sub = [];
-  for (let i = 1; i < Math.max(en.length, ja.length); i++) { const e = en[i] || "", j = (ja[i] || "").replace(/^[-‐－ー・*＊\s]+/, ""); sub.push(e ? e + (j ? " - " + j : "") : "- " + j); }
+  for (let i = 1; i < Math.max(en.length, ja.length); i++) { const e = en[i] || "", j = (ja[i] || "").replace(/^[-‐－ー・*＊\s]+/, ""); if (e) sub.push(e); if (j) sub.push("- " + j); }
   return { name: en[0] || "", ja: ja[0] || "", sub: sub.join("\n") };
+}
+/** 請求書の品名：英語と日本語が同じ行に続けて書かれていたら、日本語の始まりで行を分ける（英語の行、日本語の行の順）。 */
+function pjInvLines(text) {
+  return String(text || "").split("\n").flatMap((ln) => { const t = ln.trim(); if (!t) return [];
+    const m = /^(.*?[A-Za-z].*?)[\s\-‐－–—:：/／]*([\u3040-\u30ff\u3400-\u9fff々〆].*)$/.exec(t);
+    if (!m || !m[1].trim() || /^[-‐－・*＊\s]*$/.test(m[1])) return [t];
+    return [m[1].trim(), (/^[-‐－・*＊]/.test(m[1]) ? "  " : "") + m[2].trim()]; }).join("\n");
 }
 /** 今のシート（取り消した品目を除く）から、請求の行を作る。配送料と、該当すれば深夜・早朝料金を足す。 */
 async function pjInvSeed(c) {
@@ -3427,7 +3434,7 @@ async function pjInvPdf(c) {
     const band = (t) => h("tr", {}, h("td", { colspan: "5", style: `background:${DK};color:#fff;font-size:10px;padding:2.5px 4px`, text: t }));
     const sub = (t, v) => h("tr", {}, h("td", { colspan: "4", style: `${cellS}border-top:1.5px solid #000;border-bottom:1px solid #000;padding-left:4px`, text: t }), h("td", { style: `${cellS}border-top:1.5px solid #000;border-bottom:1px solid #000;text-align:right`, text: num(v) }));
     const item = (l, i, first) => { const z = i % 2 ? `background:${ZB};` : "", q = pjNum(l.qty), u = pjNum(l.unit), vl = "border-left:1px solid #bdbdbd;"; return h("tr", {},
-      h("td", { style: cellS + z + "white-space:nowrap", text: first ? md(c.visitDate) : "" }), h("td", { style: cellS + z + vl + "white-space:pre-wrap", text: [l.name, l.ja].filter(Boolean).join("  ") + (l.sub ? "\n" + l.sub : "") }),
+      h("td", { style: cellS + z + "white-space:nowrap", text: first ? md(c.visitDate) : "" }), h("td", { style: cellS + z + vl + "white-space:pre-wrap", text: pjInvLines([l.name, l.ja, l.sub].filter(Boolean).join("\n")) }),
       h("td", { style: cellS + z + vl + "text-align:center", text: q != null ? String(q) : "" }), h("td", { style: cellS + z + vl + "text-align:right", text: u != null ? num(u) : "" }), h("td", { style: cellS + z + vl + "text-align:right", text: num(pjNum(l.amount)) })); };
     const trs = [];
     for (const [r, head, sb, v] of [[10, "●税率10%項目", "●税率10%項目小計", T.sub10], [8, "●税率8%項目（軽減税率対象項目）", "●税率8%項目（軽減税率対象項目）小計", T.sub8], [0, "●消費税の対象外の項目", "●消費税の対象外の項目小計", T.sub0]]) {
