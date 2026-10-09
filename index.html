@@ -211,10 +211,10 @@ nav button[aria-current="page"]{background:var(--accent-soft);color:var(--accent
   .wrap:has(#nav:not([hidden])) nav button:focus-visible,.wrap:has(#nav:not([hidden])) #logout:focus-visible{outline:2px solid #fff;outline-offset:1px}
   .wrap:has(#nav:not([hidden])) #save{margin:auto 0 0;padding-inline:12px;color:#c9d6e8}
   .wrap:has(#nav:not([hidden])) #save.err{color:#ffb4b4}
-  .wrap:has(#nav:not([hidden])) #open-settings{background:none;border:0;border-radius:var(--r);text-align:left;padding:9px 12px;margin-top:6px;font:inherit;color:#c9d6e8;cursor:pointer}
-  .wrap:has(#nav:not([hidden])) #open-settings:hover{background:rgba(255,255,255,.08);color:#fff}
-  .wrap:has(#nav:not([hidden])) #open-settings[aria-current="page"]{background:rgba(255,255,255,.16);color:#fff;font-weight:700}
-  .wrap:has(#nav:not([hidden])) #open-settings:focus-visible{outline:2px solid #fff;outline-offset:1px}
+  .wrap:has(#nav:not([hidden])) #open-req,.wrap:has(#nav:not([hidden])) #open-settings{background:none;border:0;border-radius:var(--r);text-align:left;padding:9px 12px;margin-top:2px;font:inherit;color:#c9d6e8;cursor:pointer}
+  .wrap:has(#nav:not([hidden])) #open-req:hover,.wrap:has(#nav:not([hidden])) #open-settings:hover{background:rgba(255,255,255,.08);color:#fff}
+  .wrap:has(#nav:not([hidden])) #open-req[aria-current="page"],.wrap:has(#nav:not([hidden])) #open-settings[aria-current="page"]{background:rgba(255,255,255,.16);color:#fff;font-weight:700}
+  .wrap:has(#nav:not([hidden])) #open-req:focus-visible,.wrap:has(#nav:not([hidden])) #open-settings:focus-visible{outline:2px solid #fff;outline-offset:1px}
   .wrap:has(#nav:not([hidden])) #logout{align-self:flex-start;margin-left:12px;margin-top:6px;background:transparent;color:#fff;border-color:rgba(255,255,255,.45)}
   .wrap:has(#nav:not([hidden])) #logout:hover{background:rgba(255,255,255,.12)}
   .wrap:has(#nav:not([hidden])) main{padding-top:20px;min-width:0}
@@ -231,7 +231,7 @@ nav button[aria-current="page"]{background:var(--accent-soft);color:var(--accent
 #bell b{background:#c62828;color:#fff;border-radius:999px;min-width:18px;padding:0 5px;font-size:12px;line-height:18px;text-align:center}
 #bell:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .wlist{margin:0;padding-left:1.2em}.wlist li{margin-block:4px}
-#open-settings[aria-current="page"]{border-color:var(--accent);color:var(--accent);font-weight:700}
+#open-req[aria-current="page"],#open-settings[aria-current="page"]{border-color:var(--accent);color:var(--accent);font-weight:700}
 h2{font-family:var(--display);font-size:20px;margin:0;text-wrap:balance}
 h3{font-family:var(--display);font-size:15px;margin:0}
 .muted{color:var(--muted)} .small{font-size:12px}
@@ -460,6 +460,8 @@ dialog::backdrop{background:rgba(10,15,25,.5)}
 .lg-ev.ap::before{background:var(--ok)}.lg-ev.un::before{background:var(--bad)}.lg-ev.out::before{background:#7a5cc0}.lg-ev.imp::before{background:var(--accent)}
 .lg-day{font-weight:700;margin:10px 0 2px;font-size:13px}.lg-t{font-variant-numeric:tabular-nums;color:var(--muted);margin-right:8px}
 .pill.acc{background:var(--accent-soft);color:var(--accent)}
+.rq-st{width:auto;font-weight:700;border-radius:99px;padding:4px 10px}.rq-st.todo{background:var(--warn-soft);color:var(--warn);border-color:var(--warn-soft)}.rq-st.done{background:var(--ok-soft);color:var(--ok);border-color:var(--ok-soft)}
+tr.rq-done td{color:var(--muted)}
 .btn.lgb{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);font-weight:700}
 .lg-rowbtn{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap}
 @media(max-width:800px){.lg-in{grid-template-columns:1fr}}
@@ -496,9 +498,10 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
       <button type="button" data-v="pjsales">PJ売上管理</button>
     </nav>
     <span id="save"></span>
+    <button type="button" class="btn sm" id="open-req" hidden>改善要望</button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 131</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 132</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1137,12 +1140,60 @@ function startData() {
     else if (view.name === "settings" || view.name === "spec") { if (!setSaver.busy && S.settings.editedBy !== clientId) { setDraft = null; render(); } }
     else if (S.settings.editedBy !== clientId && !caseSaver.busy && !$("#dlg").open) render();
   }, () => {}));
+  unsubs.push(db.doc("settings/requests").onSnapshot((snap) => {
+    S.reqs = snap.exists && Array.isArray(snap.data().items) ? clone(snap.data().items) : [];
+    if (view.name === "requests" && !$("#dlg").open && !(document.activeElement && document.activeElement.closest && document.activeElement.closest("#rq-form"))) render();
+  }, () => {}));
   // 特定原材料の自動確認（単独アプリのサーバーが月2回書き込む）の結果。新しい情報があればベルを出す。
   unsubs.push(db.doc("settings/specwatch").onSnapshot((snap) => {
     S.watch = snap.exists ? clone(snap.data()) : null; drawBell();
     if ($("#watch-dlg") && $("#dlg").open) watchDialog();
     const el = $("#watch-line"); if (el) el.replaceWith(watchLine());
   }, () => {}));
+}
+
+/* ---------- 改善要望 ----------
+   T-CORE への改善要望の一覧（記載日・担当者名・内容・ステータス）。settings/requests に items として持つ。
+   保存のたびに最新の一覧を読み直してから直すので、ほかの人が同時に足した要望を消さない。 */
+const REQ_ST = ["未対応", "開発済"];
+async function reqMutate(fn) {
+  let items = clone(S.reqs || []);
+  if (db && !localOnly) { try { const d = await db.doc("settings/requests").get(); items = d.exists && Array.isArray(d.data().items) ? clone(d.data().items) : []; } catch (_) {} }
+  fn(items); S.reqs = items;
+  if (db && !localOnly) { if (readOnly) { toast("閲覧専用のため保存できません"); return false; } try { await db.doc("settings/requests").set({ items, updatedAt: new Date().toISOString(), editedBy: clientId }); } catch (_) { toast("保存できませんでした。もう一度お試しください"); return false; } }
+  return true;
+}
+let reqFilter = "";
+function viewRequests() {
+  const items = (S.reqs || []).slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(b.at || "").localeCompare(String(a.at || "")));
+  const cnt = (st) => items.filter((x) => (x.status || "未対応") === st).length;
+  const dIn = h("input", { id: "rq-date", type: "date", value: today() }), wIn = h("input", { id: "rq-who", placeholder: "例：小池", autocomplete: "off" }), tIn = h("textarea", { id: "rq-text", rows: 3, placeholder: "例：案件一覧で、利用日の近い順に並べたい" }), msg = h("span", { class: "small", id: "rq-msg" });
+  const add = async () => {
+    const text = tIn.value.trim(), who = wIn.value.trim();
+    if (!text || !who || !dIn.value) { msg.style.color = "var(--bad)"; msg.textContent = !dIn.value ? "記載日を入れてください。" : !who ? "担当者名を入れてください。" : "内容を入れてください。"; return; }
+    if (await reqMutate((l) => l.push({ id: uid("q"), date: dIn.value, who, text, status: "未対応", at: new Date().toISOString() }))) { toast("改善要望を追加しました"); tIn.value = ""; render(); }
+  };
+  const list = items.filter((x) => !reqFilter || (x.status || "未対応") === reqFilter);
+  const stSel = (x) => { const st = x.status || "未対応"; return h("select", { id: "rq-st-" + x.id, class: "rq-st " + (st === "開発済" ? "done" : "todo"), "aria-label": "ステータス", disabled: readOnly || undefined, onchange: async (e) => { const v = e.target.value; e.target.className = "rq-st " + (v === "開発済" ? "done" : "todo"); if (await reqMutate((l) => { const y = l.find((z) => z.id === x.id); if (y) { y.status = v; y.doneAt = v === "開発済" ? today() : ""; } })) { toast(`「${v}」にしました`); render(); } } }, ...REQ_ST.map((v) => h("option", { value: v, text: v, selected: v === st || undefined }))); };
+  return [
+    h("div", { class: "row" }, h("h2", { style: "margin:0", text: "改善要望" }), h("span", { class: "muted small", text: "T-CORE への改善要望を記録します。開発が終わったものは「開発済」に切り替えてください。" })),
+    h("div", { class: "panel stack", id: "rq-form" }, h("h3", { style: "margin:0", text: "要望を書く" }),
+      h("div", { class: "fields" }, field("記載日", dIn), field("担当者名", wIn)),
+      field("内容", tIn),
+      h("div", { class: "row" }, msg, h("span", { style: "margin-left:auto" }), h("button", { type: "button", class: "btn primary", id: "rq-add", text: "追加する", disabled: readOnly || undefined, onclick: add }))),
+    h("div", { class: "panel stack" },
+      h("div", { class: "row" }, h("h3", { style: "margin:0", text: "要望の一覧" }),
+        ...[["", `すべて ${items.length}`], ["未対応", `未対応 ${cnt("未対応")}`], ["開発済", `開発済 ${cnt("開発済")}`]].map(([k, t]) => h("button", { type: "button", class: "btn sm" + (reqFilter === k ? " primary" : ""), id: "rq-f-" + (k || "all"), text: t, onclick: () => { reqFilter = k; render(); } }))),
+      list.length ? h("div", { class: "scroll" }, h("table", { class: "list", id: "rq-list" },
+        h("thead", {}, h("tr", {}, ...["記載日", "担当者名", "内容", "ステータス", ""].map((t) => h("th", { text: t })))),
+        h("tbody", {}, ...list.map((x) => h("tr", { class: (x.status || "未対応") === "開発済" ? "rq-done" : "" },
+          h("td", { style: "white-space:nowrap", text: (x.date || "").replace(/-/g, "/") }),
+          h("td", { style: "white-space:nowrap", text: x.who || "" }),
+          h("td", { style: "white-space:pre-wrap;min-width:280px", text: x.text || "" }),
+          h("td", { style: "white-space:nowrap" }, stSel(x), x.status === "開発済" && x.doneAt ? h("div", { class: "small muted", text: x.doneAt.replace(/-/g, "/") + " 開発済" }) : null),
+          h("td", { style: "white-space:nowrap" }, readOnly ? null : confirmBtn("削除", "本当に削除", async () => { if (await reqMutate((l) => { const i = l.findIndex((z) => z.id === x.id); if (i >= 0) l.splice(i, 1); })) { toast("削除しました"); render(); } }, "btn sm danger"))))))) 
+        : h("div", { class: "empty", text: items.length ? "該当する要望はありません。" : "まだ要望はありません。上の欄から追加してください。" })),
+  ];
 }
 /* ---------- 特定原材料の自動確認とお知らせ ---------- */
 /* お知らせは履歴（items）として残す。status: new=新着 / ack=確認済み / done=取込済み */
@@ -1240,6 +1291,7 @@ async function go(v) {
 }
 $("#nav").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) go({ name: b.dataset.v }); });
 /* 共通設定は上長承認のパスワードを入れた人だけが開ける（パスワードが未設定の間と、共有データに未接続のときは誰でも開ける）。 */
+$("#open-req").addEventListener("click", () => { if (authState === "open" && view.name !== "requests") go({ name: "requests" }); });
 $("#open-settings").addEventListener("click", async () => {
   if (authState !== "open" || view.name === "settings") return;
   const a = localOnly || !db ? null : await getApproval();
@@ -1254,6 +1306,7 @@ function render() {
   const app = $("#app");
   $("#nav").hidden = authState !== "open"; $("#logout").hidden = authState !== "open" || !dataKey;
   drawBell();
+  const rq = $("#open-req"); rq.hidden = authState !== "open"; if (cur === "requests") rq.setAttribute("aria-current", "page"); else rq.removeAttribute("aria-current");
   const os = $("#open-settings"); os.hidden = authState !== "open"; if (cur === "settings") os.setAttribute("aria-current", "page"); else os.removeAttribute("aria-current");
   if (authState !== "open") { app.replaceChildren(...viewAuth()); return; }
   if (!S.got.cases || !S.got.stores || !S.got.settings || !S.got.courses) { app.replaceChildren(h("div", { class: "empty", text: "読み込み中…" })); return; }
@@ -1263,6 +1316,7 @@ function render() {
   else if (view.name === "layouts") app.replaceChildren(...top, ...viewLayouts());
   else if (view.name === "pj") app.replaceChildren(...top, ...viewPj());
   else if (view.name === "pjsales") app.replaceChildren(...top, ...viewPjSales());
+  else if (view.name === "requests") app.replaceChildren(...top, ...viewRequests());
   else if (view.name === "case") app.replaceChildren(...top, ...viewCase());
   else if (view.name === "stores") app.replaceChildren(...top, ...viewStores());
   else if (view.name === "courses") app.replaceChildren(...top, ...viewCourses());
