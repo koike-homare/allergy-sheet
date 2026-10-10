@@ -510,7 +510,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 143</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 144</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1210,7 +1210,7 @@ function viewRequests() {
   const picked = [], chips = h("div", { class: "row", id: "rq-files", style: "gap:6px" });
   const drawPicked = () => chips.replaceChildren(...picked.map((f, i) => h("span", { class: "rq-chip" }, h("span", { text: f.name }), h("button", { type: "button", class: "linkbtn", "aria-label": f.name + " を外す", text: "×", onclick: () => { picked.splice(i, 1); drawPicked(); } }))));
   const take = (fs) => { for (const f of fs) { if (f.size > 20 * 1024 * 1024 || (!/^image\//.test(f.type) && f.size > REQ_MAX)) { toast(`「${f.name}」は大きすぎます（画像以外は4MBまで）`); continue; } if (picked.length >= 10) { toast("添付は10個までです"); break; } picked.push(f); } drawPicked(); };
-  const fIn = h("input", { type: "file", id: "rq-file", multiple: true, hidden: true, onchange: (e) => { take([...e.target.files]); e.target.value = ""; } });
+  const fIn = pasteable(h("input", { type: "file", id: "rq-file", multiple: true, hidden: true, onchange: (e) => { take([...e.target.files]); e.target.value = ""; } }));
   tIn.addEventListener("paste", (e) => { const fs = [...((e.clipboardData && e.clipboardData.files) || [])]; if (fs.length) { e.preventDefault(); take(fs.map((f, i) => (f.name && f.name !== "image.png" ? f : new File([f], `貼り付け画像_${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "")}${fs.length > 1 ? "_" + (i + 1) : ""}.png`, { type: f.type || "image/png" })))); } });
   const add = async () => {
     const text = tIn.value.trim(), who = wIn.value.trim();
@@ -1655,7 +1655,7 @@ function viewLayoutCase(c) {
       h("td", {}, confirmBtn("×", "削除", () => { c.rows.splice(c.rows.indexOf(r), 1); drawRows(); ch(); }, "x"))))))]
     : [h("div", { class: "empty", text: "アレルギー対応者はまだいません。いなければ、このままで構いません（★と吹き出しが付かないだけです）。" })]));
   const addPeople = (people) => { for (const p of people) c.rows.push(newRow({ ...p, final: "" })); drawRows(); ch(); toast(`${people.length}名を追加しました`); };
-  const fileAny = h("input", { type: "file", id: "f-any", accept: ".pdf,.xlsx,.xls,.xlsm,.ods,.csv,.tsv,.txt,.docx,.odt,.pptx,.rtf,.html,.htm,.eml,.msg,.zip,.heic,.heif,.tif,.tiff,image/*", multiple: true, hidden: true, onchange: (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) importAny(fs, addPeople); } });
+  const fileAny = pasteable(h("input", { type: "file", id: "f-any", accept: ".pdf,.xlsx,.xls,.xlsm,.ods,.csv,.tsv,.txt,.docx,.odt,.pptx,.rtf,.html,.htm,.eml,.msg,.zip,.heic,.heif,.tif,.tiff,image/*", multiple: true, hidden: true, onchange: (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) importAny(fs, addPeople); } }));
   drawRows();
   return [
     h("div", {}, h("button", { type: "button", class: "linkbtn", text: "← レイアウト一覧", onclick: () => go({ name: "layouts" }) })),
@@ -1669,7 +1669,7 @@ function viewLayoutCase(c) {
       ondragover: (e) => { e.preventDefault(); e.currentTarget.classList.add("over"); }, ondragleave: (e) => e.currentTarget.classList.remove("over"),
       ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove("over"); const fs = [...(e.dataTransfer?.files || [])]; if (fs.length) importAny(fs, addPeople); } },
       h("div", { class: "row" }, h("h3", { text: "データ取込" }), h("span", { text: aiOk ? "資料（PDF・Excel・CSV・画像）をここにドロップすると、AIが利用人数とアレルギー対応者を読み取ります。手で入力する場合は、上の「利用人数」と下の表に入力します。" : "この表示環境ではAIの読み取りが使えません。上の「利用人数」と下の表に手で入力してください。" })),
-      h("div", { class: "row" }, aiOk ? h("button", { type: "button", class: "btn primary", text: "ファイルを選択", onclick: () => fileAny.click() }) : null,
+      h("div", { class: "row" }, aiOk ? h("button", { type: "button", class: "btn primary", text: "ファイルを選択", onclick: () => fileAny.click() }) : null, aiOk ? clipBtn(fileAny, "clip-lc") : null,
         aiOk ? h("button", { type: "button", class: "btn", text: "テキスト貼り付け", onclick: () => pasteDialog(addPeople) }) : null,
         h("button", { type: "button", class: "btn", id: "lc-add", text: "アレルギー対応者を1名追加", onclick: () => { c.rows.push(newRow()); drawRows(); ch(); } }), fileAny)),
     h("div", { class: "panel stack" }, h("h3", { text: "アレルギー対応者（配席で★と吹き出しを付ける人）" }), h("div", { class: "scroll" }, body)),
@@ -1950,7 +1950,7 @@ function viewCase() {
     return h("div", { class: "f" }, h("label", { for: "c-store", text: "店舗" }), sIn, sug, noteBox);
   }
   const fileXls = h("input", { type: "file", id: "f-xls", accept: ".xlsx,.xls,.csv,.tsv,.txt", hidden: true, onchange: async (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) importTable(f, addPeople); } });
-  const fileAny = h("input", { type: "file", id: "f-any", accept: ".pdf,.xlsx,.xls,.xlsm,.ods,.csv,.tsv,.txt,.docx,.odt,.pptx,.rtf,.html,.htm,.eml,.msg,.zip,.heic,.heif,.tif,.tiff,image/*", multiple: true, hidden: true, onchange: (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) importAny(fs, addPeople); } });
+  const fileAny = pasteable(h("input", { type: "file", id: "f-any", accept: ".pdf,.xlsx,.xls,.xlsm,.ods,.csv,.tsv,.txt,.docx,.odt,.pptx,.rtf,.html,.htm,.eml,.msg,.zip,.heic,.heif,.tif,.tiff,image/*", multiple: true, hidden: true, onchange: (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) importAny(fs, addPeople); } }));
   const aiOk = !!sample;
   drawRows();
   const out = [
@@ -1970,9 +1970,10 @@ function viewCase() {
       ondragleave: (e) => e.currentTarget.classList.remove("over"),
       ondrop: (e) => { e.preventDefault(); e.currentTarget.classList.remove("over"); const fs = [...(e.dataTransfer?.files || [])]; if (fs.length) importAny(fs, addPeople); } },
       h("div", { class: "row" }, h("h3", { text: "取込" }),
-        h("span", { text: aiOk ? "旅行会社から届いた資料（PDF・Excel・Word・PowerPoint・画像・写真・FAX・メール・ZIPなど）を、ここにドロップしてください。AIが内容を読み取ります。" : "Excel・CSVファイルを、ここにドロップしてください。" })),
+        h("span", { text: aiOk ? "旅行会社から届いた資料（PDF・Excel・Word・PowerPoint・画像・写真・FAX・メール・ZIPなど）を、ここにドロップしてください。スクリーンショットは Ctrl+V（Macは ⌘+V）で貼り付けられます。AIが内容を読み取ります。" : "Excel・CSVファイルを、ここにドロップしてください。" })),
       h("div", { class: "row" },
         h("button", { type: "button", class: "btn primary", text: "ファイルを選択", onclick: () => fileAny.click() }),
+        aiOk ? clipBtn(fileAny, "clip-case") : null,
         h("button", { type: "button", class: "btn", text: "テキスト貼り付け", onclick: () => pasteDialog(addPeople) }),
         matchMedia("(pointer: coarse)").matches ? h("button", { type: "button", class: "btn", id: "cam-open", text: "カメラで撮影", onclick: () => cameraDialog(addPeople) }) : null,
         aiOk && S.settings.gClientId ? h("button", { type: "button", class: "btn", id: "glink-open", text: "Googleのリンク", onclick: () => gLinkDialog(addPeople) }) : null,
@@ -2131,6 +2132,27 @@ let aiCtl = null;
 const AI_ERR = { not_granted: "AIの利用が許可されていないため読み取れません。", rate_limited: "利用が集中しています。少し待ってからもう一度お試しください。", image_rejected: "この画像は読み取れませんでした。別のファイルでお試しください。", images_unavailable: "この表示環境では、PDF・画像をAIに渡すことができません。Excel・CSV・テキスト貼り付けは使えます。", refused: "この内容は読み取れませんでした。", invalid_json: "読み取り結果を整理できませんでした。もう一度お試しください。", session_expired: "サインインし直してから、もう一度お試しください。", sampling_disabled: "このアカウントではAIの読み取りが使えません。", no_api_key: "AIの設定（APIキー）がまだ登録されていません。管理者に連絡してください。", no_credit: "AIクレジットの残高がありません。管理者に連絡してください（クレジットの追加購入が必要です）。", bad_api_key: "AIの設定（APIキー）が正しくありません。管理者に連絡してください。", upstream_error: "AIから応答がありませんでした。少し待ってからもう一度お試しください。" };
 
 
+
+/* ---------- スクリーンショットの貼り付け ----------
+   取込のある画面では、画面の写真（スクリーンショット）を Ctrl+V（Macは ⌘+V）でそのまま取り込める。
+   ファイルを選ぶ入力欄に data-paste を付けておき、貼り付けたときに、いま見えている（ダイアログが開いていればその中の）入力欄へ渡す。 */
+const shotName = (f, i, n) => (f.name && !/^image\.(png|jpe?g)$/i.test(f.name) ? f : new File([f], `スクリーンショット_${fmtAt(new Date().toISOString()).replace(/[\/:]/g, "").replace(" ", "-")}${n > 1 ? "_" + (i + 1) : ""}.${(f.type.split("/")[1] || "png").replace("jpeg", "jpg")}`, { type: f.type || "image/png" }));
+function feedInput(input, files) { const dt = new DataTransfer(); files.forEach((f, i) => dt.items.add(shotName(f, i, files.length))); if (!input.multiple) { const one = new DataTransfer(); one.items.add(dt.files[0]); input.files = one.files; } else input.files = dt.files; input.dispatchEvent(new Event("change", { bubbles: true })); }
+const pasteable = (input) => { input.dataset.paste = "1"; return input; };
+function pasteTarget() { const dlg = $("#dlg"), scope = dlg && dlg.open ? dlg : $("#app"); return [...(scope ? scope.querySelectorAll("input[type=file][data-paste]") : [])].find((x) => x.parentElement && x.parentElement.getClientRects().length) || null; }
+document.addEventListener("paste", (e) => {
+  if (e.defaultPrevented || authState !== "open") return;
+  const fs = [...((e.clipboardData && e.clipboardData.files) || [])].filter((f) => /^image\//.test(f.type) || f.name);
+  if (!fs.length) return; const inp = pasteTarget(); if (!inp) return;
+  e.preventDefault(); feedInput(inp, fs); toast(fs.length > 1 ? `${fs.length}枚の画像を貼り付けました` : "スクリーンショットを貼り付けました");
+});
+/** 「スクショを貼り付け」ボタン：クリップボードの画像を読む。ブラウザが許可しないときは Ctrl+V を案内する。 */
+function clipBtn(input, id, cls) {
+  return h("button", { type: "button", class: cls || "btn", id, title: "コピーした画面の写真（スクリーンショット）を取り込みます。Ctrl+V（Macは ⌘+V）でも貼り付けられます", text: "スクショを貼り付け", onclick: async () => {
+    try { if (!navigator.clipboard || !navigator.clipboard.read) throw 0; const out = []; for (const it of await navigator.clipboard.read()) { const t = it.types.find((x) => /^image\//.test(x)); if (t) out.push(new File([await it.getType(t)], "image.png", { type: t })); } if (!out.length) return toast("クリップボードに画像がありません。スクリーンショットを撮ってから押してください（Windows：Win＋Shift＋S、Mac：⌘＋Shift＋4 → Controlを押しながら選ぶ）"); feedInput(input, out); }
+    catch (_) { toast("この画面ではクリップボードを直接読めません。画面のどこかをクリックしてから Ctrl+V（Macは ⌘+V）で貼り付けてください"); }
+  } });
+}
 /* ---------- いろいろな形式の資料を、文字と画像に直す ----------
    Word・PowerPoint・OpenDocument・RTF・HTML は文字（表は「 | 」区切りの行）に、iPhoneの写真（HEIC）・FAX（TIFF）は画像に、
    メール（.eml・.msg）とZIPは中身（本文と添付ファイル）に分けてから読む。どれもブラウザの中だけで行い、外へは送らない。 */
@@ -3320,7 +3342,7 @@ function pjStatusSel(c, id) {
 }
 function viewPj() {
   const list = [...S.cases.values()].filter((c) => c.kind === "pj").sort((a, b) => (b.visitDate || "9").localeCompare(a.visitDate || "9") || (b.updatedAt || "").localeCompare(a.updatedAt || ""));
-  const file = h("input", { type: "file", id: "pj-file", accept: ".pdf,.xlsx,.xls,.csv,.tsv,.txt,image/*", multiple: true, hidden: true, onchange: (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) pjImport(fs); } });
+  const file = pasteable(h("input", { type: "file", id: "pj-file", accept: ".pdf,.xlsx,.xls,.csv,.tsv,.txt,image/*", multiple: true, hidden: true, onchange: (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) pjImport(fs); } }));
   const tb = h("tbody");
   for (const c of list) tb.append(h("tr", { class: "click", onclick: () => go({ name: "case", id: c.id }) },
     h("td", { text: c.visitDate ? c.visitDate.replace(/-/g, "/") : "—" }), h("td", {}, h("strong", { text: c.locked ? c.groupName : c.flight || "—" })), h("td", { text: c.orderNo || "—" }),
@@ -3331,7 +3353,7 @@ function viewPj() {
   return [
     h("div", { class: "row" }, h("h2", { text: "PJ管理" }), h("span", { style: "margin-left:auto" }),
       h("button", { type: "button", class: "btn", id: "pj-blank", text: "空の案件を作る", onclick: () => pjOpen({}) }),
-      h("button", { type: "button", class: "btn primary", id: "pj-new", text: "依頼を読み込む", onclick: () => file.click() }), file),
+      h("button", { type: "button", class: "btn primary", id: "pj-new", text: "依頼を読み込む", onclick: () => file.click() }), clipBtn(file, "clip-pj"), file),
     h("div", { class: "muted small", style: "max-width:92ch", text: "届いた依頼（Excel・PDF・画像）を読み込むと、AIが利用日・フライトナンバー・オーダーナンバー・配達エリア・配達時間を読み取り、品目の和訳、特記事項の抽出、梱包容器、数量の変更を加えて案件を立ち上げます。" }),
     h("div", { class: "panel drop scroll", id: "pjlist", style: "padding:4px 8px",
       ondragover: (e) => { e.preventDefault(); e.currentTarget.classList.add("over"); }, ondragleave: (e) => e.currentTarget.classList.remove("over"),
@@ -3618,13 +3640,13 @@ function viewPjSheet(c) {
   const sync = async (quiet) => { try { if (!quiet) say("スプレッドシートを読んでいます…"); const sh = await pjSheetRead(c), changed = pjTakeHead(c, sh); let n = 0; try { n = await pjTrack(c, sh); } catch (_) {} drawHead(); drawExp(); ch(); if (!quiet || changed) say((changed ? "スプレッドシートの内容で、利用日などを更新しました。" : "利用日などは、スプレッドシートと同じです。") + (n ? `（直接編集された ${n} か所を、変更履歴に記録しました）` : "")); return true; } catch (e) { if (!quiet) say(String((e && e.message) || "読み取れませんでした。"), true); return false; } };
   // Google にログイン済みなら、開いたときに自動で読み直す（ログインの窓は、ボタンを押したときだけ出す）
   if (gTok && gTok.exp > Date.now() + 60000) queueMicrotask(() => sync(true));
-  const file = h("input", { type: "file", id: "pj-chg-file", accept: ".pdf,.xlsx,.xls,.csv,.tsv,.txt,image/*", multiple: true, hidden: true, onchange: (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) pjChange(c, { files: fs }, say, () => { drawHead(); ch(); }); } });
+  const file = pasteable(h("input", { type: "file", id: "pj-chg-file", accept: ".pdf,.xlsx,.xls,.csv,.tsv,.txt,image/*", multiple: true, hidden: true, onchange: (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) pjChange(c, { files: fs }, say, () => { drawHead(); ch(); }); } }));
   const url = `https://docs.google.com/spreadsheets/d/${c.drive.sheetId}/edit`;
   return [
     h("div", {}, h("button", { type: "button", class: "linkbtn", text: "← PJ管理", onclick: () => go({ name: "pj" }) })),
     head,
     h("div", { class: "row", id: "pj-bar", style: "gap:8px" },
-      h("button", { type: "button", class: "btn primary", id: "pj-chg", text: "変更の依頼を取り込む（Excel・PDF・画像）", title: "クライアントから届いた変更入りの資料を読み、今のスプレッドシートと比べて変更点を反映する", onclick: () => file.click() }),
+      h("button", { type: "button", class: "btn primary", id: "pj-chg", text: "変更の依頼を取り込む（Excel・PDF・画像）", title: "クライアントから届いた変更入りの資料を読み、今のスプレッドシートと比べて変更点を反映する", onclick: () => file.click() }), clipBtn(file, "clip-pjchg", "btn"),
       h("button", { type: "button", class: "btn", id: "pj-chg-text", text: "変更の文章を貼り付ける", onclick: () => pjChangeText(c, say, () => { drawHead(); ch(); }) }),
       h("button", { type: "button", class: "btn", id: "pj-sync", text: "シートから読み直す", title: "利用日・フライトナンバーなど、一覧に出す項目をスプレッドシートから読み直す", onclick: () => sync(false) }),
       h("button", { type: "button", class: "btn", id: "pj-hist", text: "変更履歴", title: "いつ・だれが・どのセルを・何から何に変えたかを見る", onclick: async (e) => { e.target.disabled = true; const ok = await sync(true); e.target.disabled = false; say(""); pjHistDialog(c, ok ? "" : "今のスプレッドシートを読めなかったため、前回までの記録を表示しています（Google にログインすると、最新の直接編集も記録されます）。"); } }),
@@ -3921,10 +3943,10 @@ async function pjInvoice(c, ch, after) {
       h("div", { class: "row pj-inv-gh", style: "gap:10px" }, h("strong", { text: "● " + title }), h("span", { class: "muted small", text: ls.length + "行" + (ls.some((l) => l.pj) ? `（うち PJ様納品 ${ls.filter((l) => l.pj).length}行は請求しない）` : "") }), h("span", { style: "margin-left:auto" }), sb, h("button", { type: "button", class: "btn sm", id: "pj-inv-add-" + r, text: "＋ 行を追加", onclick: () => addLine(r) })),
       ls.length ? h("table", { class: "prev pj-inv" }, h("thead", {}, h("tr", {}, ...["PJ様納品", "品目（英語）", "日本語", "数量", "単価", "金額（税抜）", "税率", ""].map((t) => h("th", { text: t })))), h("tbody", {}, ...ls.map(lineEl))) : h("div", { class: "muted small", style: "padding:6px 4px", text: "この税率の項目はありません。" })); })); drawG(); drawSum(); };
   const fld = (key, label, o = {}) => field(label, h("input", { id: "pj-inv-" + key, value: inv[key] || "", ...o, oninput: (e) => { inv[key] = e.target.value; ch(); } }));
-  const file = h("input", { type: "file", id: "pj-inv-file", accept: ".pdf,.xlsx,.xls,.csv,image/*", multiple: true, hidden: true, onchange: async (e) => { const fs = [...e.target.files]; e.target.value = ""; if (!fs.length) return;
+  const file = pasteable(h("input", { type: "file", id: "pj-inv-file", accept: ".pdf,.xlsx,.xls,.csv,image/*", multiple: true, hidden: true, onchange: async (e) => { const fs = [...e.target.files]; e.target.value = ""; if (!fs.length) return;
     try { say("資料を準備しています…"); const r = await pjInvRead(inv, fs, say); draw(); ch(); const T = pjInvTotals(inv);
       say(`${r.n}行に読み取った数字を入れました。必ず資料と照合してください。` + (r.total != null ? `\n資料に書かれた合計：${pjYen(r.total)}${r.totalNote ? "（" + r.totalNote + "）" : ""}／いまの合計（税込）：${pjYen(T.total)}` : "") + (r.summary ? "\nAIから：" + r.summary.slice(0, 200) : ""), r.total != null && Math.round(r.total) !== Math.round(T.total) && Math.round(r.total) !== Math.round(T.sub8 + T.sub10 + T.sub0)); }
-    catch (err) { if (err && err.code === "cancelled") return; say(AI_ERR[err && err.code] || String((err && err.message) || "読み取れませんでした。"), true); } } });
+    catch (err) { if (err && err.code === "cancelled") return; say(AI_ERR[err && err.code] || String((err && err.message) || "読み取れませんでした。"), true); } } }));
   const busy = (b, on) => { for (const x of dlg.querySelectorAll("button")) x.disabled = on; };
   // 発行の前に、できあがりを画面で確かめる（プレビュー）。ここから発行するか、戻って直す
   const preview = async (btn) => {
@@ -3954,7 +3976,7 @@ async function pjInvoice(c, ch, after) {
   dlg.replaceChildren(h("div", { class: "dlg" }, h("h3", { text: "請求書作成" }),
     h("div", { class: "fields" }, fld("to", "ご請求先（「御中」は自動で付きます）", { placeholder: "例：株式会社○○" }), field("ご請求先の登録番号・MAILなど（任意）", h("textarea", { id: "pj-inv-toInfo", rows: 2, placeholder: "例：登録番号：T0000000000000\nMAIL：xxx@example.com", oninput: (e) => { inv.toInfo = e.target.value; ch(); } }, inv.toInfo || "")), fld("date", "発行日", { type: "date" }), fld("due", "お振込み期日（初期値：利用日の翌月末。土日祝は前の平日）", { type: "date" })),
     h("div", { class: "row", style: "gap:8px" },
-      h("button", { type: "button", class: "btn", id: "pj-inv-read", text: "データを読み込む（手書きの資料：PDF・画像・Excel）", onclick: () => file.click() }),
+      h("button", { type: "button", class: "btn", id: "pj-inv-read", text: "データを読み込む（手書きの資料：PDF・画像・Excel）", onclick: () => file.click() }), clipBtn(file, "clip-inv"),
       h("span", { style: "margin-left:auto" }),
       confirmBtn("シートから品目を入れ直す", "入力した金額は消えます。入れ直す", async () => { try { say("スプレッドシートを読んでいます…"); inv.lines = await pjInvSeed(c); draw(); ch(); say("品目を入れ直しました。"); } catch (e) { say(String((e && e.message) || "読めませんでした。"), true); } }, "btn sm"), file),
     h("div", { class: "muted small", text: "「PJ様納品」に☑のある行（グレー）は、PJ様が納品する商品で、請求しません。請求の対象にするときは☑を外すと、金額を入力できます。数量と単価を入れると金額（税抜）を計算します。金額だけを直接入れることもできます。税率は、食品・飲料が 8%、配送料・深夜早朝料金・非食品（ドライアイス・包材・食器など）・アルコール類が 10% で、行ごとに変えられます。消費税は税率ごとに端数を切り捨てます。" }),
@@ -4413,7 +4435,7 @@ function layoutEditor(doc, onChange, opts = {}) {
   const txt = h("input", { id: "lay-text", placeholder: "選んだマスの文字（ここに入力）", autocomplete: "off" });
   const pos = h("span", { class: "small muted", id: "lay-pos", style: "min-width:64px" });
   const wIn = h("input", { id: "lay-cw", type: "number", min: "6", max: "400", style: "width:64px", "aria-label": "列の幅" }), hIn = h("input", { id: "lay-rh", type: "number", min: "6", max: "400", style: "width:64px", "aria-label": "行の高さ" });
-  const file = h("input", { type: "file", id: "lay-file", accept: ".xlsx,.pdf,image/*", hidden: true });
+  const file = pasteable(h("input", { type: "file", id: "lay-file", accept: ".xlsx,.pdf,image/*", hidden: true }));
   let underOn = true;
   wrap.tabIndex = 0;
   const txtBox = h("div", { style: "flex:1;min-width:220px" }, txt);
@@ -4625,6 +4647,7 @@ function layoutEditor(doc, onChange, opts = {}) {
       : h("button", { type: "button", class: "lay-tab", text: x.name || "階" + (i + 1), onclick: () => { fi = i; a = { r: 0, c: 0 }; f = { r: 0, c: 0 }; draw(); } })),
       h("button", { type: "button", class: "btn sm", id: "lay-add", text: "＋ 階を追加", onclick: () => { doc.floors.push(newFloor((doc.floors.length + 1) + "F")); fi = doc.floors.length - 1; a = { r: 0, c: 0 }; f = { r: 0, c: 0 }; onChange(); draw(); } }),
       h("button", { type: "button", class: "btn sm", id: "lay-xlsx", text: "ファイルから読み込む", title: "Excel・PDF・画像（写真）から読み込む。PDF・画像はAIが図面を読んで卓と席を作ります", onclick: () => file.click() }),
+      clipBtn(file, "clip-lay", "btn sm"),
       fl && fl.under && fl.under.src ? h("button", { type: "button", class: "btn sm", id: "lay-under-btn", text: underOn ? "下絵を隠す" : "下絵を表示", title: "読み込んだ元の図面を、薄く重ねて見比べる", onclick: () => { underOn = !underOn; draw(); } }) : null,
       fl && fl.under && fl.under.src ? confirmBtn("下絵を消す", "本当に消す", () => { delete fl.under; onChange(); draw(); }, "btn sm") : null,
       h("span", { style: "margin-left:auto" }), ...(fl && opts.tools ? opts.tools() : []),
