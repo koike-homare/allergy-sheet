@@ -521,7 +521,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 149</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 150</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1448,7 +1448,7 @@ function renderListBody() {
       h("td", { text: S.stores.get(c.storeId)?.name || c.storeName || "—" }),
       h("td", { text: (c.rows || []).length + "名" }),
       h("td", {}, n ? h("span", { class: "pill warn", text: "要確認 " + n }) : h("span", { class: "pill ok", text: "確認済み" }),
-        ...approvalPills(c)),
+        ...approvalPills(c), signPill(c)),
       h("td", { class: "muted small", text: c.updatedAt ? c.updatedAt.slice(0, 10).replace(/-/g, "/") : "" }),
       h("td", { style: "text-align:right;white-space:nowrap" }, confirmBtn("削除", "本当に削除する", async () => {
         S.cases.delete(c.id); renderListBody();
@@ -1472,9 +1472,9 @@ const impFiles = new Map(); // 取込の id + ":" + 番号 → 元のファイ�
 const HIST_MAX = 600, ACT_MAX = 300, IMP_MAX = 60;
 const fmtAt = (iso) => { const d = new Date(iso); if (isNaN(d)) return ""; const z = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}/${z(d.getMonth() + 1)}/${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`; };
 const TRK_F = [["year", "年"], ["kumi", "組"], ["sex", "性別"], ["name", "氏名"], ["allergy", "アレルギー"], ["seibun", "成分可否"], ["sb", "品目ごとの成分可否"], ["element", "アレルゲンの要素（手修正）"], ["response", "対応の文章（手修正）"], ["final", "最終的な対応"], ["caution", "注意文（手修正）"], ["symptom", "症状"], ["remark", "資料メモ"], ["memo", "確認メモ"]];
-const TRK_H = [["groupName", "団体名"], ["visitDate", "ご利用日"], ["store", "店舗"], ["course", "コース"]];
+const TRK_H = [["groupName", "団体名"], ["visitDate", "ご利用日"], ["store", "店舗"], ["course", "コース"], ["sign", "確認書の署名"]];
 const trkRow = (r) => ({ year: r.year || "", kumi: r.kumi || "", sex: r.sex || "", name: r.name || "", allergy: r.allergy || "", seibun: r.seibun || "", sb: Object.entries(r.sbMap || {}).filter(([, v]) => v).map(([k, v]) => k + "：" + v).join("、"), element: r.elementAuto === false ? r.element || "" : "", response: r.responseAuto === false ? r.response || "" : "", final: r.final || "", caution: r.cautionAuto === false ? r.caution || "" : "", symptom: r.symptom || "", remark: r.remark || "", memo: r.memo || "" });
-const trkSnap = (c) => ({ head: { groupName: c.groupName || "", visitDate: c.visitDate || "", store: (S.stores.get(c.storeId) || {}).name || c.storeName || "", course: c.courseId ? (S.courses.get(c.courseId) || {}).name || "" : "" }, rows: Object.fromEntries((c.rows || []).map((r) => [r.id, trkRow(r)])) });
+const trkSnap = (c) => ({ head: { groupName: c.groupName || "", visitDate: c.visitDate || "", store: (S.stores.get(c.storeId) || {}).name || c.storeName || "", course: c.courseId ? (S.courses.get(c.courseId) || {}).name || "" : "", sign: signText(c) }, rows: Object.fromEntries((c.rows || []).map((r) => [r.id, trkRow(r)])) });
 function caseTrackInit(c) { trk = c && !c.kind ? { ref: c, snap: trkSnap(c) } : null; }
 /** 前に見たときからの違いを、変更履歴に足す。src は「手入力」「取込」「自動更新」。同じ項目を続けて直したときは1行にまとめる。 */
 function caseTrack(c, src, no) {
@@ -1645,6 +1645,25 @@ function caseSig(c) {
 const validApprovals = (c) => { const sig = caseSig(c); return Object.entries(c.approvals || {}).filter(([, v]) => v && v.sig === sig).map(([k, v]) => ({ name: k, at: v.at })); };
 const NEED_APPROVALS = 2;
 /** 一覧用：承認者ごとに「小池 承認済」「竹坂 未承認」を並べる。承認者の名簿が読めていないときは、承認済みの人だけ出す。 */
+/** 確認書（アレルギー対応一覧表）への署名。signed=署名済、signDate=署名年月日（YYYY-MM-DD）、signer=署名者。 */
+const signText = (c) => (c && c.signed ? ["署名済", c.signDate ? c.signDate.replace(/-/g, "/") : "", c.signer || ""].filter(Boolean).join(" ") : "");
+function signPill(c) { return c && c.signed ? h("span", { class: "pill ok", style: "margin-left:4px", title: signText(c), text: "署名済" }) : null; }
+/** 案件画面の「確認書の署名」欄。日付か署名者を入れると、署名済にもチェックが入る。 */
+function signField(c, ch) {
+  const st = h("span", { class: "pill", id: "c-sign-st" });
+  const box = h("input", { type: "checkbox", id: "c-signed", style: "width:auto", checked: !!c.signed });
+  const dt = h("input", { id: "c-sign-date", type: "date", value: c.signDate || "", "aria-label": "署名年月日", style: "width:150px" });
+  const nm = h("input", { id: "c-signer", value: c.signer || "", placeholder: "署名者（例：山田 太郎）", "aria-label": "署名者", style: "width:200px" });
+  const upd = () => { st.className = "pill " + (c.signed ? "ok" : "plain"); st.textContent = c.signed ? "署名済" : "未署名"; box.checked = !!c.signed; };
+  box.onchange = () => { c.signed = box.checked; upd(); ch(); };
+  dt.oninput = () => { c.signDate = dt.value; if (dt.value) c.signed = true; upd(); ch(); };
+  nm.oninput = () => { c.signer = nm.value; if (nm.value.trim()) c.signed = true; upd(); ch(); };
+  upd();
+  return h("div", { class: "f", style: "grid-column:1/-1" }, h("label", { for: "c-signed", text: "確認書の署名" }),
+    h("div", { class: "row", style: "gap:6px 12px" }, h("label", { class: "row small", style: "gap:6px;cursor:pointer" }, box, "署名済"), st,
+      h("span", { class: "small muted", text: "署名年月日" }), dt, h("span", { class: "small muted", text: "署名者" }), nm,
+      h("span", { class: "small muted", text: "保護者・ご担当者が確認書に署名した場合に入力します。取込で署名を読み取ると自動で入ります。" })));
+}
 function approvalPills(c) {
   const ok = validApprovals(c).map((a) => a.name), names = [...new Set([...(S.approvers || []), ...ok])];
   if (!names.length) return [h("span", { class: "pill plain", style: "margin-left:4px", text: "未承認" })];
@@ -1996,7 +2015,8 @@ function viewCase() {
       storeField(),
       field("コース", h("div", {}, sel([["", "指定なし（共通設定の内容で作成）"], ...[...S.courses.values()].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja")).map((x) => [x.id, (x.name || "（名称未入力）") + (x.approved ? "【上長承認済】" : "")])], S.courses.has(c.courseId) ? c.courseId : "", (v) => { c.courseId = v; const m = M(v); c.rows.forEach((r) => regen(r, m)); ch(); render(); }, { id: "c-course" }),
         !S.courses.has(c.courseId) && S.courses.size && c.rows.length ? h("div", { class: "small", id: "c-course-hint", style: "color:var(--warn);margin-top:4px", text: "コースが未選択です。選ぶと、そのコースの成分表で注意文と対応を作り直します。" }) : null)),
-      field("作成日", h("input", { id: "c-created", type: "date", value: c.createdDate, oninput: (e) => { c.createdDate = e.target.value; ch(); } }))),
+      field("作成日", h("input", { id: "c-created", type: "date", value: c.createdDate, oninput: (e) => { c.createdDate = e.target.value; ch(); } })),
+      signField(c, ch)),
     partyPanel(c, () => caseSaver.touch()),
     stale ? h("div", { class: "banner warn" }, `コース成分表または共通設定が変更されています。${stale}名分の文章が現在の内容と異なります。`,
       h("button", { type: "button", class: "btn sm", text: "現在の内容で更新する", onclick: () => { c.rows.forEach((r) => regen(r, store)); ch(); render(); } })) : null,
@@ -2157,7 +2177,7 @@ const AI_PROMPT = `あなたは団体旅行の食事手配の担当者を手伝�
 規則：資料に書かれていることだけを書き写し、推測で補わない。読み取れない項目は空文字にする。食材名は資料の表記のまま書く。外国語で書かれた食材名は訳さず原文のまま書き、すぐ後ろに（）で日本語訳を添える（例：lobster（ロブスター））。「ナッツ類」「甲殻類」のようなまとめた表現や、「味噌」「マヨネーズ」のような食品名も、個別の食材に言い換えずそのまま書く。食品ではないアレルギー（ハウスダスト、動物、そば枕など）や料理名（カレー、オムライスなど）が書かれていても、省かずに allergy にそのまま書き、nonFood / dishes にもその言葉を入れる。アレルギーではない食事制限（宗教上・主義上の理由で食べられないもの）や、範囲の広い区分（動物性食材、野菜全般、ビタミン類など）も、省かずに allergy に資料の表記のまま書き、broad にその言葉を入れる。「除去が必要」「除去は不要」のような選択肢で、印がどちらに付いているか判断しにくいとき（印が選択肢の間や記号「・」の上にある、両方に付いている、など）は、見落とさないよう安全側（除去が必要）として allergy に書き、memo に「印の位置が不明瞭（該当する食材名）」と書き、unclear に allergy を入れる。「はい」「いいえ」の両方に印があるなどの食い違いも memo に書く。選択肢に○や✓を付ける形式の用紙では、印が付いた項目だけを対象にし、印のない選択肢は書かない。手書きで読みにくい文字は、読めた範囲を書いて memo に「判読不明あり（どの項目か）」と書く。remark は、相手（学校・保護者・旅行会社）から届いた情報を書く欄で、エピペンの所持、持参する薬・服用中の薬、通院中であること、発症時の対応のほか、備考欄や欄外に書かれた保護者・学校からの補足（例：「たこ焼きは食べられません」「保護者に確認中」「パンを持参予定」「同じ油・同じ釜も不可」）を、資料に実際に書かれていた内容だけ、説明の言葉（「〜との記載あり」「備考：」など）を付けずに短く書く。該当する記載がなければ空にする。memo は、読み取った側（あなた）からの注意だけを書く欄で、判読しにくい箇所、記載の食い違い、複数の読み方ができる点、可能性にとどまる点など、人が原本で確かめるべきことを書く。資料に書かれていた内容そのものは memo には書かない。食事の内容がその人について指定されているとき（例：「2年3組 山田太郎はチキンステーキ」「佐藤さんは通常コースで」「田中さんはお弁当を持参」）は、choice にその内容を書く。アレルギーの記載がなく、食事の指定だけが書かれている人も、氏名と choice を書いて含める。choice に書くのは、店が用意する食事のうちどれにするかの指定だけで、「精進料理」「ベジタリアン食」「野菜のみ」「肉抜き」のような食事制限の内容は choice には書かず、allergy と broad に書く。アレルギーがあることは分かるが、どの食材かが書かれていない人（例：「低アレルゲンコース希望」「アレルギー対応食希望」とだけ書かれている、「アレルギーあり」だけで内容がない）は、allergy を「不明」、seibun を「不明」にし、食事の指定があれば choice に書く。食材を推測で書かない。「微量混入で発症したことがある」に該当する人は seibun を「不可」、「いいえ」の人は「可」とする。1枚に1人の用紙が複数ある場合は、全員分を出力する。
 【重要】アレルギーのない人を省かないこと。「食物アレルギーではない」「除去は不要」の人も、氏名・学年・組・性別を書き、allergy を空、none を true にして people に必ず入れる。省いた人がいると、その人への回答ができなくなる。1枚に1人の用紙なら、people の人数は用紙の枚数と同じになる。
 返答はJSONだけにしてください。形式：
-{"readIssues":"資料が読み取りにくかった点（表の列と値の対応が分からない、見出しがない、文字がつぶれている、印の位置があいまい、ページが傾いている、など）。問題なく読めたときは空","groupName":"団体名（なければ空）","visitDate":"利用日・食事の日を YYYY-MM-DD で（年が書かれていなければ空）","storeName":"利用する店舗名（なければ空）","courseName":"コース・メニュー名（なければ空）","party":{"classes":[{"year":"学年（数字だけ）","kumi":"組（数字や記号だけ。例：1、A）","male":"男子の人数（数字）","female":"女子の人数（数字）"}],"teacher":"引率・先生の人数","nurse":"看護師の人数","camera":"カメラマンの人数","tour":"添乗員の人数","crew":"乗務員（運転手・ガイド）の人数","others":[{"name":"上のどれにも当たらない区分名","count":"人数"}]},"unclear":["資料全体の項目のうち、読み取りに自信がないものの名前（visitDate / storeName / courseName / party / groupName）"],"people":[{"unclear":["この人の項目のうち、読み取りに自信がないものの名前（year / kumi / sex / name / allergy / seibun / symptom / remark）"],"year":"学年（数字だけ。例：2。記載がなければ空）","kumi":"組・クラス（例：3組、A組。学年は year に書き、ここには入れない。記載がなければ空）","sex":"男 または 女 または 空","name":"氏名","none":"アレルギーの申告がない人は true、ある人は false","allergy":"アレルギーの食材を「、」区切り。程度や条件は（）で添える。申告がない人は空","seibun":"調味料・だし・エキスなど微量成分の摂取について 可 / 不可 / 不明 / 微量不可（同じ厨房での微量の混入も不可）のいずれか。記載がなければ空。食材ごとに違う場合は、いちばん多いものを書く","nonFood":["allergy に書いたもののうち、食品ではないもの（ハウスダスト、ダニ、花粉、猫や犬などの動物、そば枕、金属、薬など）"],"dishes":["allergy に書いたもののうち、食材ではなく料理名・メニュー名・加工食品名で、原材料が1つに決まらないもの（カレー、オムライス、ケーキなど）"],"broad":["allergy に書いたもののうち、1つの食材ではなく範囲の広い区分や、宗教・主義による食事制限を表す言葉（動物性食材、肉類全般、野菜全般、五葷、ビタミン類、添加物、ベジタリアン、ヴィーガン、ハラールなど）。えび・卵のような個別の食材や、甲殻類・ナッツ類のように対象の食材がはっきり決まっている区分は入れない"],"seibunEach":[{"item":"allergy に書いた食材名（程度や条件の（）は付けない）","value":"可 / 不可 / 不明 / 微量不可"}],"symptom":"アレルギーの症状（じんましん、かゆみ、呼吸困難、アナフィラキシーなど、資料に書かれていた内容だけ）。症状の記載がなければ「不明」","remark":"資料メモ：相手から届いた情報。エピペン所持・持参薬・通院中など応急処置や薬の情報と、備考欄などに書かれた保護者・学校からの補足（書かれていた内容だけ。なければ空。症状は symptom に書く）","memo":"確認メモ（社内向けの注意）：判読しにくい箇所、記載の食い違い、可能性にとどまる点など、読み取った側からの注意だけ。なければ空","choice":"その人について指定された食事の内容（例：チキンステーキ、通常コース、お持ち込み）。資料の表記のまま。指定がなければ空"}]}
+{"readIssues":"資料が読み取りにくかった点（表の列と値の対応が分からない、見出しがない、文字がつぶれている、印の位置があいまい、ページが傾いている、など）。問題なく読めたときは空","groupName":"団体名（なければ空）","visitDate":"利用日・食事の日を YYYY-MM-DD で（年が書かれていなければ空）","storeName":"利用する店舗名（なければ空）","courseName":"コース・メニュー名（なければ空）","signature":{"signed":"確認書・一覧表の「ご署名」「署名（自署）」などの欄に、手書きの署名（氏名）が実際に書かれていれば true。署名欄が空欄、または署名欄がない資料なら false","date":"署名欄の年月日を YYYY-MM-DD で（手書き。読めなければ空。資料の作成日とは別）","name":"署名した人の氏名（手書きを読める範囲で。読めなければ空）"},"party":{"classes":[{"year":"学年（数字だけ）","kumi":"組（数字や記号だけ。例：1、A）","male":"男子の人数（数字）","female":"女子の人数（数字）"}],"teacher":"引率・先生の人数","nurse":"看護師の人数","camera":"カメラマンの人数","tour":"添乗員の人数","crew":"乗務員（運転手・ガイド）の人数","others":[{"name":"上のどれにも当たらない区分名","count":"人数"}]},"unclear":["資料全体の項目のうち、読み取りに自信がないものの名前（visitDate / storeName / courseName / party / groupName / signature）"],"people":[{"unclear":["この人の項目のうち、読み取りに自信がないものの名前（year / kumi / sex / name / allergy / seibun / symptom / remark）"],"year":"学年（数字だけ。例：2。記載がなければ空）","kumi":"組・クラス（例：3組、A組。学年は year に書き、ここには入れない。記載がなければ空）","sex":"男 または 女 または 空","name":"氏名","none":"アレルギーの申告がない人は true、ある人は false","allergy":"アレルギーの食材を「、」区切り。程度や条件は（）で添える。申告がない人は空","seibun":"調味料・だし・エキスなど微量成分の摂取について 可 / 不可 / 不明 / 微量不可（同じ厨房での微量の混入も不可）のいずれか。記載がなければ空。食材ごとに違う場合は、いちばん多いものを書く","nonFood":["allergy に書いたもののうち、食品ではないもの（ハウスダスト、ダニ、花粉、猫や犬などの動物、そば枕、金属、薬など）"],"dishes":["allergy に書いたもののうち、食材ではなく料理名・メニュー名・加工食品名で、原材料が1つに決まらないもの（カレー、オムライス、ケーキなど）"],"broad":["allergy に書いたもののうち、1つの食材ではなく範囲の広い区分や、宗教・主義による食事制限を表す言葉（動物性食材、肉類全般、野菜全般、五葷、ビタミン類、添加物、ベジタリアン、ヴィーガン、ハラールなど）。えび・卵のような個別の食材や、甲殻類・ナッツ類のように対象の食材がはっきり決まっている区分は入れない"],"seibunEach":[{"item":"allergy に書いた食材名（程度や条件の（）は付けない）","value":"可 / 不可 / 不明 / 微量不可"}],"symptom":"アレルギーの症状（じんましん、かゆみ、呼吸困難、アナフィラキシーなど、資料に書かれていた内容だけ）。症状の記載がなければ「不明」","remark":"資料メモ：相手から届いた情報。エピペン所持・持参薬・通院中など応急処置や薬の情報と、備考欄などに書かれた保護者・学校からの補足（書かれていた内容だけ。なければ空。症状は symptom に書く）","memo":"確認メモ（社内向けの注意）：判読しにくい箇所、記載の食い違い、可能性にとどまる点など、読み取った側からの注意だけ。なければ空","choice":"その人について指定された食事の内容（例：チキンステーキ、通常コース、お持ち込み）。資料の表記のまま。指定がなければ空"}]}
 party は、資料に利用人数（クラスごとの男女の人数、引率などの人数）が書かれているときだけ書く。書かれていない区分は空にし、まったく書かれていなければ classes を空の配列にする。
 unclear には、文字がつぶれている・かすれている・手書きで判読しにくい・複数の読み方ができる・記載が食い違っている・推し量って書いた、のいずれかに当たる項目の名前を入れる。はっきり読めた項目は入れない。空欄をそのまま空にした項目も入れない。
 seibunEach は、食材ごとに可否が分けて書かれているとき（例：A…成分可、B…成分不可、C…微量混入不可）だけ、その食材ぶんを書く。全部同じ、または記載がなければ空の配列にする。
@@ -2429,6 +2449,8 @@ async function runAi(textData, images, add, msgEl, maxImg) {
         if (!meta.visit && /^\d{4}-\d{2}-\d{2}$/.test(String(res.visitDate || ""))) meta.visit = String(res.visitDate);
         if (!meta.store && res.storeName) meta.store = String(res.storeName).trim();
         if (!meta.course && res.courseName) meta.course = String(res.courseName).trim();
+        const sg = res.signature;
+        if (!meta.sign && sg && typeof sg === "object" && (sg.signed === true || sg.signed === "true")) { const d = String(sg.date || "").trim(); meta.sign = { date: /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : "", name: String(sg.name || "").trim() }; }
         if (!meta.party && res.party && typeof res.party === "object") { const pt = partyFromAi(res.party); if (partyTotal(pt)) meta.party = pt; }
         if (Array.isArray(res.unclear)) meta.unclear.push(...res.unclear.map(String));
         if (res.readIssues && String(res.readIssues).trim()) meta.issues.push("AIより：" + String(res.readIssues).trim().slice(0, 300));
@@ -2489,7 +2511,7 @@ function reviewDialog(people, add, groupName, warn, meta) {
   const hasNew = (p, i) => !!(newAllergyParts(pick(p, i), p).length || p.choice || (String(p.remark || "").trim() && !String(pick(p, i).remark || "").includes(String(p.remark).trim())));
   const fin = people.map((p, i) => dup[i] && !!draft && hasNew(p, i));
   const oldLine = (r) => [[r.year ? half(r.year) + "年" : "", r.kumi || ""].join(""), r.sex || "", r.name || "", "／ " + (r.allergy || "（アレルギーの記載なし）"), r.seibun ? "／ 成分" + r.seibun : ""].filter(Boolean).join(" ");
-  const hasMeta = !!(draft && (meta.visit || meta.store || meta.party)), isLay = !!(draft && draft.kind === "layout"); // レイアウトだけ作るときは、コースを選ばない
+  const hasMeta = !!(draft && (meta.visit || meta.store || meta.party || meta.sign)), isLay = !!(draft && draft.kind === "layout"); // レイアウトだけ作るときは、コースを選ばない
   // 読み取りに自信がない項目は黄色にする。人が直したら色を消す。
   const un = (list, key, el) => { if ((list || []).includes(key)) { el.classList.add("unsure"); el.title = "AIが読み取りに自信のない箇所です。原本と照合してください"; const off = () => el.classList.remove("unsure"); el.addEventListener("input", off); el.addEventListener("change", off); } return el; };
   // 案件の店舗・ご利用日・コースも、この画面で決められるようにする（取り込むときに案件へ反映）
@@ -2500,7 +2522,7 @@ function reviewDialog(people, add, groupName, warn, meta) {
   if (!hd.visit && meta.visit) { hd.visit = meta.visit; filled.push("visitDate"); }
   if (!hd.store && meta.store) { const q = norm(meta.store), hit = stores.find((x) => norm(x.name) === q) || ((l) => (l.length === 1 ? l[0] : null))(stores.filter((x) => norm(x.name).includes(q) || q.includes(norm(x.name)))); hd.store = hit ? hit.name : meta.store; filled.push("storeName"); if (!hit) meta.unclear.push("storeName"); }
   if (hd.course === "__" && meta.course) { const q = norm(meta.course), l = [...S.courses.values()].filter((x) => x.name && (norm(x.name) === q || norm(x.name).includes(q) || q.includes(norm(x.name)))); if (l.length === 1) hd.course = l[0].id; }
-  let usePt = !!(meta.party && draft && !partyTotal(draft.party));
+  let usePt = !!(meta.party && draft && !partyTotal(draft.party)), useSign = !!(meta.sign && draft && !draft.signed);
   const ptText = meta.party ? partyGroups(meta.party).map((g) => `${g.label} ${g.n}名`).join("、") + `（合計 ${partyTotal(meta.party)}名）` : "";
   const head = draft && (people.length || hasMeta) ? h("div", { class: "fields", id: "rv-head" },
     field("店舗", h("div", {}, un(meta.unclear, "storeName", h("input", { id: "rv-store", list: "rv-stores", value: hd.store, placeholder: "店舗名を入力、または候補から選択", autocomplete: "off", oninput: (e) => { hd.store = e.target.value; } })),
@@ -2535,6 +2557,7 @@ function reviewDialog(people, add, groupName, warn, meta) {
     draft.storeName = hit ? hit.name : name; draft.storeId = hit ? hit.id : "";
     draft.visitDate = hd.visit;
     if (usePt && meta.party) draft.party = clone(meta.party);
+    if (useSign && meta.sign && !isLay) { draft.signed = true; draft.signDate = meta.sign.date || ""; draft.signer = (meta.sign.name || "").trim(); }
     if (!isLay) { draft.courseId = hd.course === "__" ? "" : hd.course; const m = M(draft.courseId); draft.rows.forEach((r) => regen(r, m)); }
   };
   const count = h("strong", {});
@@ -2546,6 +2569,11 @@ function reviewDialog(people, add, groupName, warn, meta) {
     warn || !people.length || (meta.issues || []).length ? adviceEl([...(meta.issues || [])], !!warn || !people.length) : null,
     head,
     groupName || people.length ? h("label", { class: "row small muted" }, "団体名の記載：", un(meta.unclear, "groupName", h("input", { id: "rv-group", value: groupName || "", style: "max-width:320px", oninput: (e) => { groupName = e.target.value.trim(); } }))) : null,
+    meta.sign && draft && !isLay ? h("div", { class: "row small" + (meta.unclear.includes("signature") ? " unsure" : ""), id: "rv-sign", style: "gap:8px;padding:4px 6px;border-radius:4px", title: meta.unclear.includes("signature") ? "AIが読み取りに自信のない箇所です。原本と照合してください" : "" },
+      h("label", { class: "row", style: "gap:6px;cursor:pointer" }, h("input", { type: "checkbox", id: "rv-sign-on", style: "width:auto", checked: useSign, onchange: (e) => { useSign = e.target.checked; } }), h("strong", { text: "確認書の署名あり（署名済として取り込む）：" })),
+      h("span", { class: "muted", text: "署名年月日" }), h("input", { id: "rv-sign-date", type: "date", value: meta.sign.date, style: "width:150px", oninput: (e) => { meta.sign.date = e.target.value; } }),
+      h("span", { class: "muted", text: "署名者" }), h("input", { id: "rv-signer", value: meta.sign.name, style: "width:180px", oninput: (e) => { meta.sign.name = e.target.value; } }),
+      draft.signed ? h("span", { class: "muted", text: `※この案件はすでに署名済（${signText(draft)}）です。チェックすると置き換えます。` }) : null) : null,
     meta.party && draft ? h("label", { class: "row small" + (meta.unclear.includes("party") ? " unsure" : ""), id: "rv-party", style: "gap:8px;align-items:flex-start;padding:4px 6px;border-radius:4px" },
       h("input", { type: "checkbox", id: "rv-party-on", style: "width:auto;margin-top:3px", checked: usePt, onchange: (e) => { usePt = e.target.checked; } }),
       h("span", {}, h("strong", { text: "利用人数も取り込む：" }), ptText, partyTotal(draft.party) ? h("span", { class: "muted", text: `　※この案件にはすでに利用人数（合計 ${partyTotal(draft.party)}名）が入っています。チェックすると置き換えます。` }) : null)) : null,
