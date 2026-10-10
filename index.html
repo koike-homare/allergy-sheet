@@ -359,6 +359,7 @@ div.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute
 .lay-area{position:absolute;border:2px dashed #d97706;background:rgba(217,119,6,.06);box-sizing:border-box}
 .lay-area-n{position:absolute;left:0;top:-17px;font-size:11px;font-weight:700;color:#b45309;background:#fff7e6;border:1px solid #d97706;border-radius:3px;padding:0 5px;line-height:15px;white-space:nowrap}
 .lay-area-x{position:absolute;right:-1px;top:-18px;width:17px;height:17px;border:1px solid #d97706;border-radius:3px;background:#fff7e6;color:#b45309;font-size:12px;line-height:1;padding:0;cursor:pointer;pointer-events:auto}
+.lay-trash{color:var(--muted,#6b7684);padding:4px 7px;line-height:0} .lay-trash:hover{color:#c62828;border-color:#c62828} .lay-trash.danger{line-height:normal}
 .lay-print{position:absolute;border:2px dashed #2563eb;box-sizing:border-box;box-shadow:0 0 0 9999px rgba(15,23,42,.10)}
 .lay-print-n{position:absolute;left:0;top:-17px;font-size:11px;font-weight:700;color:#1d4ed8;background:#eff6ff;border:1px solid #2563eb;border-radius:3px;padding:0 5px;line-height:15px;white-space:nowrap}
 .lay-print-x{position:absolute;right:-1px;top:-18px;width:17px;height:17px;border:1px solid #2563eb;border-radius:3px;background:#eff6ff;color:#1d4ed8;font-size:12px;line-height:1;padding:0;cursor:pointer;pointer-events:auto}
@@ -519,7 +520,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 147</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 148</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -573,6 +574,17 @@ function sel(opts, value, onchange, attrs) {
   s.value = value ?? ""; return s;
 }
 function field(label, control) { return h("label", { class: "f" }, label, control); }
+/** ゴミ箱アイコンのボタン。1回目で「本当に削除」に変わり、もう一度押すと消す（4秒で元に戻る）。 */
+function trashConfirm(id, title, fn) {
+  const ICON = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
+  let armed = false, t;
+  const b = h("button", { type: "button", class: "btn sm lay-trash", id, title, "aria-label": title, onclick: (e) => {
+    e.stopPropagation();
+    if (!armed) { armed = true; b.classList.add("danger"); b.textContent = "本当に削除"; t = setTimeout(() => { armed = false; b.classList.remove("danger"); b.innerHTML = ICON; }, 4000); }
+    else { clearTimeout(t); fn(); }
+  } });
+  b.innerHTML = ICON; return b;
+}
 function confirmBtn(label, sure, fn, cls) {
   let armed = false, t;
   const b = h("button", { type: "button", class: cls || "btn danger", text: label, onclick: (e) => {
@@ -1649,13 +1661,17 @@ function viewLayouts() {
     h("td", { text: c.visitDate ? c.visitDate.replace(/-/g, "/") : "—" }), h("td", {}, h("strong", { text: c.locked ? c.groupName : c.groupName || "（団体名未入力）" })),
     h("td", { text: S.stores.get(c.storeId)?.name || c.storeName || "—" }), h("td", { text: partyTotal(c.party) ? partyTotal(c.party) + "名" : "—" }),
     h("td", {}, c.layout && Object.keys(c.layout.orig || {}).length ? h("span", { class: "pill ok", text: "配席済み" }) : h("span", { class: "pill plain", text: "未配席" })),
-    h("td", { class: "muted small", text: c.updatedAt ? c.updatedAt.slice(0, 10).replace(/-/g, "/") : "" })));
+    h("td", { class: "muted small", text: c.updatedAt ? c.updatedAt.slice(0, 10).replace(/-/g, "/") : "" }),
+    h("td", { style: "text-align:right;white-space:nowrap;width:1%" }, readOnly ? null : trashConfirm("lay-del-" + c.id, `${c.groupName || "団体名未入力"}のレイアウトを削除`, async () => {
+      S.cases.delete(c.id); render();
+      try { if (db) await db.doc("cases/" + c.id).delete(); toast("レイアウトを削除しました"); } catch (_) { toast("削除できませんでした"); }
+    }))));
   return [
     h("div", { class: "row" }, h("h2", { text: "レイアウト作成" }),
       h("button", { type: "button", class: "btn primary", id: "lay-new", style: "margin-left:auto", text: "新しいレイアウトを作る", onclick: () => { const id = uid("c"); view = { name: "case", id }; draft = { id, kind: "layout", groupName: "", visitDate: "", storeId: "", storeName: "", createdDate: today(), rows: [] }; render(); } })),
     h("div", { class: "muted small", style: "max-width:90ch", text: "アレルギー対応シートを作らずに、配席レイアウトだけを作ります。店舗を選び、利用人数を入力（または資料を取り込み）してから、レイアウトを開いて配席エリアを指定し、配席を作成します。" }),
     h("div", { class: "panel scroll", id: "laylist", style: "padding:4px 8px" }, list.length
-      ? h("table", { class: "list" }, h("thead", {}, h("tr", {}, ...["ご利用日", "団体名", "店舗", "利用人数", "状態", "更新"].map((x) => h("th", { text: x })))), tb)
+      ? h("table", { class: "list" }, h("thead", {}, h("tr", {}, ...["ご利用日", "団体名", "店舗", "利用人数", "状態", "更新", ""].map((x) => h("th", { text: x })))), tb)
       : h("div", { class: "empty", text: "まだレイアウトがありません。「新しいレイアウトを作る」から作成します。" })),
   ];
 }
