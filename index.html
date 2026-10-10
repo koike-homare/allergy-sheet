@@ -402,6 +402,8 @@ tr.rv-dup>td{background:#fff8e6} tr.rv-old>td{background:#fff8e6;padding:2px 8px
 .lay-prev{border:1px solid var(--line);border-radius:6px;background:#fff;min-height:300px;max-height:460px;display:flex;flex-direction:column;overflow:hidden}
 .lay-prev-bar{padding:4px 6px;gap:6px;border-bottom:1px solid var(--line);background:var(--surface)}
 .lay-prev-view{flex:1;min-height:0;overflow:auto;padding:4px;cursor:grab;touch-action:none}
+.lay-prev-body{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr);gap:6px;padding:4px}.lay-prev-body.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.lay-prev-pane{display:flex;flex-direction:column;min-height:0;border:1px solid var(--line);border-radius:4px;overflow:hidden}.lay-prev-fname{padding:2px 8px;font-size:12px;background:var(--bg);border-bottom:1px solid var(--line);display:flex;align-items:center}
 .lay-prev-view:active{cursor:grabbing}
 .lay-prev table{border-collapse:collapse;table-layout:fixed;background:#fff;color:#000}
 .lay-prev td{padding:0;overflow:hidden;position:relative}
@@ -508,7 +510,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 141</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 143</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -4855,14 +4857,19 @@ const isSeatCell = (x) => !!x && /^[○〇◯★☆]$/.test(String(x.v || "").tr
 /** 卓を探す：線で囲まれた四角（結合したマス、または四方に線のあるマス）で、隣に席（○）があるもの。area があればその中だけ。
     1つの席が複数の四角に接するときは、小さいほう（卓）に付ける。 */
 function layTables(fl, area) {
-  const K = (r, c) => r + "," + c, covered = new Set(), cands = [];
+  const K = (r, c) => r + "," + c, covered = new Set(), cands = [], seatAt = new Map(); // seatAt：マス → 席の起点（○を結合したマスにも対応）
   const dg = (r, c, i) => +(((fl.cells[K(r, c)] || {}).bd || "0000")[i]) || 0;
+  for (const [k, x] of Object.entries(fl.cells)) if (isSeatCell(x)) seatAt.set(k, k);
   for (const m of fl.merges) {
+    // ○を大きく見せるために結合したマス（例：2×2）は、卓ではなく1つの席として扱う
+    if (isSeatCell(fl.cells[K(m[0], m[1])])) { for (let r = m[0]; r <= m[2]; r++) for (let c = m[1]; c <= m[3]; c++) seatAt.set(K(r, c), K(m[0], m[1])); continue; }
     for (let r = m[0]; r <= m[2]; r++) for (let c = m[1]; c <= m[3]; c++) covered.add(K(r, c));
     const [r1, c1, r2, c2] = m;
-    if (dg(r1, c1, 0) && dg(r1, c1, 3) && (dg(r2, c1, 2) || dg(r2, c2, 2)) && (dg(r1, c2, 1) || dg(r2, c2, 1))) cands.push(m.slice());
+    // 線は、そのマスの辺にも、隣のマスの向かい側の辺にも付いていることがある（Excelの罫線の持ち方）。どちらでもよい。
+    const T = (c) => dg(r1, c, 0) || dg(r1 - 1, c, 2), B = (c) => dg(r2, c, 2) || dg(r2 + 1, c, 0), L = (r) => dg(r, c1, 3) || dg(r, c1 - 1, 1), R = (r) => dg(r, c2, 1) || dg(r, c2 + 1, 3);
+    if ((T(c1) || T(c2)) && (B(c1) || B(c2)) && (L(r1) || L(r2)) && (R(r1) || R(r2))) cands.push(m.slice());
   }
-  for (const [k, x] of Object.entries(fl.cells)) { if (covered.has(k) || isSeatCell(x)) continue; if (/^[12]{4}$/.test(x.bd || "")) { const [r, c] = k.split(",").map(Number); cands.push([r, c, r, c]); } }
+  for (const [k, x] of Object.entries(fl.cells)) { if (covered.has(k) || seatAt.has(k) || isSeatCell(x)) continue; if (/^[12]{4}$/.test(x.bd || "")) { const [r, c] = k.split(",").map(Number); cands.push([r, c, r, c]); } }
   cands.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   const areas = !area ? null : Array.isArray(area) ? area : [area], inOne = (a, r, c) => r >= a.r1 && r <= a.r2 && c >= a.c1 && c <= a.c2;
   const inA = (r, c) => !areas || areas.some((a) => inOne(a, r, c));
@@ -4871,7 +4878,7 @@ function layTables(fl, area) {
   cands.forEach((m, i) => {
     const [r1, c1, r2, c2] = m; if (areaIdx(m) < 0) return;
     const size = (r2 - r1 + 1) * (c2 - c1 + 1);
-    const add = (r, c) => { const k = K(r, c); if (r < 0 || c < 0 || r >= fl.rows || c >= fl.cols || covered.has(k) || !inA(r, c) || !isSeatCell(fl.cells[k])) return; const o = owner.get(k); if (!o || size < o.size) owner.set(k, { i, size, r, c }); };
+    const add = (r, c) => { if (r < 0 || c < 0 || r >= fl.rows || c >= fl.cols || !inA(r, c)) return; const sk = seatAt.get(K(r, c)); if (!sk) return; const [sr, sc] = sk.split(",").map(Number), o = owner.get(sk); if (!o || size < o.size) owner.set(sk, { i, size, r: sr, c: sc }); };
     for (let r = r1; r <= r2; r++) { add(r, c1 - 1); add(r, c2 + 1); }
     for (let c = c1; c <= c2; c++) { add(r1 - 1, c); add(r2 + 1, c); }
   });
@@ -5054,40 +5061,59 @@ function layoutCounts(lay) {
   return out;
 }
 /** 案件画面に出す、レイアウトのプレビュー（見るだけ）。最初は枠に収まる大きさで、＋／−やCtrl+ホイールで拡大・縮小できる。 */
+/** 案件画面のレイアウトのプレビュー。配席した階（吹き出し・卓の表記がある階）を表示し、2階分までは横に並べ、3階分以上は2階ずつ切り替える。
+    配席がまだなら、全部の階を同じように切り替えて見られる。ダブルクリックでレイアウト画面を開く。 */
 function layoutPreview(lay, onOpen, title) {
-  const floors = (lay && lay.floors) || [], fl = floors.find((x) => Object.keys((lay.orig || {})).some((k) => k.startsWith(x.id + ":"))) || floors[0];
-  const view = h("div", { class: "lay-prev-view", id: "lay-prev-view", title: "ダブルクリックでレイアウトを開く" }), pct = h("span", { class: "small muted", id: "lay-prev-pct", style: "min-width:44px;text-align:center" });
-  const box = h("div", { class: "lay-prev", id: "lay-prev" });
-  if (!fl) return box;
-  const { table } = layTableEl(fl, false), W = fl.cw.reduce((n, w) => n + w, 0), H = fl.rh.reduce((n, w) => n + w, 0);
-  table.style.width = W + "px";
-  const inner = h("div", { class: "lay-canvas", style: "padding:0;pointer-events:none" }, table);
-  const X = (c) => fl.cw.slice(0, c).reduce((n, w) => n + w, 0), Y = (r) => fl.rh.slice(0, r).reduce((n, w) => n + w, 0);
-  const notes = ((lay && lay.notes) || []).filter((n) => n.fid === fl.id), unN = ((lay && lay.notes) || []).filter((n) => n.auto && n.r == null).length;
-  if (notes.length) {
-    const layer = h("div", { class: "lay-over" }), svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); svg.setAttribute("class", "lay-lines"); layer.append(svg);
-    for (const n of notes) { // 編集画面の座標は余白10pxぶんずれているので引く
-      const x = n.x - 10, y = n.y - 10, t = n.tx != null ? { x: n.tx - 10, y: n.ty - 10 } : n.r != null && n.r < fl.rows && n.c < fl.cols ? { x: X(n.c) + fl.cw[n.c] / 2, y: Y(n.r) + fl.rh[n.r] / 2 } : null;
-      if (t) { const line = document.createElementNS("http://www.w3.org/2000/svg", "line"); line.setAttribute("x1", x + 30); line.setAttribute("y1", y + 12); line.setAttribute("x2", t.x); line.setAttribute("y2", t.y); svg.append(line); }
-      layer.append(h("div", { class: "lay-note" + (n.auto && n.r == null ? " un" : ""), style: `left:${Math.max(0, x)}px;top:${Math.max(0, y)}px;padding-right:7px` }, h("div", { class: "lay-note-t", text: n.text || "" })));
+  const floors = (lay && lay.floors) || [], box = h("div", { class: "lay-prev", id: "lay-prev" });
+  if (!floors.length) return box;
+  const seated = floors.filter((fl) => Object.keys((lay && lay.orig) || {}).some((k) => k.startsWith(fl.id + ":")) || ((lay && lay.notes) || []).some((n) => n.fid === fl.id));
+  const unN = ((lay && lay.notes) || []).filter((n) => n.auto && n.r == null).length;
+  let showAll = !seated.length, page = 0, zoom = 0, panes = []; // zoom=0 は「枠に合わせる」
+  const list = () => (showAll ? floors : seated), pages = () => Math.max(1, Math.ceil(list().length / 2));
+  const pct = h("span", { class: "small muted", id: "lay-prev-pct", style: "min-width:44px;text-align:center" }), bar = h("div", { class: "row lay-prev-bar" }), body = h("div", { class: "lay-prev-body", id: "lay-prev-body" });
+  const b = (text, ttl, id, fn, dis) => h("button", { type: "button", class: "btn sm", text, title: ttl, id, "aria-label": ttl, disabled: dis || undefined, onclick: fn });
+  function mkPane(fl, first) {
+    const view = h("div", { class: "lay-prev-view", ...(first ? { id: "lay-prev-view" } : {}), title: "ダブルクリックでレイアウトを開く" });
+    const { table } = layTableEl(fl, false), W = fl.cw.reduce((n, w) => n + w, 0), H = fl.rh.reduce((n, w) => n + w, 0);
+    table.style.width = W + "px";
+    const inner = h("div", { class: "lay-canvas", style: "padding:0;pointer-events:none" }, table);
+    const X = (c) => fl.cw.slice(0, c).reduce((n, w) => n + w, 0), Y = (r) => fl.rh.slice(0, r).reduce((n, w) => n + w, 0);
+    const notes = ((lay && lay.notes) || []).filter((n) => n.fid === fl.id);
+    if (notes.length) {
+      const layer = h("div", { class: "lay-over" }), svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); svg.setAttribute("class", "lay-lines"); layer.append(svg);
+      for (const n of notes) { // 編集画面の座標は余白10pxぶんずれているので引く
+        const x = n.x - 10, y = n.y - 10, t = n.tx != null ? { x: n.tx - 10, y: n.ty - 10 } : n.r != null && n.r < fl.rows && n.c < fl.cols ? { x: X(n.c) + fl.cw[n.c] / 2, y: Y(n.r) + fl.rh[n.r] / 2 } : null;
+        if (t) { const line = document.createElementNS("http://www.w3.org/2000/svg", "line"); line.setAttribute("x1", x + 30); line.setAttribute("y1", y + 12); line.setAttribute("x2", t.x); line.setAttribute("y2", t.y); svg.append(line); }
+        layer.append(h("div", { class: "lay-note" + (n.auto && n.r == null ? " un" : ""), style: `left:${Math.max(0, x)}px;top:${Math.max(0, y)}px;padding-right:7px` }, h("div", { class: "lay-note-t", text: n.text || "" })));
+      }
+      inner.append(layer);
     }
-    inner.append(layer);
+    view.append(inner);
+    view.addEventListener("wheel", (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); step(e.deltaY < 0 ? 1.15 : 1 / 1.15); }, { passive: false });
+    view.addEventListener("dblclick", onOpen);
+    // ドラッグで見たい場所へ動かす
+    view.addEventListener("pointerdown", (e) => { const sx = e.clientX, sy = e.clientY, l = view.scrollLeft, t = view.scrollTop; view.setPointerCapture(e.pointerId); const mv = (ev) => { view.scrollLeft = l - (ev.clientX - sx); view.scrollTop = t - (ev.clientY - sy); }; const up = () => { view.removeEventListener("pointermove", mv); view.removeEventListener("pointerup", up); view.removeEventListener("pointercancel", up); }; view.addEventListener("pointermove", mv); view.addEventListener("pointerup", up); view.addEventListener("pointercancel", up); });
+    const isSeated = seated.includes(fl);
+    const el = h("div", { class: "lay-prev-pane", "data-floor": fl.name || "" }, h("div", { class: "lay-prev-fname" }, h("strong", { text: fl.name || "" }), isSeated ? h("span", { class: "pill ok", style: "margin-left:6px", text: "配席あり" }) : null), view);
+    return { el, view, inner, W, H, fitZ: 1 };
   }
-  view.append(inner);
-  let zoom = 0, fitZ = 1; // zoom=0 は「枠に合わせる」
-  const apply = () => { const z = zoom || fitZ; inner.style.zoom = z; pct.textContent = Math.round(z * 100) + "%"; };
-  const fit = () => { const bw = view.clientWidth - 8, bh = view.clientHeight - 8; if (bw <= 0 || bh <= 0) return; fitZ = Math.min(1, bw / W, bh / H); apply(); };
-  const step = (k) => { zoom = Math.max(0.1, Math.min(3, Math.round((zoom || fitZ) * k * 100) / 100)); apply(); };
-  const b = (text, title, id, fn) => h("button", { type: "button", class: "btn sm", text, title, id, "aria-label": title, onclick: fn });
-  view.addEventListener("wheel", (e) => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); step(e.deltaY < 0 ? 1.15 : 1 / 1.15); }, { passive: false });
-  view.addEventListener("dblclick", onOpen);
-  // ドラッグで見たい場所へ動かす
-  view.addEventListener("pointerdown", (e) => { const sx = e.clientX, sy = e.clientY, l = view.scrollLeft, t = view.scrollTop; view.setPointerCapture(e.pointerId); const mv = (ev) => { view.scrollLeft = l - (ev.clientX - sx); view.scrollTop = t - (ev.clientY - sy); }; const up = () => { view.removeEventListener("pointermove", mv); view.removeEventListener("pointerup", up); view.removeEventListener("pointercancel", up); }; view.addEventListener("pointermove", mv); view.addEventListener("pointerup", up); view.addEventListener("pointercancel", up); });
-  box.append(h("div", { class: "row lay-prev-bar" }, title ? h("strong", { class: "small", id: "lay-prev-title", text: title }) : null,
-    floors.length > 1 ? h("span", { class: "small muted", text: `${fl.name || "1F"}（全${floors.length}階）` }) : null,
-    unN ? h("span", { class: "small", id: "lay-prev-un", style: "color:var(--bad);font-weight:700", text: `未配席の吹き出しが${unN}個あります。` }) : null, h("span", { style: "margin-left:auto" }),
-    b("−", "縮小", "lay-prev-out", () => step(1 / 1.25)), pct, b("＋", "拡大", "lay-prev-in", () => step(1.25)), b("全体", "枠に合わせて全体を表示", "lay-prev-fit", () => { zoom = 0; fit(); view.scrollLeft = view.scrollTop = 0; })), view);
-  queueMicrotask(fit); requestAnimationFrame(fit); if (window.ResizeObserver) new ResizeObserver(() => { if (!zoom) fit(); }).observe(view);
+  const apply = () => { for (const p of panes) p.inner.style.zoom = zoom || p.fitZ; pct.textContent = Math.round((zoom || Math.min(...panes.map((p) => p.fitZ), 1)) * 100) + "%"; };
+  const fit = () => { for (const p of panes) { const bw = p.view.clientWidth - 8, bh = p.view.clientHeight - 8; if (bw > 0 && bh > 0) p.fitZ = Math.min(1, bw / p.W, bh / p.H); } apply(); };
+  const step = (k) => { zoom = Math.max(0.1, Math.min(3, Math.round((zoom || Math.min(...panes.map((p) => p.fitZ), 1)) * k * 100) / 100)); apply(); };
+  function draw() {
+    const L = list(), np = pages(); page = Math.max(0, Math.min(page, np - 1));
+    const vis = L.slice(page * 2, page * 2 + 2);
+    panes = vis.map((fl, i) => mkPane(fl, i === 0)); body.replaceChildren(...panes.map((p) => p.el)); body.classList.toggle("two", vis.length === 2);
+    bar.replaceChildren(...[title ? h("strong", { class: "small", id: "lay-prev-title", text: title }) : null,
+      floors.length > 1 ? h("span", { class: "small muted", id: "lay-prev-floors", text: (showAll ? "" : "配席した階：") + vis.map((f) => f.name).join("・") + `（全${floors.length}階）` }) : null,
+      np > 1 ? h("span", { class: "row", style: "gap:4px" }, b("‹", "前の階を表示", "lay-prev-prev", () => { page--; draw(); }, page === 0), h("span", { class: "small muted", id: "lay-prev-page", text: `${page + 1}/${np}` }), b("›", "次の階を表示", "lay-prev-next", () => { page++; draw(); }, page >= np - 1)) : null,
+      seated.length && seated.length < floors.length ? h("button", { type: "button", class: "linkbtn", id: "lay-prev-all", text: showAll ? "配席した階だけ表示" : "全部の階を表示", onclick: () => { showAll = !showAll; page = 0; draw(); } }) : null,
+      unN ? h("span", { class: "small", id: "lay-prev-un", style: "color:var(--bad);font-weight:700", text: `未配席の吹き出しが${unN}個あります。` }) : null, h("span", { style: "margin-left:auto" }),
+      b("−", "縮小", "lay-prev-out", () => step(1 / 1.25)), pct, b("＋", "拡大", "lay-prev-in", () => step(1.25)), b("全体", "枠に合わせて全体を表示", "lay-prev-fit", () => { zoom = 0; fit(); for (const p of panes) p.view.scrollLeft = p.view.scrollTop = 0; })].filter(Boolean));
+    queueMicrotask(fit); requestAnimationFrame(fit);
+  }
+  box.append(bar, body); draw();
+  if (window.ResizeObserver) new ResizeObserver(() => { if (!zoom) fit(); }).observe(body);
   return box;
 }
 /* ---------- 配席レイアウトの出力（Excel・PDF） ---------- */
@@ -5203,7 +5229,7 @@ function partyPanel(c, ch) {
   const MODES = [["class", "クラス・男女別"], ["sex", "男女別の合計"], ["total", "合計のみ（仮組）"]];
   const modeBar = h("div", { class: "row pt-mode", id: "pt-mode", role: "group", "aria-label": "人数の入れ方" });
   const drawMode = () => { const m = partyMode(p); modeBar.replaceChildren(h("span", { class: "small muted", text: "人数の入れ方" }), ...MODES.map(([k, t]) => h("button", { type: "button", class: "btn sm" + (m === k ? " primary" : ""), id: "pt-mode-" + k, "aria-pressed": m === k ? "true" : "false", text: t, onclick: () => { p.mode = k === "class" ? undefined : k; if (k === "class") delete p.mode; drawC(); drawMode(); upd(); ch(); } })),
-    m !== "class" ? h("span", { class: "small", style: "color:var(--warn)", id: "pt-mode-note", text: "内訳が決まっていないときの仮組用です。内訳が決まったら「クラス・男女別」に入れ直して、配席を作り直してください。" }) : null); };
+    m !== "class" ? h("span", { class: "small", style: "color:var(--warn)", id: "pt-mode-note", text: "内訳が決まっていないときの仮組用です。内訳が決まったら「クラス・男女別」に入れ直して、配席を作り直してください。" }) : ""); };
   const drawC = () => { const m = partyMode(p); addBtn.hidden = m !== "class"; if (m === "sex") return list.replaceChildren(h("div", { class: "row pt-row" }, h("span", { class: "muted small", text: "男子" }), n(p, "sexM", "pt-sm", "男子の合計人数"), h("span", { text: "人" }), h("span", { class: "muted small", style: "margin-left:8px", text: "女子" }), n(p, "sexF", "pt-sf", "女子の合計人数"), h("span", { text: "人" })));
     if (m === "total") return list.replaceChildren(h("div", { class: "row pt-row" }, h("span", { class: "muted small", text: "参加者の合計" }), n(p, "all", "pt-all", "参加者の合計人数"), h("span", { text: "人" }), h("span", { class: "small muted", style: "margin-left:8px", text: "（引率・添乗員などは下の欄に入れます）" })));
     drawCls(); };
