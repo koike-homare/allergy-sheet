@@ -508,7 +508,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 139</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 141</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -4834,9 +4834,14 @@ const half = (v) => String(v == null ? "" : v).replace(/[０-９]/g, (d) => Stri
 const SEAT_COLORS = ["#bdd7ee", "#f8cbad", "#c6e0b4", "#ffe699", "#d9c3e8", "#b4e5e0", "#f4b6c2", "#cfe2a8", "#ffd9b3", "#c9d4f0", "#e8d2b0", "#d0e8c0"];
 const STAFF_COLORS = { teacher: "#d9d9d9", nurse: "#ffc7ce", camera: "#e2efda", tour: "#ddebf7", crew: "#fff2cc" };
 /** 利用人数を、配席の単位（区分）の一覧にする。key は AI とのやり取りにも使う。 */
+/** 利用人数の入れ方：class=クラス・男女別（標準）／sex=男女別の合計だけ／total=合計だけ（レイアウトの仮組など、内訳が決まっていないとき）。 */
+const partyMode = (party) => (party && (party.mode === "sex" || party.mode === "total") ? party.mode : "class");
 function partyGroups(party) {
   const out = []; if (!party) return out;
-  (party.classes || []).forEach((k, i) => {
+  const mode = partyMode(party);
+  if (mode === "sex") { if (num(party.sexM)) out.push({ key: "sm", label: "男子", lines: ["男子"], n: num(party.sexM), color: SEAT_COLORS[0], year: "", kumi: "", sex: "男" }); if (num(party.sexF)) out.push({ key: "sf", label: "女子", lines: ["女子"], n: num(party.sexF), color: SEAT_COLORS[1], year: "", kumi: "", sex: "女" }); }
+  else if (mode === "total") { if (num(party.all)) out.push({ key: "all", label: "参加者", lines: ["参加者"], n: num(party.all), color: SEAT_COLORS[0], year: "", kumi: "", sex: "" }); }
+  else (party.classes || []).forEach((k, i) => {
     const name = (half(k.year) ? half(k.year) + "年" : "") + (half(k.kumi) ? half(k.kumi) + "組" : "") || "クラス" + (i + 1);
     if (num(k.m)) out.push({ key: `c${i + 1}m`, label: `${name} 男子`, lines: [name, "男子"], n: num(k.m), color: SEAT_COLORS[(i * 2) % SEAT_COLORS.length], year: half(k.year), kumi: half(k.kumi), sex: "男" });
     if (num(k.f)) out.push({ key: `c${i + 1}f`, label: `${name} 女子`, lines: [name, "女子"], n: num(k.f), color: SEAT_COLORS[(i * 2 + 1) % SEAT_COLORS.length], year: half(k.year), kumi: half(k.kumi), sex: "女" });
@@ -4975,14 +4980,20 @@ function spreadPlan(tables, plan) {
 }
 /** 案件の人の「年」「組」「性別」から、利用人数のどの区分に当たるかを探す。
     年が書かれていなければ組だけで選ぶ（同じ組が複数の学年にあるときは最初のもの）。 */
+/** 組の表記をそろえる：「3組」「３」→「3」、「A組」「Ａ」「a」→「A」。数字と英字の両方を組として扱う。 */
+const kumiToks = (v) => half(v).replace(/[Ａ-Ｚａ-ｚ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).toUpperCase().match(/\d+|[A-Z]/g) || [];
+const kumiKey = (v) => { const t = kumiToks(v); return t.length ? t[t.length - 1] : ""; };
 function groupOfRow(row, groups) {
-  const kd = half(row.kumi).match(/\d+/g) || [], yd = half(row.year).match(/\d+/g) || [], sex = row.sex === "男" || row.sex === "女" ? row.sex : "";
+  const kd = kumiToks(row.kumi), yd = half(row.year).match(/\d+/g) || [], sex = row.sex === "男" || row.sex === "女" ? row.sex : "";
   let year = yd[0] || "", kumi = "";
-  if (!year && kd.length >= 2) { year = kd[0]; kumi = kd[1]; } else kumi = kd.length ? kd[kd.length - 1] : "";
-  const cls = groups.filter((g) => !g.staff && (!sex || g.sex === sex));
-  const hit = kumi ? cls.filter((g) => g.kumi === kumi && (!year || g.year === year)) : year ? cls.filter((g) => g.year === year) : [];
+  if (!year && kd.length >= 2 && /^\d+$/.test(kd[0])) { year = kd[0]; kumi = kd[1]; } else kumi = kd.length ? kd[kd.length - 1] : "";
+  const cls = groups.filter((g) => !g.staff && (!sex || !g.sex || g.sex === sex));
+  const hit = kumi ? cls.filter((g) => kumiKey(g.kumi) === kumi && (!year || !g.year || g.year === year)) : year ? cls.filter((g) => g.year === year) : [];
   if (hit.length) return hit[0];
-  return !kumi && !year && cls.length === 1 ? cls[0] : null;
+  if (!kumi && !year && cls.length === 1) return cls[0];
+  // 年・組のない区分（男女別の合計・合計のみ・年組を空けたクラス）には、性別が合えば誰でも入れる（内訳が決まっていない仮組のため）
+  const gen = cls.filter((g) => !g.year && !g.kumi && (!sex || g.sex === sex || !g.sex));
+  return gen.length ? gen.find((g) => sex && g.sex === sex) || gen[0] : null;
 }
 /** 配席の結果をレイアウトに書き込む。卓に「1年2組 男子4名」と区分の色。席は○のままで、アレルギー対応者の席だけ★と吹き出し。 */
 function applySeating(lay, fl, tables, plan, groups, rows) {
@@ -5189,17 +5200,25 @@ function partyPanel(c, ch) {
   const list = h("div", { class: "stack", style: "gap:6px" }), others = h("div", { class: "stack", style: "gap:6px" });
   // 行を消すボタン（ゴミ箱のアイコン）
   const trash = (id, fn) => { const b = h("button", { type: "button", class: "x pt-del", id, title: "この行を削除", "aria-label": "この行を削除", onclick: fn }); b.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>'; return b; };
-  const drawC = () => list.replaceChildren(...p.classes.map((k, i) => h("div", { class: "row pt-row" },
+  const MODES = [["class", "クラス・男女別"], ["sex", "男女別の合計"], ["total", "合計のみ（仮組）"]];
+  const modeBar = h("div", { class: "row pt-mode", id: "pt-mode", role: "group", "aria-label": "人数の入れ方" });
+  const drawMode = () => { const m = partyMode(p); modeBar.replaceChildren(h("span", { class: "small muted", text: "人数の入れ方" }), ...MODES.map(([k, t]) => h("button", { type: "button", class: "btn sm" + (m === k ? " primary" : ""), id: "pt-mode-" + k, "aria-pressed": m === k ? "true" : "false", text: t, onclick: () => { p.mode = k === "class" ? undefined : k; if (k === "class") delete p.mode; drawC(); drawMode(); upd(); ch(); } })),
+    m !== "class" ? h("span", { class: "small", style: "color:var(--warn)", id: "pt-mode-note", text: "内訳が決まっていないときの仮組用です。内訳が決まったら「クラス・男女別」に入れ直して、配席を作り直してください。" }) : null); };
+  const drawC = () => { const m = partyMode(p); addBtn.hidden = m !== "class"; if (m === "sex") return list.replaceChildren(h("div", { class: "row pt-row" }, h("span", { class: "muted small", text: "男子" }), n(p, "sexM", "pt-sm", "男子の合計人数"), h("span", { text: "人" }), h("span", { class: "muted small", style: "margin-left:8px", text: "女子" }), n(p, "sexF", "pt-sf", "女子の合計人数"), h("span", { text: "人" })));
+    if (m === "total") return list.replaceChildren(h("div", { class: "row pt-row" }, h("span", { class: "muted small", text: "参加者の合計" }), n(p, "all", "pt-all", "参加者の合計人数"), h("span", { text: "人" }), h("span", { class: "small muted", style: "margin-left:8px", text: "（引率・添乗員などは下の欄に入れます）" })));
+    drawCls(); };
+  const drawCls = () => list.replaceChildren(...p.classes.map((k, i) => h("div", { class: "row pt-row" },
     n(k, "year", `pt-${i}-y`, "年"), h("span", { text: "年" }), n(k, "kumi", `pt-${i}-k`, "組"), h("span", { text: "組" }),
     h("span", { class: "muted small", style: "margin-left:8px", text: "男子" }), n(k, "m", `pt-${i}-m`, "男子の人数"), h("span", { text: "人" }),
     h("span", { class: "muted small", style: "margin-left:8px", text: "女子" }), n(k, "f", `pt-${i}-f`, "女子の人数"), h("span", { text: "人" }),
-    p.classes.length > 1 ? trash(`pt-${i}-del`, () => { p.classes.splice(i, 1); drawC(); upd(); ch(); }) : null,
+    p.classes.length > 1 ? trash(`pt-${i}-del`, () => { p.classes.splice(i, 1); drawCls(); upd(); ch(); }) : null,
     h("span", { class: "pill", id: `pt-${i}-st`, style: "margin-left:8px", hidden: true }))));
   const drawO = () => others.replaceChildren(...p.others.map((o, i) => h("div", { class: "row pt-row" },
     h("input", { id: `pt-o${i}-n`, value: o.name || "", placeholder: "区分名（例：保護者）", "aria-label": "その他の区分名", style: "width:180px", oninput: (e) => { o.name = e.target.value; ch(); } }),
     n(o, "n", `pt-o${i}-c`, "人数"), h("span", { text: "人" }),
     trash(`pt-o${i}-del`, () => { p.others.splice(i, 1); drawO(); upd(); ch(); }))));
-  drawC(); drawO(); queueMicrotask(upd);
+  const addBtn = h("button", { type: "button", class: "btn sm", id: "pt-add", text: "＋ クラスを追加", onclick: () => { p.classes.push({ id: uid("k"), year: "", kumi: "", m: "", f: "" }); drawCls(); upd(); ch(); } });
+  drawC(); drawMode(); drawO(); queueMicrotask(upd);
   const lay = S.layouts.get(c.storeId), has = !!(lay && (lay.floors || []).length) || !!c.layout;
   const open = () => go({ name: "clayout", id: c.id });
   const prev = has ? layoutPreview(c.layout || lay, open, c.layout ? layoutTitle(c) : "") : null;
@@ -5208,7 +5227,7 @@ function partyPanel(c, ch) {
       h("button", { type: "button", class: "btn primary", id: "btn-layout", disabled: !has, text: c.layout ? "レイアウトを開く" : "レイアウト作成", onclick: open })),
     has ? null : h("div", { class: "small muted", text: c.storeId ? "この店舗にはレイアウトが登録されていません。店舗マスタの「レイアウト」で登録すると、ここから配席を作成できます。" : "店舗マスタに登録済みの店舗を選ぶと、その店舗のレイアウトで配席を作成できます。" }),
     h("div", { class: "pt-body" }, h("div", { class: "stack" },
-      list, h("div", {}, h("button", { type: "button", class: "btn sm", id: "pt-add", text: "＋ クラスを追加", onclick: () => { p.classes.push({ id: uid("k"), year: "", kumi: "", m: "", f: "" }); drawC(); upd(); ch(); } })),
+      modeBar, list, h("div", {}, addBtn),
       h("div", { class: "row", style: "gap:6px 18px" }, ...STAFF.map(([id, label]) => h("label", { class: "row small", style: "gap:6px" }, label, n(p.staff, id, "pt-" + id, label), "人"))),
       others, h("div", {}, h("button", { type: "button", class: "btn sm", id: "pt-other", text: "＋ その他を追加", onclick: () => { p.others.push({ id: uid("o"), name: "", n: "" }); drawO(); ch(); } }))),
       prev),
@@ -5323,7 +5342,7 @@ function viewCaseLayout() {
     const y = half(r.year || "").trim().replace(/年$/, ""), k = half(r.kumi || "").trim().replace(/組$/, "");
     const cls = (y ? y + "年" : "") + (k ? k + (/\d$/.test(k) ? "組" : "") : ""), sex = r.sex === "男" ? "男子" : r.sex === "女" ? "女子" : "";
     const who = [cls, r.name.trim()].filter(Boolean).join(" ");
-    return sex ? `${who} は「${sex}」ですが、利用人数と一致しません` : cls ? `${who} は、利用人数と一致しません` : `${who} は年・組・性別が未入力のため、利用人数のどの区分か特定できません`;
+    return sex ? `${who} は「${sex}」ですが、利用人数に「${cls || "（年・組なし）"} ${sex}」の区分がありません` : cls ? `${who} は、利用人数に「${cls}」の区分がありません` : `${who} は年・組・性別が未入力のため、利用人数のどの区分か特定できません`;
   });
   const run = async (btn, force) => {
     const fl = ed.api.floor(); if (!fl) return;
@@ -5332,7 +5351,8 @@ function viewCaseLayout() {
     if (bad.length) {
       msg.style.color = ""; msg.replaceChildren(h("div", { class: "seat-warn", id: "seat-warn" },
         h("strong", { text: "条件不一致" }), h("div", { text: bad.map((t) => "・" + t).join("\n") }),
-        h("div", { class: "small", text: "案件画面で年・組・性別か利用人数を直すと解消します。このまま続けると、この人の吹き出しは席と結び付かない状態（色違い）で作成されます。" }),
+        h("div", { class: "small", id: "seat-warn-groups", text: "今の利用人数の区分：" + (groups.filter((g) => !g.staff).map((g) => g.label).join("、") || "なし") }),
+        h("div", { class: "small", text: "配席はクラス・男女ごとに席を割り当てるため、アレルギーのある人がどの区分に入るかを、年・組・性別で探しています。案件画面で、その人の年・組・性別か、利用人数（クラスごとの男女の人数）を直すと解消します。このまま続けると、この人の吹き出しは席と結び付かない状態（色違い）で作成されます。" }),
         h("div", { class: "row", style: "gap:8px" },
           h("button", { type: "button", class: "btn sm", id: "seat-go", text: "レイアウト作成を続ける", onclick: () => { msg.replaceChildren(); run(btn, true); } }),
           h("button", { type: "button", class: "btn sm", id: "seat-stop", text: "やめる", onclick: () => msg.replaceChildren() }))));
@@ -5372,7 +5392,8 @@ ${text}
   const sumText = () => { aiSum.textContent = "AIに依頼する・AIへ送る指示" + ((lay.ai || "").trim() ? "（依頼文あり）" : ""); const n = lay.opts.length + ((lay.ai || "").trim() ? 1 : 0); sum.textContent = `配席の条件・AIへの依頼（${n ? n + "件 指定中" : "指定なし＝標準の並べ方"}）`; };
   const cond = h("details", { id: "seat-cond", class: "seat-cond" }, sum,
     h("div", { class: "stack", style: "gap:8px;padding-top:8px" },
-      groups.length ? h("div", { class: "row", id: "seat-legend", style: "gap:4px 8px" }, ...groups.map((g) => h("span", { class: "lay-chip", style: `background:${g.color}`, text: `${g.label} ${g.n}名` }))) : null,
+      groups.length ? h("div", { class: "row", id: "seat-legend", style: "gap:4px 8px" }, ...groups.map((g) => h("span", { class: "lay-chip", style: `background:${g.color}`, text: `${g.label} ${g.n}名` })),
+        partyMode(c.party) !== "class" ? h("span", { class: "pill warn", id: "seat-kari", title: "利用人数を「男女別の合計」または「合計のみ」で入れています", text: "仮組（内訳未確定）" }) : null) : null,
       h("div", { class: "row", id: "seat-opts", style: "gap:4px 16px" }, ...OPTS.map(([k, label]) => h("label", { class: "row small", style: "gap:6px;cursor:pointer" },
         h("input", { type: "checkbox", id: "seat-o-" + k, style: "width:auto", checked: lay.opts.includes(k), onchange: (e) => { lay.opts = [...OPTS, ...DIRS].map((o) => o[0]).filter((x) => (x === k ? e.target.checked : lay.opts.includes(x))); ch(); showPrompt(); sumText(); } }), label))),
       h("div", { class: "row", id: "seat-dirs", style: "gap:4px 16px" }, ...DIRS.map(([k, label, other]) => h("label", { class: "row small", style: "gap:6px;cursor:pointer" },
