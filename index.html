@@ -359,6 +359,9 @@ div.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute
 .lay-area{position:absolute;border:2px dashed #d97706;background:rgba(217,119,6,.06);box-sizing:border-box}
 .lay-area-n{position:absolute;left:0;top:-17px;font-size:11px;font-weight:700;color:#b45309;background:#fff7e6;border:1px solid #d97706;border-radius:3px;padding:0 5px;line-height:15px;white-space:nowrap}
 .lay-area-x{position:absolute;right:-1px;top:-18px;width:17px;height:17px;border:1px solid #d97706;border-radius:3px;background:#fff7e6;color:#b45309;font-size:12px;line-height:1;padding:0;cursor:pointer;pointer-events:auto}
+.lay-print{position:absolute;border:2px dashed #2563eb;box-sizing:border-box;box-shadow:0 0 0 9999px rgba(15,23,42,.10)}
+.lay-print-n{position:absolute;left:0;top:-17px;font-size:11px;font-weight:700;color:#1d4ed8;background:#eff6ff;border:1px solid #2563eb;border-radius:3px;padding:0 5px;line-height:15px;white-space:nowrap}
+.lay-print-x{position:absolute;right:-1px;top:-18px;width:17px;height:17px;border:1px solid #2563eb;border-radius:3px;background:#eff6ff;color:#1d4ed8;font-size:12px;line-height:1;padding:0;cursor:pointer;pointer-events:auto}
 .lay-lines{position:absolute;inset:0;width:100%;height:100%;overflow:visible} .lay-lines line{stroke:#c00000;stroke-width:1.5}
 .lay-note{position:absolute;pointer-events:auto;background:#fffbe6;border:1.5px solid #c00000;border-radius:8px;padding:3px 18px 3px 7px;font-size:11px;line-height:1.3;color:#000;white-space:pre;cursor:move;box-shadow:0 1px 3px rgba(0,0,0,.25);user-select:none;touch-action:none}
 .lay-note-t[contenteditable="plaintext-only"]{cursor:text;user-select:text;outline:1px dashed #c00000}
@@ -516,7 +519,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 146</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 147</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -4551,6 +4554,11 @@ function layoutEditor(doc, onChange, opts = {}) {
     (doc.areas || []).forEach((ar, i) => { if (ar.fid !== fl.id) return; layer.append(h("div", { class: "lay-area", id: i ? "lay-area-" + i : "lay-area", style: `left:${X(ar.c1)}px;top:${Y(ar.r1)}px;width:${X(ar.c2 + 1) - X(ar.c1)}px;height:${Y(ar.r2 + 1) - Y(ar.r1)}px` },
       h("span", { class: "lay-area-n", text: "エリア" + (i + 1) }),
       h("button", { type: "button", class: "lay-area-x", title: "このエリアを解除", "aria-label": "エリア" + (i + 1) + "を解除", text: "×", onpointerdown: (e) => e.stopPropagation(), onclick: () => { pushUndo(); doc.areas.splice(i, 1); onChange(); draw(); if (opts.onRestore) opts.onRestore(); } }))); });
+    // 印刷範囲（PDF・Excelに出す部分）。外側は薄く暗くする。
+    const pa = layPrintArea(fl);
+    if (pa) layer.append(h("div", { class: "lay-print", id: "lay-print", style: `left:${X(pa.c1)}px;top:${Y(pa.r1)}px;width:${X(pa.c2 + 1) - X(pa.c1)}px;height:${Y(pa.r2 + 1) - Y(pa.r1)}px` },
+      h("span", { class: "lay-print-n", text: "印刷範囲" }),
+      h("button", { type: "button", class: "lay-print-x", id: "lay-print-x", title: "印刷範囲を解除（すべてを出力）", "aria-label": "印刷範囲を解除", text: "×", onpointerdown: (e) => e.stopPropagation(), onclick: () => { pushUndo(); delete fl.print; onChange(); draw(); toast("印刷範囲を解除しました。階の全体を出力します"); } })));
     const notes = (doc.notes || []).filter((n) => n.fid === fl.id);
     if (notes.length) {
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); svg.setAttribute("class", "lay-lines"); layer.append(svg);
@@ -4724,6 +4732,7 @@ function layoutEditor(doc, onChange, opts = {}) {
     fl.cells = cells;
     if (fl.under) fl.under = Object.fromEntries(Object.entries(fl.under).map(([k, v]) => { const p = k.split(",").map(Number); if (p[axis] >= at) p[axis] += n; return [p.join(","), v]; }));
     for (const m of fl.merges) { if (m[axis] >= at) { m[axis] += n; m[axis + 2] += n; } else if (m[axis + 2] >= at) m[axis + 2] += n; }
+    if (fl.print) { const P = fl.print, k1 = axis ? "c1" : "r1", k2 = axis ? "c2" : "r2"; if (P[k1] >= at) { P[k1] += n; P[k2] += n; } else if (P[k2] >= at) P[k2] += n; }
     if (axis) { fl.cw.splice(at, 0, ...Array(n).fill(fl.cw[Math.max(0, at - 1)] || LAY.cw)); fl.cols += n; } else { fl.rh.splice(at, 0, ...Array(n).fill(fl.rh[Math.max(0, at - 1)] || LAY.rh)); fl.rows += n; }
   }
   function remove(axis, from, to) {
@@ -4732,6 +4741,7 @@ function layoutEditor(doc, onChange, opts = {}) {
     fl.cells = cells;
     fl.merges = fl.merges.map((m) => { const s = m[axis] > to ? m[axis] - n : Math.min(m[axis], from), e = m[axis + 2] > to ? m[axis + 2] - n : m[axis + 2] >= from ? from - 1 : m[axis + 2]; const o = m.slice(); o[axis] = s; o[axis + 2] = e; return o; }).filter((m) => m[2] >= m[0] && m[3] >= m[1] && (m[0] !== m[2] || m[1] !== m[3]));
     if (axis) { fl.cw.splice(from, n); fl.cols -= n; } else { fl.rh.splice(from, n); fl.rows -= n; }
+    if (fl.print) { const P = fl.print, k1 = axis ? "c1" : "r1", k2 = axis ? "c2" : "r2", mv = (v) => (v > to ? v - n : v >= from ? from : v); const s1 = mv(P[k1]), e1 = P[k2] > to ? P[k2] - n : P[k2] >= from ? from - 1 : P[k2]; if (e1 < s1) delete fl.print; else { P[k1] = s1; P[k2] = e1; } }
   }
 
   /* 道具（ツールバー） */
@@ -4771,7 +4781,9 @@ function layoutEditor(doc, onChange, opts = {}) {
     grp("大きさ", h("label", { class: "small muted", for: "lay-cw", text: "列幅" }), wIn, h("label", { class: "small muted", for: "lay-rh", text: "行高" }), hIn),
     grp("表示", sel([["0.5", "50%"], ["0.75", "75%"], ["1", "100%"], ["1.25", "125%"], ["1.5", "150%"]], "1", (v) => { zoom = +v; draw(); }, { id: "lay-zoom", "aria-label": "表示の倍率", style: "width:84px" }),
       icon("lay-undo", "戻す（Ctrl+Z）", '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>', () => doUndo()),
-      icon("lay-redo", "進む（Ctrl+Y）", '<path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/>', () => doRedo())));
+      icon("lay-redo", "進む（Ctrl+Y）", '<path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/>', () => doRedo())),
+    grp("印刷範囲", btn("選んだ範囲に設定", "ドラッグで選んだ範囲だけを、PDF・Excelに出力する（階ごとに設定）", () => { const g = range(); if (g.r1 === g.r2 && g.c1 === g.c2) return toast("出力したい範囲をドラッグで選んでから押してください"); mutate(() => { F().print = { r1: g.r1, c1: g.c1, r2: g.r2, c2: g.c2 }; }); toast("印刷範囲を設定しました。PDF・Excelにはこの範囲だけが出ます"); }, "lay-print-set"),
+      btn("解除", "印刷範囲を解除して、階の全体を出力する", () => { if (!F().print) return toast("この階には印刷範囲がありません"); mutate(() => { delete F().print; }); toast("印刷範囲を解除しました"); }, "lay-print-clr")));
   wIn.addEventListener("change", () => { const v = Math.max(6, Math.min(400, +wIn.value || LAY.cw)); mutate(() => { const g = range(); for (let c = g.c1; c <= g.c2; c++) F().cw[c] = v; }); });
   hIn.addEventListener("change", () => { const v = Math.max(6, Math.min(400, +hIn.value || LAY.rh)); mutate(() => { const g = range(); for (let r = g.r1; r <= g.r2; r++) F().rh[r] = v; }); });
   function doUndo() { const u = undo.pop(); if (!u) return toast("これ以上は戻せません"); if (!doc.floors[u[0]]) return; redo.push([u[0], snap(u[0])]); restore(u); }
@@ -4907,10 +4919,28 @@ function viewLayout() {
     h("h2", { text: `${st.name || "（店舗名なし）"} のレイアウト` }),
     h("div", { class: "muted small", style: "max-width:90ch", text: "マス目をドラッグして範囲を選び、上の道具で結合・色・罫線を付けます。文字は入力欄に打ち込みます（マスを選んでそのまま打っても入ります）。矢印キーで移動、Delete で文字を消去、Ctrl+C／Ctrl+V でコピー・貼り付け、Ctrl+Z で元に戻せます。階はタブで切り替えます。" }),
     readOnly ? h("div", { class: "banner info", text: "閲覧専用のため、変更は保存されません。" }) : null,
-    layoutEditor(layDraft.doc, () => laySaver.touch()),
+    layoutEditor(layDraft.doc, () => laySaver.touch(), { tools: storeLayTools(st) }),
   ].filter(Boolean);
 }
 
+/** 店舗レイアウトの出力（席割の前でも出せる）。すべての階か、今の階だけかを選べる。印刷範囲があればその部分だけ。 */
+let layOutScope = "all";
+function storeLayTools(st) {
+  const msg = (t) => { if (t) toast(t); };
+  const clean = (t) => String(t || "").replace(/[\\/:*?"<>|]/g, "").replace(/　/g, "_");
+  const run = async (kind, btn) => {
+    const doc = layDraft.doc, root = $("#lay"), cur = root && root.api ? root.api.floor() : null;
+    const floors = (layOutScope === "cur" && cur ? [cur] : doc.floors).filter((f) => Object.values(f.cells || {}).some((x) => x && (x.v || x.bg || /[12]/.test(x.bd || "")))); // 何も書かれていない階は出さない
+    if (!floors.length) return toast("出力する内容がありません。");
+    const lay = layForPrint({ floors: doc.floors, notes: doc.notes || [] }, floors);
+    const title = `${st.name || "店舗"}　レイアウト`, fname = `【レイアウト】${clean(st.name || "店舗")}${layOutScope === "cur" && cur ? "_" + clean(cur.name) : ""}.${kind === "pdf" ? "pdf" : "xlsx"}`;
+    btn.disabled = true; try { await (kind === "pdf" ? layExportPdf : layExportXlsx)(lay, title, fname, msg); } finally { btn.disabled = false; }
+  };
+  return () => [
+    sel([["all", "すべての階"], ["cur", "この階だけ"]], layOutScope, (v) => { layOutScope = v; }, { id: "lay-out-scope", "aria-label": "出力する階", style: "width:118px" }),
+    h("button", { type: "button", class: "btn sm", id: "lay-out-pdf", text: "PDF出力", title: "このレイアウトをPDF（A4横）で保存する。印刷範囲を設定した階は、その部分だけを出します", onclick: (e) => run("pdf", e.currentTarget) }),
+    h("button", { type: "button", class: "btn sm", id: "lay-out-xlsx", text: "Excel出力", title: "このレイアウトをExcelで保存する。印刷範囲を設定した階は、その部分だけを出します", onclick: (e) => run("xlsx", e.currentTarget) })];
+}
 /* ---------- 案件ごとの利用人数と配席 ----------
    案件に party（利用人数）と layout（店舗レイアウトの写し＋配席の結果）を持たせる。
    卓＝周りに席（○）がある四角。席の数がその卓の定員。 */
@@ -5237,12 +5267,48 @@ function layCellFs(fl, r, c, x) {
   const lines = String(x.v).split("\n"), em = Math.max(...lines.map((s) => [...s].reduce((n, ch) => n + (ch.charCodeAt(0) > 255 ? 1 : 0.6), 0)));
   return Math.max(6, Math.min(13, Math.floor(((wid - 3) / em) * 10) / 10, Math.floor(((hgt - 3) / (lines.length * 1.15)) * 10) / 10));
 }
-async function exportLayoutXlsx(c, say) {
-  const lay = c.layout; if (!lay || !dl) return say("この表示環境では保存できません。", true);
+/** 階の印刷範囲（なければ null）。階の外にはみ出した分は詰める。 */
+function layPrintArea(fl) {
+  const P = fl && fl.print; if (!P) return null;
+  const r1 = Math.max(0, Math.min(P.r1, P.r2)), r2 = Math.min(fl.rows - 1, Math.max(P.r1, P.r2)), c1 = Math.max(0, Math.min(P.c1, P.c2)), c2 = Math.min(fl.cols - 1, Math.max(P.c1, P.c2));
+  return r2 >= r1 && c2 >= c1 ? { r1, c1, r2, c2 } : null;
+}
+/** 出力用に、印刷範囲だけを切り出したレイアウトを作る（元は変えない）。吹き出しも同じだけずらす。 */
+function layForPrint(lay, floors) {
+  const outF = [], outN = [];
+  for (const fl of floors || lay.floors || []) {
+    const notes = ((lay && lay.notes) || []).filter((n) => n.fid === fl.id), pa = layPrintArea(fl);
+    if (!pa) { outF.push(fl); outN.push(...notes); continue; }
+    const { r1, c1, r2, c2 } = pa, K = (r, c) => r + "," + c, nf = { ...fl, rows: r2 - r1 + 1, cols: c2 - c1 + 1, cw: fl.cw.slice(c1, c2 + 1), rh: fl.rh.slice(r1, r2 + 1), cells: {}, merges: [] };
+    delete nf.print; delete nf.under;
+    for (const [k, x] of Object.entries(fl.cells)) { const [r, c] = k.split(",").map(Number); if (r >= r1 && r <= r2 && c >= c1 && c <= c2) nf.cells[K(r - r1, c - c1)] = x; }
+    for (const m of fl.merges) {
+      const a1 = Math.max(m[0], r1), b1 = Math.max(m[1], c1), a2 = Math.min(m[2], r2), b2 = Math.min(m[3], c2); if (a2 < a1 || b2 < b1) continue;
+      // 範囲の境目で切れた結合は、見えている部分だけを結合し、文字と色は元の左上のマスから写す
+      if (a1 !== m[0] || b1 !== m[1]) { const o = fl.cells[K(m[0], m[1])]; if (o) nf.cells[K(a1 - r1, b1 - c1)] = { ...o, bd: (fl.cells[K(a1, b1)] || {}).bd || o.bd }; }
+      if (a2 > a1 || b2 > b1) nf.merges.push([a1 - r1, b1 - c1, a2 - r1, b2 - c1]);
+    }
+    const X0 = fl.cw.slice(0, c1).reduce((n, w) => n + w, 0), Y0 = fl.rh.slice(0, r1).reduce((n, w) => n + w, 0), W = nf.cw.reduce((n, w) => n + w, 0), H = nf.rh.reduce((n, w) => n + w, 0);
+    for (const n of notes) {
+      const inCell = n.r != null && n.r >= r1 && n.r <= r2 && n.c >= c1 && n.c <= c2, x = n.x - X0, y = n.y - Y0;
+      if (!inCell && (x < 0 || y < 0 || x > W + 10 || y > H + 10)) continue; // 範囲の外の吹き出しは出さない
+      const m = { ...n, x, y }; if (n.tx != null) { m.tx = n.tx - X0; m.ty = n.ty - Y0; }
+      if (inCell) { m.r = n.r - r1; m.c = n.c - c1; } else { delete m.r; delete m.c; }
+      outN.push(m);
+    }
+    outF.push(nf);
+  }
+  return { ...lay, floors: outF, notes: outN };
+}
+async function exportLayoutXlsx(c, say) { return layExportXlsx(layForPrint(c.layout || {}), layoutTitle(c), layFileName(c, "xlsx"), say); }
+async function exportLayoutPdf(c, say) { return layExportPdf(layForPrint(c.layout || {}), layoutTitle(c), layFileName(c, "pdf"), say); }
+async function layExportXlsx(lay, title, fname, say) {
+  if (!lay || !(lay.floors || []).length) return say("出力するレイアウトがありません。", true);
+  if (!dl) return say("この表示環境では保存できません。", true);
   say("Excelを作成中…");
   try {
     await loadScript(LIB.exceljs);
-    const wb = new ExcelJS.Workbook(), title = layoutTitle(c), argb = (hex) => "FF" + String(hex).replace("#", "").toUpperCase().padEnd(6, "0").slice(0, 6), BS = [null, { style: "thin" }, { style: "medium" }];
+    const wb = new ExcelJS.Workbook(), argb = (hex) => "FF" + String(hex).replace("#", "").toUpperCase().padEnd(6, "0").slice(0, 6), BS = [null, { style: "thin" }, { style: "medium" }];
     const used = new Set();
     for (const fl of lay.floors) {
       let name = String(fl.name || "レイアウト").replace(/[\\/?*\[\]:]/g, "").slice(0, 28) || "レイアウト"; while (used.has(name)) name += "_"; used.add(name);
@@ -5265,17 +5331,18 @@ async function exportLayoutXlsx(c, say) {
       const ctx = cv.getContext("2d"); ctx.scale(k, k); const boxes = layNoteBoxes(lay, fl, ctx);
       if (boxes.length) { layDrawNotes(ctx, boxes); const id = wb.addImage({ base64: cv.toDataURL("image/png"), extension: "png" }); ws.addImage(id, { tl: { col: 0, row: 1 }, ext: { width: W, height: H }, editAs: "oneCell" }); }
     }
-    await dl.save({ filename: layFileName(c, "xlsx"), data: new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }) });
+    await dl.save({ filename: fname, data: new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }) });
     say("Excelを出力しました。");
   } catch (e) { say(e && e.code === "declined" ? "" : e && e.code ? "この表示環境では保存できませんでした。" : "Excelを作成できませんでした。", true); }
 }
-async function exportLayoutPdf(c, say) {
-  const lay = c.layout; if (!lay || !dl) return say("この表示環境では保存できません。", true);
+async function layExportPdf(lay, title, fname, say) {
+  if (!lay || !(lay.floors || []).length) return say("出力するレイアウトがありません。", true);
+  if (!dl) return say("この表示環境では保存できません。", true);
   say("PDFを作成中…"); const made = [];
   try {
     await loadScript(LIB.h2c); await loadScript(LIB.jspdf);
     try { await document.fonts.ready; } catch (_) {}
-    const pdf = new jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape", compress: true }), title = layoutTitle(c);
+    const pdf = new jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape", compress: true });
     for (const [i, fl] of lay.floors.entries()) {
       const { W, H } = layFloorPx(fl), { table } = layTableEl(fl, false); table.style.width = W + "px";
       const page = h("div", { class: "lay-prev", style: `position:fixed;left:-30000px;top:0;border:0;border-radius:0;display:block;max-height:none;overflow:visible;background:#fff;color:#000;padding:14px 18px;width:${W + 36}px;box-sizing:border-box;font-family:'BIZ UDPGothic','Hiragino Sans','Yu Gothic',Meiryo,sans-serif` },
@@ -5289,7 +5356,7 @@ async function exportLayoutPdf(c, say) {
       const M = 8; let w = 297 - M * 2, hh = (base.height / base.width) * w; if (hh > 210 - M * 2) { hh = 210 - M * 2; w = (base.width / base.height) * hh; }
       pdf.addImage(base.toDataURL("image/jpeg", 0.92), "JPEG", (297 - w) / 2, M, w, hh);
     }
-    await dl.save({ filename: layFileName(c, "pdf"), data: pdf.output("blob") });
+    await dl.save({ filename: fname, data: pdf.output("blob") });
     say("PDFを出力しました。");
   } catch (e) { made.forEach((x) => x.remove()); say(e && e.code === "declined" ? "" : e && e.code ? "この表示環境では保存できませんでした。" : "PDFを作成できませんでした。", true); }
 }
