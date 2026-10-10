@@ -521,7 +521,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 150</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 152</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1647,6 +1647,14 @@ const NEED_APPROVALS = 2;
 /** 一覧用：承認者ごとに「小池 承認済」「竹坂 未承認」を並べる。承認者の名簿が読めていないときは、承認済みの人だけ出す。 */
 /** 確認書（アレルギー対応一覧表）への署名。signed=署名済、signDate=署名年月日（YYYY-MM-DD）、signer=署名者。 */
 const signText = (c) => (c && c.signed ? ["署名済", c.signDate ? c.signDate.replace(/-/g, "/") : "", c.signer || ""].filter(Boolean).join(" ") : "");
+/** 出力（PDF・Excel）の署名欄。署名済なら、ご利用者様が書いた日付と氏名を転記し、HASSINの記入ではないことを添える。 */
+const SIGN_NOTE = "※署名欄は、ご利用者様（保護者様・ご担当者様）が確認書にご署名された内容を転記したものです。";
+function signOut(c) {
+  if (!c || !c.signed) return { line: "　　　　　年　　　月　　　日　　　ご署名（自署）", name: "", note: "" };
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(c.signDate || "");
+  const d = m ? `${+m[1]}年　${+m[2]}月　${+m[3]}日` : "　　　　　年　　　月　　　日";
+  return { line: `${d}　　ご署名（自署）`, name: (c.signer || "").trim() || "（署名あり・氏名判読不可）", note: SIGN_NOTE + (c.signDate ? "" : "（署名年月日の記載なし）") };
+}
 function signPill(c) { return c && c.signed ? h("span", { class: "pill ok", style: "margin-left:4px", title: signText(c), text: "署名済" }) : null; }
 /** 案件画面の「確認書の署名」欄。日付か署名者を入れると、署名済にもチェックが入る。 */
 function signField(c, ch) {
@@ -2804,9 +2812,10 @@ async function doExport(c) {
     put(`G${r + 1}`, [st.company, st.dept].filter(Boolean).join("　"), { border: false, h: "right" });
     put(`G${r + 2}`, st.tel ? "TEL：" + st.tel : "", { border: false, h: "right" });
     put(`G${r + 3}`, st.fax ? "FAX：" + st.fax : "", { border: false, h: "right" });
-    const sign = put(`A${r + 3}:F${r + 3}`, "　　　　　年　　　月　　　日　　　ご署名（自署）", { border: false });
+    const so = signOut(c);
+    put(`A${r + 3}:F${r + 3}`, so.line + (so.name ? "　　" + so.name : ""), { border: false });
     for (let k = 1; k <= 6; k++) ws.getCell(r + 3, k).border = { bottom: thin };
-    void sign;
+    if (so.note) put(`A${r + 4}:F${r + 4}`, so.note, { border: false, size: 8 });
     const buf = await wb.xlsx.writeBuffer();
     const fn = `【アレルギー対応シート】${(c.visitDate || "").replace(/-/g, "")}${(c.groupName || "団体名未入力").replace(/[\\/:*?"<>|]/g, "")}さま.xlsx`;
     await dl.save({ filename: fn, data: new Blob([buf]) });
@@ -3162,7 +3171,8 @@ async function exportCasePdf(c) {
     el("div", "display:flex", el("div", `border:${B};flex:1`, el("div", "font-weight:700;font-size:12px;padding:1px 4px", "ご注意事項"), el("div", `padding:2px 4px;font-size:10px;${pre}`, st.notes || "")),
       el("div", `border:${B};border-left:0;width:280px`, el("div", "font-weight:700;font-size:12px;padding:1px 4px", "特記事項"), el("div", `padding:2px 4px;font-size:10px;${pre}`, st.special || ""))),
     el("div", "display:flex;justify-content:space-between;align-items:flex-end;margin-top:3px",
-      el("div", "flex:1", el("div", `font-size:10px;${pre}`, st.signNote || ""), el("div", "margin-top:26px;width:560px;border-bottom:1px solid #000;font-size:10.5px;padding-left:70px", "年　　　月　　　日　　ご署名（自署）")),
+      el("div", "flex:1", el("div", `font-size:10px;${pre}`, st.signNote || ""), ...((so) => [el("div", `margin-top:${so.note ? 14 : 26}px;width:560px;border-bottom:1px solid #000;font-size:10.5px;padding-left:${so.note ? 30 : 70}px;display:flex;align-items:baseline;gap:18px`, el("span", "", so.note ? so.line : "年　　　月　　　日　　ご署名（自署）"), so.name ? el("span", "font-size:15px;font-family:'Yu Mincho','Hiragino Mincho ProN',serif;letter-spacing:.12em", so.name) : null),
+        so.note ? el("div", "font-size:8.5px;color:#333;margin-top:2px;width:660px;white-space:nowrap", so.note) : null])(signOut(c))),
       el("div", "font-size:11.5px;text-align:right;margin-right:16px", el("div", "border-bottom:1px solid #000", "作成日　" + jpDate(c.createdDate || today())), el("div", "", [st.company, st.dept].filter(Boolean).join("　")), st.tel ? el("div", "", "TEL：" + st.tel) : null, st.fax ? el("div", "", "FAX：" + st.fax) : null),
       el("div", "display:flex", ...[0, 1].map((i) => el("div", `border:${B};${i ? "border-left:0;" : ""}width:92px`, el("div", "border-bottom:1px solid #000;text-align:center;font-size:9px", "検印"), el("div", "height:62px;display:flex;align-items:center;justify-content:center", aps[i] ? stamp(aps[i].name) : null))))));
   const sheet = (kids) => el("div", `position:fixed;left:-20000px;top:0;width:${W}px;box-sizing:border-box;padding:${PADY}px ${PADX}px;background:#fff;color:#000;font-family:'BIZ UDPGothic','Hiragino Sans','Yu Gothic',Meiryo,sans-serif;font-size:11.5px;line-height:1.4`, ...kids);
