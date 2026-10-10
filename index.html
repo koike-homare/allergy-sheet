@@ -360,6 +360,7 @@ div.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--mute
 .lay-area-n{position:absolute;left:0;top:-17px;font-size:11px;font-weight:700;color:#b45309;background:#fff7e6;border:1px solid #d97706;border-radius:3px;padding:0 5px;line-height:15px;white-space:nowrap}
 .lay-area-x{position:absolute;right:-1px;top:-18px;width:17px;height:17px;border:1px solid #d97706;border-radius:3px;background:#fff7e6;color:#b45309;font-size:12px;line-height:1;padding:0;cursor:pointer;pointer-events:auto}
 .lay-trash{color:var(--muted,#6b7684);padding:4px 7px;line-height:0} .lay-trash:hover{color:#c62828;border-color:#c62828} .lay-trash.danger{line-height:normal}
+.lay-out-row{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px 22px;padding:6px 0 2px;border-top:1px dashed var(--line,#dde2ea)}
 .lay-print{position:absolute;border:2px dashed #2563eb;box-sizing:border-box;box-shadow:0 0 0 9999px rgba(15,23,42,.10)}
 .lay-print-n{position:absolute;left:0;top:-17px;font-size:11px;font-weight:700;color:#1d4ed8;background:#eff6ff;border:1px solid #2563eb;border-radius:3px;padding:0 5px;line-height:15px;white-space:nowrap}
 .lay-print-x{position:absolute;right:-1px;top:-18px;width:17px;height:17px;border:1px solid #2563eb;border-radius:3px;background:#eff6ff;color:#1d4ed8;font-size:12px;line-height:1;padding:0;cursor:pointer;pointer-events:auto}
@@ -520,7 +521,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 148</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 149</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -4541,13 +4542,13 @@ function layoutEditor(doc, onChange, opts = {}) {
 
   function draw() {
     const fl = F(); drawTabs();
-    if (!fl) { bar.hidden = txtBox.hidden = pos.hidden = true; wrap.replaceChildren(h("div", { class: "empty", text: "この店舗のレイアウトはまだありません。「ファイルから読み込む」（Excel・PDF・画像）か「階を追加」から作成してください。" })); return; }
+    if (!fl) { bar.hidden = txtBox.hidden = pos.hidden = true; wrap.replaceChildren(h("div", { class: "empty", text: "この店舗のレイアウトはまだありません。「ファイルから読み込む」（Excel・PDF・画像）か「階を追加」から作成してください。" })); if (opts.onDraw) opts.onDraw(); return; }
     bar.hidden = txtBox.hidden = pos.hidden = false;
     const made = layTableEl(fl, true), table = made.table; tds = made.tds; table.id = "lay-table";
     const canvas = h("div", { class: "lay-canvas", id: "lay-canvas" }, table, overlay()); canvas.style.zoom = zoom;
     const top = wrap.scrollTop, left = wrap.scrollLeft; wrap.replaceChildren(canvas); wrap.scrollTop = top; wrap.scrollLeft = left;
     const un = looseCount(); unPop.hidden = !un; unPop.textContent = un ? `未配席の吹き出しが${un}個あります。` : "";
-    paint();
+    paint(); if (opts.onDraw) opts.onDraw();
   }
   /* マス目の上に重ねるもの：配席エリアの枠と、動かせる吹き出し（doc.notes）。座標は等倍のピクセル。 */
   const PAD = 10;
@@ -4797,9 +4798,7 @@ function layoutEditor(doc, onChange, opts = {}) {
     grp("大きさ", h("label", { class: "small muted", for: "lay-cw", text: "列幅" }), wIn, h("label", { class: "small muted", for: "lay-rh", text: "行高" }), hIn),
     grp("表示", sel([["0.5", "50%"], ["0.75", "75%"], ["1", "100%"], ["1.25", "125%"], ["1.5", "150%"]], "1", (v) => { zoom = +v; draw(); }, { id: "lay-zoom", "aria-label": "表示の倍率", style: "width:84px" }),
       icon("lay-undo", "戻す（Ctrl+Z）", '<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>', () => doUndo()),
-      icon("lay-redo", "進む（Ctrl+Y）", '<path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/>', () => doRedo())),
-    grp("印刷範囲", btn("選んだ範囲に設定", "ドラッグで選んだ範囲だけを、PDF・Excelに出力する（階ごとに設定）", () => { const g = range(); if (g.r1 === g.r2 && g.c1 === g.c2) return toast("出力したい範囲をドラッグで選んでから押してください"); mutate(() => { F().print = { r1: g.r1, c1: g.c1, r2: g.r2, c2: g.c2 }; }); toast("印刷範囲を設定しました。PDF・Excelにはこの範囲だけが出ます"); }, "lay-print-set"),
-      btn("解除", "印刷範囲を解除して、階の全体を出力する", () => { if (!F().print) return toast("この階には印刷範囲がありません"); mutate(() => { delete F().print; }); toast("印刷範囲を解除しました"); }, "lay-print-clr")));
+      icon("lay-redo", "進む（Ctrl+Y）", '<path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/>', () => doRedo())));
   wIn.addEventListener("change", () => { const v = Math.max(6, Math.min(400, +wIn.value || LAY.cw)); mutate(() => { const g = range(); for (let c = g.c1; c <= g.c2; c++) F().cw[c] = v; }); });
   hIn.addEventListener("change", () => { const v = Math.max(6, Math.min(400, +hIn.value || LAY.rh)); mutate(() => { const g = range(); for (let r = g.r1; r <= g.r2; r++) F().rh[r] = v; }); });
   function doUndo() { const u = undo.pop(); if (!u) return toast("これ以上は戻せません"); if (!doc.floors[u[0]]) return; redo.push([u[0], snap(u[0])]); restore(u); }
@@ -4922,7 +4921,10 @@ function layoutEditor(doc, onChange, opts = {}) {
 
   draw();
   // 案件側の配席機能が使う入口
-  root.api = { floor: F, range, redraw: draw, snapshot: pushUndo, X, Y };
+  // 印刷範囲（出力欄のボタンから呼ぶ）
+  const printSet = () => { const fl = F(); if (!fl) return; const g = range(); if (g.r1 === g.r2 && g.c1 === g.c2) return toast("出力したい範囲をレイアウト上でドラッグして選んでから押してください"); mutate(() => { fl.print = { r1: g.r1, c1: g.c1, r2: g.r2, c2: g.c2 }; }); toast(`${fl.name || "この階"}の印刷範囲を設定しました。PDF・Excelにはこの範囲だけが出ます`); };
+  const printClear = () => { const fl = F(); if (!fl) return; if (!fl.print) return toast(`${fl.name || "この階"}には印刷範囲がありません`); mutate(() => { delete fl.print; }); toast("印刷範囲を解除しました"); };
+  root.api = { floor: F, range, redraw: draw, snapshot: pushUndo, X, Y, printSet, printClear };
   return root;
 }
 
@@ -4935,27 +4937,54 @@ function viewLayout() {
     h("h2", { text: `${st.name || "（店舗名なし）"} のレイアウト` }),
     h("div", { class: "muted small", style: "max-width:90ch", text: "マス目をドラッグして範囲を選び、上の道具で結合・色・罫線を付けます。文字は入力欄に打ち込みます（マスを選んでそのまま打っても入ります）。矢印キーで移動、Delete で文字を消去、Ctrl+C／Ctrl+V でコピー・貼り付け、Ctrl+Z で元に戻せます。階はタブで切り替えます。" }),
     readOnly ? h("div", { class: "banner info", text: "閲覧専用のため、変更は保存されません。" }) : null,
-    layoutEditor(layDraft.doc, () => laySaver.touch(), { tools: storeLayTools(st) }),
+    storeOutPanel(st),
   ].filter(Boolean);
 }
 
-/** 店舗レイアウトの出力（席割の前でも出せる）。すべての階か、今の階だけかを選べる。印刷範囲があればその部分だけ。 */
-let layOutScope = "all";
-function storeLayTools(st) {
-  const msg = (t) => { if (t) toast(t); };
+/* ---------- レイアウトの出力欄（出力する階・印刷範囲） ----------
+   出力しない階の id を覚える（新しく足した階は、最初から出力する側）。 */
+const layOutSkip = new Set();
+const layHasContent = (f) => Object.values(f.cells || {}).some((x) => x && (x.v || x.bg || /[12]/.test(x.bd || "")));
+const layOutFloors = (doc) => ((doc && doc.floors) || []).filter((f) => !layOutSkip.has(f.id));
+/** Excel出力・PDF出力の下に置く段：出力する階のチェックと、印刷範囲のボタン。edGet() でレイアウトの編集画面を返す。 */
+function layOutRow(doc, edGet0) {
+  const edGet = () => { try { return edGet0(); } catch (_) { return null; } }; // 編集画面ができる前に呼ばれても困らないように
+  const box = h("div", { class: "lay-out-row", id: "lay-out-row" });
+  const draw = () => {
+    const fls = (doc && doc.floors) || [], ed = edGet(), cur = ed && ed.api ? ed.api.floor() : null, pa = cur ? layPrintArea(cur) : null;
+    box.replaceChildren(
+      h("div", { class: "row", style: "gap:4px 12px" }, h("span", { class: "small muted", text: "出力する階" }),
+        ...(fls.length ? fls.map((f, i) => h("label", { class: "row small", style: "gap:5px;cursor:pointer" },
+          h("input", { type: "checkbox", id: "lay-out-f" + i, style: "width:auto", checked: !layOutSkip.has(f.id), onchange: (e) => { if (e.target.checked) layOutSkip.delete(f.id); else layOutSkip.add(f.id); } }),
+          (f.name || "階" + (i + 1)) + (layPrintArea(f) ? "（範囲指定）" : ""))) : [h("span", { class: "small muted", text: "階がありません" })])),
+      h("div", { class: "row", style: "gap:4px 8px" }, h("span", { class: "small muted", text: "印刷範囲" }),
+        h("button", { type: "button", class: "btn sm", id: "lay-print-set", text: "選んだ範囲に設定", title: "レイアウト上でドラッグして選んだ範囲だけを、PDF・Excelに出力する（階ごとに設定）", onclick: () => { const e = edGet(); if (e && e.api) e.api.printSet(); } }),
+        h("button", { type: "button", class: "btn sm", id: "lay-print-clr", text: "解除", title: "今の階の印刷範囲を解除して、階の全体を出力する", onclick: () => { const e = edGet(); if (e && e.api) e.api.printClear(); } }),
+        h("span", { class: "small muted", id: "lay-print-st", text: cur ? `${cur.name || "この階"}：${pa ? "範囲を指定中（青い点線の枠）" : "階の全体を出力"}` : "" })));
+  };
+  box.refresh = draw; draw(); return box;
+}
+/** 店舗レイアウト画面の出力欄（席割の前でも出せる）とレイアウトの編集画面。 */
+function storeOutPanel(st) {
+  const doc = layDraft.doc; let ed = null;
+  const row = layOutRow(doc, () => ed);
+  ed = layoutEditor(doc, () => { laySaver.touch(); row.refresh(); }, { onDraw: () => row.refresh() });
   const clean = (t) => String(t || "").replace(/[\\/:*?"<>|]/g, "").replace(/　/g, "_");
   const run = async (kind, btn) => {
-    const doc = layDraft.doc, root = $("#lay"), cur = root && root.api ? root.api.floor() : null;
-    const floors = (layOutScope === "cur" && cur ? [cur] : doc.floors).filter((f) => Object.values(f.cells || {}).some((x) => x && (x.v || x.bg || /[12]/.test(x.bd || "")))); // 何も書かれていない階は出さない
+    const sel = layOutFloors(doc), floors = sel.filter(layHasContent); // 何も書かれていない階は出さない
+    if (!sel.length) return toast("出力する階にチェックを入れてください。");
     if (!floors.length) return toast("出力する内容がありません。");
+    const one = floors.length === 1 && doc.floors.length > 1;
     const lay = layForPrint({ floors: doc.floors, notes: doc.notes || [] }, floors);
-    const title = `${st.name || "店舗"}　レイアウト`, fname = `【レイアウト】${clean(st.name || "店舗")}${layOutScope === "cur" && cur ? "_" + clean(cur.name) : ""}.${kind === "pdf" ? "pdf" : "xlsx"}`;
-    btn.disabled = true; try { await (kind === "pdf" ? layExportPdf : layExportXlsx)(lay, title, fname, msg); } finally { btn.disabled = false; }
+    const title = `${st.name || "店舗"}　レイアウト`, fname = `【レイアウト】${clean(st.name || "店舗")}${one ? "_" + clean(floors[0].name) : ""}.${kind === "pdf" ? "pdf" : "xlsx"}`;
+    btn.disabled = true; try { await (kind === "pdf" ? layExportPdf : layExportXlsx)(lay, title, fname, (t) => { if (t) toast(t); }); } finally { btn.disabled = false; }
   };
-  return () => [
-    sel([["all", "すべての階"], ["cur", "この階だけ"]], layOutScope, (v) => { layOutScope = v; }, { id: "lay-out-scope", "aria-label": "出力する階", style: "width:118px" }),
-    h("button", { type: "button", class: "btn sm", id: "lay-out-pdf", text: "PDF出力", title: "このレイアウトをPDF（A4横）で保存する。印刷範囲を設定した階は、その部分だけを出します", onclick: (e) => run("pdf", e.currentTarget) }),
-    h("button", { type: "button", class: "btn sm", id: "lay-out-xlsx", text: "Excel出力", title: "このレイアウトをExcelで保存する。印刷範囲を設定した階は、その部分だけを出します", onclick: (e) => run("xlsx", e.currentTarget) })];
+  const panel = h("div", { class: "panel stack", id: "lay-out-panel", style: "gap:8px;padding:10px 14px" },
+    h("div", { class: "row", style: "gap:6px 10px" }, h("strong", { text: "出力" }), h("span", { class: "small muted", text: "席割の前でも、このレイアウトをPDF・Excelにできます。" }), h("span", { style: "margin-left:auto" }),
+      h("button", { type: "button", class: "btn sm", id: "lay-out-xlsx", text: "Excel出力", title: "チェックした階をExcelで保存する（1階1シート）", onclick: (e) => run("xlsx", e.currentTarget) }),
+      h("button", { type: "button", class: "btn sm", id: "lay-out-pdf", text: "PDF出力", title: "チェックした階をPDF（A4横）で保存する（1階1ページ）", onclick: (e) => run("pdf", e.currentTarget) })),
+    row);
+  return h("div", { class: "stack", style: "gap:10px" }, panel, ed);
 }
 /* ---------- 案件ごとの利用人数と配席 ----------
    案件に party（利用人数）と layout（店舗レイアウトの写し＋配席の結果）を持たせる。
@@ -5316,8 +5345,8 @@ function layForPrint(lay, floors) {
   }
   return { ...lay, floors: outF, notes: outN };
 }
-async function exportLayoutXlsx(c, say) { return layExportXlsx(layForPrint(c.layout || {}), layoutTitle(c), layFileName(c, "xlsx"), say); }
-async function exportLayoutPdf(c, say) { return layExportPdf(layForPrint(c.layout || {}), layoutTitle(c), layFileName(c, "pdf"), say); }
+async function exportLayoutXlsx(c, say) { const fl = layOutFloors(c.layout); if (c.layout && !fl.length) return say("出力する階にチェックを入れてください。", true); return layExportXlsx(layForPrint(c.layout || {}, fl), layoutTitle(c), layFileName(c, "xlsx"), say); }
+async function exportLayoutPdf(c, say) { const fl = layOutFloors(c.layout); if (c.layout && !fl.length) return say("出力する階にチェックを入れてください。", true); return layExportPdf(layForPrint(c.layout || {}, fl), layoutTitle(c), layFileName(c, "pdf"), say); }
 async function layExportXlsx(lay, title, fname, say) {
   if (!lay || !(lay.floors || []).length) return say("出力するレイアウトがありません。", true);
   if (!dl) return say("この表示環境では保存できません。", true);
@@ -5512,7 +5541,8 @@ function viewCaseLayout() {
   };
   const say = (t, bad) => { msg.textContent = t; msg.style.color = bad ? "var(--bad)" : "var(--ok)"; };
   const tb = (id, text, title, fn, cls) => h("button", { type: "button", class: "btn sm" + (cls ? " " + cls : ""), id, text, title, onclick: fn });
-  const ed = layoutEditor(lay, ch, { onRestore: () => { info(); }, tools: () => [
+  const outRow = layOutRow(lay, () => ed);
+  const ed = layoutEditor(lay, (...a) => { ch(...a); outRow.refresh(); }, { onDraw: () => outRow.refresh(), onRestore: () => { info(); }, tools: () => [
     tb("seat-area-set", "選んだ範囲を配席エリアに追加", "下のレイアウトでドラッグして選んだ範囲を、配席エリアに追加する（いくつでも追加でき、追加した順に配席します）", () => { ed.api.snapshot(); const g = ed.api.range(); lay.areas.push({ fid: ed.api.floor().id, ...g }); ch(); ed.api.redraw(); info(); }),
     tb("seat-area-clear", "エリアをすべて解除", "この階の配席エリアをすべてやめて、階の全体を対象にする（1つだけ解除するときは、エリアの右上の ×）", () => { ed.api.snapshot(); const id = ed.api.floor().id; lay.areas = lay.areas.filter((a) => a.fid !== id); ch(); ed.api.redraw(); info(); }),
     tb("seat-note", "吹き出しを追加", "選んだマスの近くに吹き出しを追加する（ドラッグで移動、ダブルクリックで文字を修正）", () => { ed.api.snapshot(); const g = ed.api.range(), fl = ed.api.floor(); lay.notes.push({ id: uid("n"), fid: fl.id, x: ed.api.X(g.c1) + 20, y: Math.max(0, ed.api.Y(g.r1) - 40), text: "メモ" }); ch(); ed.api.redraw(); })] });
@@ -5606,6 +5636,7 @@ ${text}
       tb("seat-pdf", "PDF出力", "この配席レイアウトを PDF（A4横）で保存する", async (e) => { e.target.disabled = true; await exportLayoutPdf(c, say); e.target.disabled = false; }),
       tb("seat-clear", "配席を消す", "配席を消して、店舗のレイアウトに戻す", () => { ed.api.snapshot(); clearSeating(lay); ch(); ed.api.redraw(); info(); say("配席を消して、店舗のレイアウトに戻しました。"); }),
       tb("seat-run", "配席を作成", "条件に従って配席を作成する（前回の配席は作り直されます）", (e) => run(e.target), "primary")),
+    outRow,
     groups.length ? null : h("div", { class: "small", style: "color:var(--warn)", text: "利用人数が未入力です。案件画面の「利用人数」に入力してください。" }),
     cond, msg);
   sumText();
