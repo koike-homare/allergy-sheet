@@ -550,7 +550,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 159</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 160</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1827,7 +1827,11 @@ function viewCase() {
     const revoke = (name) => approvalDialog(`${name}の承認を取り消します`, "取り消すと、PDFは出力できなくなります。", () => { delete c.approvals[name]; caseAct(c, "承認を取り消した", name, "un"); caseSaver.touch(); drawBar(); toast("承認を取り消しました"); });
     bar.replaceChildren(
       h("div", { class: "row" },
-        dl ? h("button", { type: "button", class: "btn primary", id: "btn-pdf", text: "PDFで出力", disabled: !done, onclick: () => exportCasePdf(c) }) : h("span", { class: "muted small", text: "この表示環境ではPDF出力が使えません。" }),
+        dl ? (shopGroups(c).filter((g) => g.rows.length).length > 1
+          ? h("span", { class: "row", style: "gap:6px" },
+              h("button", { type: "button", class: "btn primary", id: "btn-pdf", text: "まとめてPDF出力", title: "すべての店舗を1つのPDFにまとめて保存します（店舗ごとにページが分かれます）", disabled: !done, onclick: () => exportCasePdf(c, "all") }),
+              h("button", { type: "button", class: "btn primary", id: "btn-pdf-each", text: "店舗別でPDF出力", title: "店舗ごとに別のPDFファイルで保存します", disabled: !done, onclick: () => exportCasePdf(c, "each") }))
+          : h("button", { type: "button", class: "btn primary", id: "btn-pdf", text: "PDFで出力", disabled: !done, onclick: () => exportCasePdf(c, "all") })) : h("span", { class: "muted small", text: "この表示環境ではPDF出力が使えません。" }),
         db && !done ? h("button", { type: "button", class: "btn", id: "btn-approve", text: "承認", onclick: approve }) : null,
         ...aps.map((a) => h("span", { class: "row", style: "gap:4px" }, h("span", { class: "pill ok", text: `${a.name} 承認済` }), h("button", { type: "button", class: "linkbtn", text: "取り消す", onclick: () => revoke(a.name) }))),
         h("span", { id: "export-msg", class: "small" }),
@@ -3241,8 +3245,8 @@ async function exportCoursePdf(co) {
 }
 
 /* ---------- 案件（対応シート）のPDF出力 ---------- */
-async function exportCasePdf(c) {
-  const msg = $("#export-msg"), btn = $("#btn-pdf"), st = { ...SET_DEFAULTS(), ...S.settings }, aps = validApprovals(c);
+async function exportCasePdf(c, mode) {
+  const each = mode === "each", msg = $("#export-msg"), btn = $(each ? "#btn-pdf-each" : "#btn-pdf"), st = { ...SET_DEFAULTS(), ...S.settings }, aps = validApprovals(c);
   if (aps.length < NEED_APPROVALS) return;
   msg.style.color = ""; msg.textContent = "プレビューを作成中…"; btn.disabled = true;
   let G = c, course = null, storeName = ""; // 店舗が複数あるときは、店舗ごとにページを分ける（G＝今のページの店舗）
@@ -3280,7 +3284,7 @@ async function exportCasePdf(c) {
     await loadScript(LIB.h2c); await loadScript(LIB.jspdf);
     try { await document.fonts.ready; } catch (_) {}
     // まず全体を1枚に組んで各行の高さを測り、A4横に収まるようページに分ける
-    const canvases = [], all = shopGroups(c), groups = all.filter((g, k) => g.rows.length || (k === 0 && !c.rows.length)); let total = 0;
+    const canvases = [], cvGroup = [], all = shopGroups(c), groups = all.filter((g, k) => g.rows.length || (k === 0 && !c.rows.length)); let total = 0;
     for (const g of groups) {
       setG(g);
       const rows = g.rows.length ? g.rows : [newRow()];
@@ -3298,31 +3302,36 @@ async function exportCasePdf(c) {
         if (pages[i]) kids.push(table(pages[i]));
         if (i === total - 1) kids.push(footer());
         const pg = sheet(kids); pg.style.minHeight = PAGE_H + "px"; document.body.append(pg); made.push(pg);
-        canvases.push(await html2canvas(pg, { scale: 2.5, backgroundColor: "#ffffff", logging: false, windowWidth: W })); pg.remove();
+        canvases.push(await html2canvas(pg, { scale: 2.5, backgroundColor: "#ffffff", logging: false, windowWidth: W })); cvGroup.push(g); pg.remove();
       }
     }
     total = canvases.length;
     const imgs = canvases.map((cv) => cv.toDataURL("image/jpeg", 0.92)), dlg = $("#dlg"), dmsg = h("span", { class: "small" });
-    const save = h("button", { type: "button", class: "btn primary", id: "pv-save", text: "PDFで保存", onclick: async () => {
+    const save = h("button", { type: "button", class: "btn primary", id: "pv-save", text: each ? `店舗別に保存（${groups.length}ファイル）` : "PDFで保存", onclick: async () => {
       save.disabled = true; dmsg.style.color = ""; dmsg.textContent = "保存中…";
       try {
-        const pdf = new jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape", compress: true });
-        canvases.forEach((cv, i) => { if (i) pdf.addPage("a4", "landscape"); let w = 297, hh = (cv.height / cv.width) * 297; if (hh > 210) { w = (210 / hh) * 297; hh = 210; } pdf.addImage(imgs[i], "JPEG", (297 - w) / 2, 0, w, hh); });
-        await dl.save({ filename: `【アレルギー対応シート】${(c.visitDate || "").replace(/-/g, "")}${(c.groupName || "団体名未入力").replace(/[\\/:*?"<>|]/g, "")}さま.pdf`, data: pdf.output("blob") });
-        caseAct(c, "PDFで出力", `対応シート（${(c.rows || []).length}名）`, "out"); if (draft === c) caseSaver.touch();
+        const base = `【アレルギー対応シート】${(c.visitDate || "").replace(/-/g, "")}${(c.groupName || "団体名未入力").replace(/[\\/:*?"<>|]/g, "")}さま`;
+        const build = (idx) => { const pdf = new jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape", compress: true }); idx.forEach((i, k) => { const cv = canvases[i]; if (k) pdf.addPage("a4", "landscape"); let w = 297, hh = (cv.height / cv.width) * 297; if (hh > 210) { w = (210 / hh) * 297; hh = 210; } pdf.addImage(imgs[i], "JPEG", (297 - w) / 2, 0, w, hh); }); return pdf.output("blob"); };
+        if (!each) await dl.save({ filename: base + ".pdf", data: build(canvases.map((_, i) => i)) });
+        else for (const [k, g] of groups.entries()) { // 店舗ごとに1ファイル
+          dmsg.textContent = `保存中…（${k + 1}/${groups.length}）`;
+          const sn = (shopName(g) || `店舗${k + 1}`).replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "");
+          await dl.save({ filename: `${base}_${sn}.pdf`, data: build(canvases.map((_, i) => i).filter((i) => cvGroup[i] === g)) });
+        }
+        caseAct(c, "PDFで出力", `対応シート（${(c.rows || []).length}名${each ? `・店舗別 ${groups.length}ファイル` : ""}）`, "out"); if (draft === c) caseSaver.touch();
         dlg.close(); msg.textContent = "出力しました。";
       } catch (e) { dmsg.style.color = "var(--bad)"; dmsg.textContent = e && e.code === "declined" ? "" : e && e.code ? "この表示環境では保存できませんでした。" : "PDFを作成できませんでした。"; save.disabled = false; }
     } });
     const as = c.rows.map((r) => analyse(r, rowM(c, r))), un = as.filter((x) => x.ask).length, pd = as.filter((x) => x.pending).length;
     dlg.replaceChildren(h("div", { class: "dlg" },
-      h("div", { class: "row" }, h("h3", { text: "PDFのプレビュー" }), h("span", { class: "muted small", text: `A4横・${total}ページ` }), h("span", { style: "margin-left:auto" }), dmsg,
+      h("div", { class: "row" }, h("h3", { text: "PDFのプレビュー" }), h("span", { class: "muted small", text: `A4横・${total}ページ` + (each ? `・店舗別に${groups.length}ファイルで保存` : groups.length > 1 ? `・${groups.length}店舗を1ファイルで保存` : "") }), h("span", { style: "margin-left:auto" }), dmsg,
         h("button", { type: "button", class: "btn", text: "閉じる", onclick: () => dlg.close() }), save),
       un || pd ? h("div", { class: "banner warn", text: `確認が残っています：${[un ? `原本未照合 ${un}件` : "", pd ? `判定保留・未登録 ${pd}件` : ""].filter(Boolean).join("、")}` }) : null,
       h("div", { class: "pv" }, ...imgs.map((src, i) => h("img", { src, alt: `対応シートの印刷プレビュー ${i + 1}ページ`, id: "pv-img" + i, style: "width:100%;max-width:1000px;margin-bottom:10px" })))));
     dlg.showModal(); msg.textContent = "";
   } catch (e) {
     msg.textContent = "プレビューを作成できませんでした。";
-  } finally { made.forEach((m) => m.remove()); const bb = $("#btn-pdf"); if (bb) bb.disabled = validApprovals(c).length < NEED_APPROVALS; }
+  } finally { made.forEach((m) => m.remove()); for (const id of ["#btn-pdf", "#btn-pdf-each"]) { const bb = $(id); if (bb) bb.disabled = validApprovals(c).length < NEED_APPROVALS; } }
 }
 
 /* ---------- 特定原材料 ---------- */
