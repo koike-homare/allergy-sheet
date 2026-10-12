@@ -240,7 +240,15 @@ h3{font-family:var(--display);font-size:15px;margin:0}
 .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .stack{display:flex;flex-direction:column;gap:16px}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.shop-sel{font-size:12px;padding-inline:4px;width:100%}
+.shop-rec{display:flex;flex-direction:column;gap:0}
+.shop-rec>.panel{margin:0}
+.shop-rec>.panel:first-child{border-bottom-left-radius:0;border-bottom-right-radius:0}
+.shop-rec>.panel+.panel{border-top:1px dashed var(--line);border-top-left-radius:0;border-top-right-radius:0}
 .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px 16px}
+/* 案件の見出し欄：広い画面では、確認書の署名まで1行に並べる */
+@media (min-width:1280px){.fields.c-head{grid-template-columns:minmax(150px,1.3fr) minmax(130px,.8fr) minmax(170px,1.3fr) minmax(170px,1.3fr) minmax(130px,.8fr) minmax(300px,2fr)}}
+@media (max-width:1279px){.fields.c-head .c-sign-f{grid-column:span 2}}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);min-width:0}
 input,select,textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:6px 8px;width:100%;min-width:0}
 textarea{resize:vertical;line-height:1.5;field-sizing:content;min-height:2.6em}
@@ -298,6 +306,14 @@ table.list tr.click{cursor:pointer} table.list tr.click:hover td{background:var(
 .x{background:none;border:0;color:var(--muted);cursor:pointer;font-size:16px;padding:2px 6px;border-radius:4px}
 .x:hover{color:var(--bad);background:var(--bad-soft)}
 @media (min-width:821px){.sheet-in{min-width:1100px}}
+@media (min-width:821px){.sheet-in.shops .srow{grid-template-columns:128px 44px 52px 62px 124px minmax(144px,1.1fr) 76px minmax(214px,2.1fr) minmax(170px,1.2fr) minmax(100px,.7fr) minmax(176px,1fr) 40px}}
+.shop-pick{position:relative;display:flex;gap:5px;align-items:flex-start;border:1px solid var(--line);border-radius:6px;padding:5px 6px;background:#fff;cursor:pointer;font-size:12px;line-height:1.35}
+.shop-pick:hover,.shop-pick:focus-within{border-color:var(--accent)}
+.shop-pick select{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.shop-pick .nm{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;word-break:break-all}
+.shop-no{flex:none;display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;color:#fff;font-size:11px;font-weight:700;line-height:1}
+.shop-rec.numbered>.panel{border-left:4px solid var(--shop-c)}
+.shop-tag{display:inline-flex;align-items:center;gap:5px}
 @media (max-width:820px){
   .srow.head{display:none}
   .srow{grid-template-columns:1fr 1fr 1fr;border-bottom:6px solid var(--sunken)}
@@ -416,7 +432,18 @@ tr.rv-dup>td{background:#fff8e6} tr.rv-old>td{background:#fff8e6;padding:2px 8px
 .lay-prev td{padding:0;overflow:hidden;position:relative}
 .lay-prev td>div{overflow:hidden;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.15;white-space:pre-wrap;word-break:break-all}
 .lay-chip{border-radius:999px;padding:2px 10px;font-size:12px;color:#000;border:1px solid rgba(0,0,0,.2)}
-.pt-row{gap:6px;align-items:center}
+.pt-row{gap:4px;align-items:center}
+.pt-c{gap:8px;padding-top:12px;padding-bottom:12px}
+.pt-c .pt-mode .btn{padding:2px 9px;font-size:12px}
+.pt-flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;align-content:flex-start}
+.pt-flow>.pt-flow{display:contents}
+.pt-c input[inputmode=numeric]{width:44px!important;height:30px;padding:2px 6px}
+.pt-c .pt-row input:not([inputmode]){height:30px;width:140px!important}
+.pt-sep{width:1px;height:22px;background:var(--line)}
+.pt-body.noprev{grid-template-columns:1fr}
+.pt-c .pt-body{grid-template-columns:minmax(380px,1fr) minmax(0,1fr)}
+.pt-c .pt-body.noprev{grid-template-columns:1fr}
+.pt-c .lay-prev{min-height:220px;max-height:280px}
 .seat-panel{padding:8px 12px;display:flex;flex-direction:column;gap:6px}
 .seat-cond>summary{cursor:pointer;font-size:13px;color:var(--muted)} .seat-cond[open]>summary{color:var(--ink)}
 #seat-msg:empty{display:none}
@@ -523,7 +550,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 153</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 158</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1431,7 +1458,7 @@ function viewList() {
     h("div", { class: "panel scroll", id: "listbody", style: "padding:4px 8px" }),
   ];
 }
-function caseNeeds(c) { const st = M(c.courseId); return (c.rows || []).filter((r) => analyse(r, st).needs).length; }
+function caseNeeds(c) { return (c.rows || []).filter((r) => analyse(r, rowM(c, r)).needs).length; }
 function renderListBody() {
   const box = $("#listbody"); if (!box) return;
   const q = norm(listQuery);
@@ -1447,7 +1474,7 @@ function renderListBody() {
     tb.append(h("tr", { class: "click", onclick: () => go({ name: "case", id: c.id }) },
       h("td", { text: c.visitDate ? c.visitDate.replace(/-/g, "/") : "—" }),
       h("td", {}, h("strong", { text: c.groupName || "（団体名未入力）" })),
-      h("td", { text: S.stores.get(c.storeId)?.name || c.storeName || "—" }),
+      h("td", { text: [S.stores.get(c.storeId)?.name || c.storeName || "—", ...(c.subs || []).map((x) => shopName(x) || "（店舗未選択）")].join("\n"), style: "white-space:pre-line" }),
       h("td", { text: (c.rows || []).length + "名" }),
       h("td", {}, n ? h("span", { class: "pill warn", text: "要確認 " + n }) : h("span", { class: "pill ok", text: "確認済み" }),
         ...approvalPills(c), signPill(c)),
@@ -1474,9 +1501,9 @@ const impFiles = new Map(); // 取込の id + ":" + 番号 → 元のファイ�
 const HIST_MAX = 600, ACT_MAX = 300, IMP_MAX = 60;
 const fmtAt = (iso) => { const d = new Date(iso); if (isNaN(d)) return ""; const z = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}/${z(d.getMonth() + 1)}/${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`; };
 const TRK_F = [["year", "年"], ["kumi", "組"], ["sex", "性別"], ["name", "氏名"], ["allergy", "アレルギー"], ["seibun", "成分可否"], ["sb", "品目ごとの成分可否"], ["element", "アレルゲンの要素（手修正）"], ["response", "対応の文章（手修正）"], ["final", "最終的な対応"], ["caution", "注意文（手修正）"], ["symptom", "症状"], ["remark", "資料メモ"], ["memo", "確認メモ"]];
-const TRK_H = [["groupName", "団体名"], ["visitDate", "ご利用日"], ["store", "店舗"], ["course", "コース"], ["sign", "確認書の署名"]];
+const TRK_H = [["groupName", "団体名"], ["visitDate", "ご利用日"], ["store", "店舗"], ["course", "コース"], ["sign", "確認書の署名"], ["subs", "追加の店舗"]];
 const trkRow = (r) => ({ year: r.year || "", kumi: r.kumi || "", sex: r.sex || "", name: r.name || "", allergy: r.allergy || "", seibun: r.seibun || "", sb: Object.entries(r.sbMap || {}).filter(([, v]) => v).map(([k, v]) => k + "：" + v).join("、"), element: r.elementAuto === false ? r.element || "" : "", response: r.responseAuto === false ? r.response || "" : "", final: r.final || "", caution: r.cautionAuto === false ? r.caution || "" : "", symptom: r.symptom || "", remark: r.remark || "", memo: r.memo || "" });
-const trkSnap = (c) => ({ head: { groupName: c.groupName || "", visitDate: c.visitDate || "", store: (S.stores.get(c.storeId) || {}).name || c.storeName || "", course: c.courseId ? (S.courses.get(c.courseId) || {}).name || "" : "", sign: signText(c) }, rows: Object.fromEntries((c.rows || []).map((r) => [r.id, trkRow(r)])) });
+const trkSnap = (c) => ({ head: { groupName: c.groupName || "", visitDate: c.visitDate || "", store: (S.stores.get(c.storeId) || {}).name || c.storeName || "", course: c.courseId ? (S.courses.get(c.courseId) || {}).name || "" : "", sign: signText(c), subs: (c.subs || []).map((x) => [shopName(x) || "店舗未選択", x.visitDate || "", x.courseId ? (S.courses.get(x.courseId) || {}).name || "" : ""].filter(Boolean).join(" ")).join("／") }, rows: Object.fromEntries((c.rows || []).map((r) => [r.id, trkRow(r)])) });
 function caseTrackInit(c) { trk = c && !c.kind ? { ref: c, snap: trkSnap(c) } : null; }
 /** 前に見たときからの違いを、変更履歴に足す。src は「手入力」「取込」「自動更新」。同じ項目を続けて直したときは1行にまとめる。 */
 function caseTrack(c, src, no) {
@@ -1658,21 +1685,51 @@ function signOut(c) {
   return { line: `${d}　　ご署名（自署）`, name: (c.signer || "").trim() || "（署名あり・氏名判読不可）", note: SIGN_NOTE + (c.signDate ? "" : "（署名年月日の記載なし）") };
 }
 function signPill(c) { return c && c.signed ? h("span", { class: "pill ok", style: "margin-left:4px", title: signText(c), text: "署名済" }) : null; }
-/** 案件画面の「確認書の署名」欄。日付か署名者を入れると、署名済にもチェックが入る。 */
+/** 案件画面の「確認書の署名」欄（1行）。日付か署名者を入れると、署名済にもチェックが入る。 */
 function signField(c, ch) {
-  const st = h("span", { class: "pill", id: "c-sign-st" });
   const box = h("input", { type: "checkbox", id: "c-signed", style: "width:auto", checked: !!c.signed });
-  const dt = h("input", { id: "c-sign-date", type: "date", value: c.signDate || "", "aria-label": "署名年月日", style: "width:150px" });
-  const nm = h("input", { id: "c-signer", value: c.signer || "", placeholder: "署名者（例：山田 太郎）", "aria-label": "署名者", style: "width:200px" });
-  const upd = () => { st.className = "pill " + (c.signed ? "ok" : "plain"); st.textContent = c.signed ? "署名済" : "未署名"; box.checked = !!c.signed; };
+  const dt = h("input", { id: "c-sign-date", type: "date", value: c.signDate || "", "aria-label": "署名年月日", title: "署名年月日", style: "width:140px;flex:none" });
+  const nm = h("input", { id: "c-signer", value: c.signer || "", placeholder: "署名者", "aria-label": "署名者", title: "署名者", style: "flex:1;min-width:90px" });
+  const lb = h("span", { id: "c-sign-st", class: "small" });
+  const upd = () => { box.checked = !!c.signed; lb.textContent = c.signed ? "署名済" : "未署名"; lb.style.color = c.signed ? "var(--ok,#1e7f45)" : "var(--muted)"; lb.style.fontWeight = c.signed ? "700" : ""; };
   box.onchange = () => { c.signed = box.checked; upd(); ch(); };
   dt.oninput = () => { c.signDate = dt.value; if (dt.value) c.signed = true; upd(); ch(); };
   nm.oninput = () => { c.signer = nm.value; if (nm.value.trim()) c.signed = true; upd(); ch(); };
   upd();
-  return h("div", { class: "f", style: "grid-column:1/-1" }, h("label", { for: "c-signed", text: "確認書の署名" }),
-    h("div", { class: "row", style: "gap:6px 12px" }, h("label", { class: "row small", style: "gap:6px;cursor:pointer" }, box, "署名済"), st,
-      h("span", { class: "small muted", text: "署名年月日" }), dt, h("span", { class: "small muted", text: "署名者" }), nm,
-      h("span", { class: "small muted", text: "保護者・ご担当者が確認書に署名した場合に入力します。取込で署名を読み取ると自動で入ります。" })));
+  return h("div", { class: "f c-sign-f", title: "保護者・ご担当者が確認書に署名した場合に入力します。取込で署名を読み取ると自動で入ります。" },
+    h("label", { for: "c-signed", text: "確認書の署名" }),
+    h("div", { class: "row", style: "gap:8px;flex-wrap:nowrap" }, h("label", { class: "row", style: "gap:5px;cursor:pointer;flex:none;white-space:nowrap" }, box, lb), dt, nm));
+}
+/* ---------- 1つの案件で複数の店舗 ----------
+   1件目の店舗は案件そのもの（c.storeId など）。2件目からは c.subs に持つ。人ごとに r.storeKey（空＝1件目）でどの店舗かを決める。 */
+const subOf = (c, r) => (r && r.storeKey && ((c && c.subs) || []).find((x) => x.id === r.storeKey)) || null;
+/** その人の店舗の情報（店舗名・ご利用日・コースなど）。 */
+function rowShop(c, r) { const s = subOf(c, r); return s ? { ...c, ...s, key: s.id } : { ...c, key: "" }; }
+const rowCourseId = (c, r) => rowShop(c, r).courseId || "";
+const rowM = (c, r) => M(rowCourseId(c, r));
+const shopName = (x) => (S.stores.get(x.storeId) || {}).name || x.storeName || "";
+const SHOP_C = ["#1f4e8c", "#c2410c", "#15803d", "#7e22ce", "#b45309", "#0e7490", "#be185d"];
+const shopColor = (i) => SHOP_C[i % SHOP_C.length];
+const shopNo = (i) => h("span", { class: "shop-no", style: `background:${shopColor(i)}`, text: String(i + 1) });
+/** 店舗ごとの利用人数・配席を扱うための窓口。2件目以降の店舗なら、店舗・日付・コース・利用人数・レイアウトはその店舗のものを読み書きし、
+    人（rows）はその店舗の人だけを見せる。ほかの項目は案件のものを使う。 */
+const SHOP_KEYS = new Set(["layout", "party", "storeId", "storeName", "visitDate", "groupName", "courseId", "createdDate"]);
+function shopHost(c, subId) {
+  const sb = subId ? ((c.subs || []).find((x) => x.id === subId) || null) : null;
+  if (!sb && !(c.subs || []).length) return c;
+  const own = (k) => sb && SHOP_KEYS.has(k);
+  return new Proxy(c, {
+    get: (t, k) => (k === "rows" ? (c.rows || []).filter((r) => (sb ? r.storeKey === sb.id : !subOf(c, r))) : own(k) ? sb[k] : c[k]),
+    set: (t, k, v) => { if (k !== "rows") { if (own(k)) sb[k] = v; else c[k] = v; } return true; },
+    deleteProperty: (t, k) => { if (own(k)) delete sb[k]; else delete c[k]; return true; },
+    has: (t, k) => (own(k) ? k in sb : k in c),
+  });
+}
+/** 店舗ごとに人を分ける（PDF用）。どの店舗にも属さない人は1件目へ。 */
+function shopGroups(c) {
+  const list = [{ ...c, key: "", rows: [] }, ...((c.subs || []).map((s) => ({ ...c, ...s, key: s.id, rows: [] })))];
+  for (const r of c.rows || []) (list.find((g) => g.key && g.key === r.storeKey) || list[0]).rows.push(r);
+  return list;
 }
 function approvalPills(c) {
   const ok = validApprovals(c).map((a) => a.name), names = [...new Set([...(S.approvers || []), ...ok])];
@@ -1745,7 +1802,7 @@ function viewCase() {
   if (!draft) { const c = S.cases.get(view.id); if (!c) return [h("div", { class: "empty" }, "この案件は見つかりません。")]; if (c.locked) return [h("div", { class: "banner bad", text: "この案件は現在のパスワードの鍵では開けません。" })]; draft = clone(c); draft.rows ||= []; caseTrackInit(draft); }
   if (draft.kind === "layout") return viewLayoutCase(draft);
   if (draft.kind === "pj") return viewPjCase(draft);
-  const c = draft, store = M(c.courseId), storeRec = S.stores.get(c.storeId);
+  const c = draft, store = M(c.courseId), storeRec = S.stores.get(c.storeId), stOf = (r) => rowM(c, r);
   const bar = h("div", { class: "stack", id: "exportbar", style: "gap:6px" });
   const ch = () => { exportArmed = false; caseSaver.touch(); drawBar(); };
   // 内容が変わって無効になった承認は外す
@@ -1759,7 +1816,7 @@ function viewCase() {
       await caseSaver.flush();
       const a = await getApproval(), names = (a && Array.isArray(a.stamps) ? a.stamps : []).filter((n) => !validApprovals(c).some((x) => x.name === n));
       if (!names.length) return toast("承認者が設定されていません");
-      const as = c.rows.map((r) => analyse(r, store)), un = as.filter((x) => x.ask).length, pd = as.filter((x) => x.pending).length;
+      const as = c.rows.map((r) => analyse(r, stOf(r))), un = as.filter((x) => x.ask).length, pd = as.filter((x) => x.pending).length;
       const who = sel(names, names[0], () => {}, { id: "ap-who" });
       approvalDialog("この案件を承認します", "承認後に内容を変更すると、承認は自動で外れます。", () => {
         c.approvals ||= {}; c.approvals[who.value] = { at: today(), sig: caseSig(c) }; caseAct(c, "承認", who.value + " 承認済", "ap"); caseSaver.touch(); drawBar(); toast(`${who.value}の承認を記録しました`);
@@ -1782,12 +1839,12 @@ function viewCase() {
   }
   drawBar();
   // 自動作成の文章は、コース成分表や共通設定の変更に合わせて開いた時点で最新にする（手修正した文章は変えない）
-  const outdated = c.rows.filter((r) => (r.elementAuto !== false && r.element !== genElement(r, store)) || (r.responseAuto !== false && r.response !== genResponse(r, store))).length;
-  if (outdated) { caseTrack(c, "手入力"); c.rows.forEach((r) => regen(r, store)); caseTrack(c, "自動更新"); caseSaver.touch(); if (!readOnly && c.rows.some((r) => r.name || r.allergy)) queueMicrotask(() => toast(`コース成分表・共通設定の内容に合わせて、${outdated}名分の文章を更新しました`)); }
+  const outdated = c.rows.filter((r) => (r.elementAuto !== false && r.element !== genElement(r, stOf(r))) || (r.responseAuto !== false && r.response !== genResponse(r, stOf(r)))).length;
+  if (outdated) { caseTrack(c, "手入力"); c.rows.forEach((r) => regen(r, stOf(r))); caseTrack(c, "自動更新"); caseSaver.touch(); if (!readOnly && c.rows.some((r) => r.name || r.allergy)) queueMicrotask(() => toast(`コース成分表・共通設定の内容に合わせて、${outdated}名分の文章を更新しました`)); }
   const stale = 0;
   const summary = h("div", { class: "row", id: "summary" });
   const updSummary = () => {
-    const as = c.rows.map((r) => analyse(r, store)), un = as.filter((a) => a.ask).length, pd = as.filter((a) => a.pending).length;
+    const as = c.rows.map((r) => analyse(r, stOf(r))), un = as.filter((a) => a.ask).length, pd = as.filter((a) => a.pending).length;
     const nn = as.filter((a) => a.none).length, na = as.filter((a) => a.tags.length).length;
     summary.replaceChildren(...[h("strong", { text: `対象 ${c.rows.length}名` }), nn ? h("span", { class: "small muted", id: "sum-split", text: `（アレルギーあり ${na}名・申告なし ${nn}名）` }) : null,
       un ? h("span", { class: "pill warn", text: `原本未照合 ${un}件` }) : null, pd ? h("span", { class: "pill warn", text: `判定保留・未登録 ${pd}件` }) : null,
@@ -1797,6 +1854,7 @@ function viewCase() {
   const drawRows = () => { body.replaceChildren(...c.rows.map((r) => rowEl(r))); if (!c.rows.length) body.append(h("div", { class: "empty" }, "まだ誰も登録されていません。上の「取込」からファイルを読み込むか、「1名追加」で入力します。")); updSummary(); fitAll(body); };
 
   function rowEl(r) {
+    const store = stOf(r);
     const chips = h("div", { class: "chips" }), state = h("div", { class: "state" });
     const elTa = h("textarea", { id: r.id + "-el", rows: 3, oninput: (e) => { r.element = e.target.value; r.elementAuto = false; marks(); ch(); } });
     const reTa = h("textarea", { id: r.id + "-re", rows: 3, oninput: (e) => { r.response = e.target.value; r.responseAuto = false; ch(); }, onchange: () => drawResp() });
@@ -1876,7 +1934,11 @@ function viewCase() {
     }
     const inp = (key, ph) => h("input", { id: r.id + "-" + key, value: r[key] || "", placeholder: ph || "", oninput: (e) => { r[key] = e.target.value; ch(); } });
     const lab = (t) => h("span", { class: "lab", text: t });
+    const shops = [["", shopName(c) || "（1件目の店舗）"], ...(c.subs || []).map((sb, i) => [sb.id, shopName(sb) || `（${i + 2}件目・店舗未選択）`])];
     const el = h("div", { class: "srow" },
+      (c.subs || []).length ? h("div", {}, lab("店舗"), ((cur) => { const ix = Math.max(0, shops.findIndex((x) => x[0] === cur));
+        return h("label", { class: "shop-pick", title: "押すと店舗を選び直せます" }, shopNo(ix), h("span", { class: "nm", text: shops[ix][1] }),
+          sel(shops.map(([k, t], i) => [k, `${i + 1}. ${t}`]), cur, (v) => { if (v) r.storeKey = v; else delete r.storeKey; regen(r, stOf(r)); ch(); drawRows(); updSummary(); (c.subs || []).forEach((x) => { const e = document.getElementById(x.id + "-n"); if (e) e.textContent = `この店舗の対象 ${c.rows.filter((q) => q.storeKey === x.id).length}名`; }); }, { id: r.id + "-shop", "aria-label": "この人が利用する店舗" })); })(subOf(c, r) ? r.storeKey : "")) : null,
       h("div", {}, lab("年"), inp("year")),
       h("div", {}, lab("組"), inp("kumi")),
       h("div", {}, lab("性別"), sel([["", ""], "男", "女"], r.sex, (v) => { r.sex = v; ch(); }, { id: r.id + "-sex" })),
@@ -1902,7 +1964,8 @@ function viewCase() {
     if (stale) { r.element = keepE; r.response = keepR; elTa.value = keepE || ""; reTa.value = keepR || ""; drawResp(); elWrap.sync(); }
     return el;
   }
-  function addToMaster(tag) {
+  function addToMaster(tag, row) {
+    const store = stOf(row);
     caseSaver.flush().then(() => {
       draft = null;
       if (store.course && store.course.approved) { draft = null; view = { name: "courses", id: store.course.id }; render(); toast("上長承認済みの成分表は編集できません。先に承認を解除してください"); return; }
@@ -1924,10 +1987,11 @@ function viewCase() {
   async function patchSettings(fn, done) {
     const t = { ...SET_DEFAULTS(), ...clone(S.settings) }; fn(t); t.editedBy = clientId; S.settings = t;
     try { if (db) await db.doc("settings/common").set(clone(t)); } catch (_) { toast("共通設定を更新できませんでした"); }
-    const m = M(c.courseId); c.rows.forEach((r) => regen(r, m)); ch(); render(); if (done) toast(done);
+    c.rows.forEach((r) => regen(r, stOf(r))); ch(); render(); if (done) toast(done);
   }
   /** 成分表にも辞書にもない言葉を、どのアレルゲンとして判定するか登録する。AIの提案は入力欄に入るだけで、登録は担当者が行う。 */
   function resolveDialog(tag, row, rawTag) {
+    const store = stOf(row);
     const dlg = $("#dlg"), names = store.entries.map((e) => e.name).filter(Boolean), kindNow = wordKind(tag, row && row.kindMap && row.kindMap[rawTag] ? { kindMap: { [tag]: row.kindMap[rawTag] } } : null);
     // 「食品以外」「料理名」として扱う言葉は共通設定の一覧に持つ。登録すると、ほかの案件でも同じ扱いになる。
     const setKind = (k) => { dlg.close(); if (row && row.kindMap) delete row.kindMap[rawTag]; patchSettings((t) => {
@@ -1957,7 +2021,7 @@ function viewCase() {
           kindNow !== "broad" ? h("button", { type: "button", class: "btn sm", id: "rs-broad", text: "範囲の広い言葉として登録（動物性食材・野菜全般・宗教上の制限など）", onclick: () => setKind("broad") }) : null,
           kindNow ? h("button", { type: "button", class: "btn sm", id: "rs-food", text: "食材として扱う（登録を外す）", onclick: () => setKind("") }) : null)),
       h("div", { class: "row" }, sample ? ask : null,
-        h("button", { type: "button", class: "linkbtn", text: store.course ? "成分表に行を追加する" : "共通設定に行を追加する", onclick: () => { dlg.close(); addToMaster(tag); } }),
+        h("button", { type: "button", class: "linkbtn", text: store.course ? "成分表に行を追加する" : "共通設定に行を追加する", onclick: () => { dlg.close(); addToMaster(tag, row); } }),
         h("span", { style: "margin-left:auto" }),
         h("button", { type: "button", class: "btn", text: "やめる", onclick: () => dlg.close() }),
         h("button", { type: "button", class: "btn primary", id: "rs-ok", text: "辞書に登録", onclick: () => {
@@ -1979,8 +2043,8 @@ function viewCase() {
     for (const p of people) {
       const r = newRow({ ...p, ...(ai ? { ai: true } : {}) });
       // そば枕・ラテックスなど、食物アレルギーの確認が要る記載は、確認メモ（社内用）に残す
-      for (const it of analyse(r, store).items) if (it.kind === "nonfood") { const hint = nonFoodHint(it.tag); if (hint && !(r.memo || "").includes(hint)) r.memo = [r.memo, hint].filter(Boolean).join("\n"); }
-      regen(r, store); c.rows.push(r);
+      for (const it of analyse(r, stOf(r)).items) if (it.kind === "nonfood") { const hint = nonFoodHint(it.tag); if (hint && !(r.memo || "").includes(hint)) r.memo = [r.memo, hint].filter(Boolean).join("\n"); }
+      regen(r, stOf(r)); c.rows.push(r);
     }
     drawRows(); ch(); toast(`${people.length}名を追加しました`);
   }
@@ -2011,25 +2075,57 @@ function viewCase() {
           } }))
       : h("span", { text: "入力すると、名前の一部が一致する店舗が下に表示されます。" }));
     drawNote();
-    return h("div", { class: "f" }, h("label", { for: "c-store", text: "店舗" }), sIn, sug, noteBox);
+    return h("div", { class: "f" }, (c.subs || []).length ? h("label", { for: "c-store", class: "shop-tag" }, shopNo(0), "店舗（1件目）") : h("label", { for: "c-store", text: "店舗" }), sIn, sug, noteBox);
   }
   const fileXls = h("input", { type: "file", id: "f-xls", accept: ".xlsx,.xls,.csv,.tsv,.txt", hidden: true, onchange: async (e) => { const f = e.target.files[0]; e.target.value = ""; if (f) importTable(f, addPeople); } });
   const fileAny = pasteable(h("input", { type: "file", id: "f-any", accept: ".pdf,.xlsx,.xls,.xlsm,.ods,.csv,.tsv,.txt,.docx,.odt,.pptx,.rtf,.html,.htm,.eml,.msg,.zip,.heic,.heif,.tif,.tiff,image/*", multiple: true, hidden: true, onchange: (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) trayOpen(fs, addPeople); } }));
   const aiOk = !!sample;
+  /* 店舗追加：同じ案件の中に、別の店舗のレコードを足す。団体名・ご利用日・コース・作成日を写し、店舗は空にする。 */
+  const addShop = () => {
+    c.subs = c.subs || []; const sb = { id: uid("s"), groupName: c.groupName || "", visitDate: c.visitDate || "", storeId: "", storeName: "", courseId: c.courseId || "", createdDate: c.createdDate || today() };
+    c.subs.push(sb); caseAct(c, "店舗を追加", ""); ch(); render(); toast("店舗のレコードを追加しました。店舗を選んでください");
+    setTimeout(() => { const el = document.getElementById(sb.id + "-store"); if (el) { el.focus(); el.scrollIntoView({ block: "center" }); } }, 30);
+  };
+  const addShopRow = () => readOnly ? null : h("div", { style: "display:flex;justify-content:flex-end;margin-top:-6px" },
+    h("button", { type: "button", class: "btn primary", id: "c-shop-add", text: "＋ 店舗追加", title: "同じ団体で別の店舗を使うときに、店舗のレコードを下に追加します（団体名・ご利用日・コース・作成日を写し、店舗は空にします）", onclick: addShop }));
+  const storeList = [...S.stores.values()].filter((x) => x.name).sort((a, b) => a.name.localeCompare(b.name, "ja"));
+  function subPanel(sb, i) {
+    const regenMine = () => c.rows.forEach((r) => { if (r.storeKey === sb.id) regen(r, stOf(r)); });
+    const hit = sb.storeId && S.stores.get(sb.storeId), sid0 = sb.storeId || "";
+    const sIn = h("input", { id: sb.id + "-store", list: "c-stores-dl", value: sb.storeName || (hit && hit.name) || "", placeholder: "店舗名を入力、または候補から選択", autocomplete: "off",
+      oninput: (e) => { const v = e.target.value.trim(), m = storeList.find((x) => norm(x.name) === norm(v)); sb.storeName = m ? m.name : v; sb.storeId = m ? m.id : ""; note.textContent = !v ? "" : m ? "店舗マスタに登録済みの店舗です。" : "店舗マスタにない店舗名です。"; note.style.color = m ? "var(--ok,#1e7f45)" : "var(--warn)"; ch(); },
+      onchange: () => { if ((sb.storeId || "") !== sid0) setTimeout(render, 0); } }); // 店舗が変わったら、利用人数欄のレイアウトのボタンなども作り直す
+    const note = h("div", { class: "small", style: "margin-top:4px;color:var(--ok,#1e7f45)", text: hit ? "店舗マスタに登録済みの店舗です。" : "" });
+    const n = c.rows.filter((r) => r.storeKey === sb.id).length;
+    return h("div", { class: "panel fields c-head", id: "c-sub-" + i },
+      field("団体名", h("input", { id: sb.id + "-group", value: sb.groupName || "", oninput: (e) => { sb.groupName = e.target.value; ch(); } })),
+      field("ご利用日", h("input", { id: sb.id + "-visit", type: "date", value: sb.visitDate || "", oninput: (e) => { sb.visitDate = e.target.value; ch(); } })),
+      h("div", { class: "f" }, h("label", { for: sb.id + "-store", class: "shop-tag" }, shopNo(i + 1), `店舗（${i + 2}件目）`), sIn, note, i === 0 ? h("datalist", { id: "c-stores-dl" }, ...storeList.map((x) => h("option", { value: x.name }))) : null),
+      field("コース", sel([["", "指定なし（共通設定の内容で作成）"], ...[...S.courses.values()].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja")).map((x) => [x.id, (x.name || "（名称未入力）") + (x.approved ? "【上長承認済】" : "")])], S.courses.has(sb.courseId) ? sb.courseId : "", (v) => { sb.courseId = v; regenMine(); ch(); render(); }, { id: sb.id + "-course" })),
+      field("作成日", h("input", { id: sb.id + "-created", type: "date", value: sb.createdDate || "", oninput: (e) => { sb.createdDate = e.target.value; ch(); } })),
+      h("div", { class: "f", style: "display:flex;flex-direction:row;justify-content:flex-end;align-items:flex-end;gap:10px;padding-bottom:4px" },
+        h("span", { class: "small muted shop-n", id: sb.id + "-n", text: `この店舗の対象 ${n}名` }),
+        readOnly ? null : trashConfirm(sb.id + "-del", `${i + 2}件目の店舗のレコードを削除`, () => {
+          c.subs = c.subs.filter((x) => x !== sb); c.rows.forEach((r) => { if (r.storeKey === sb.id) { delete r.storeKey; regen(r, stOf(r)); } });
+          caseAct(c, "店舗を削除", shopName(sb)); ch(); render(); toast(n ? `店舗のレコードを削除しました。${n}名は1件目の店舗に戻しました` : "店舗のレコードを削除しました");
+        })));
+  }
   drawRows();
   const out = [
     h("div", { class: "row" }, h("button", { type: "button", class: "linkbtn", style: "font-size:13px", text: "← 案件一覧", onclick: () => go({ name: "list" }) })),
-    h("div", { class: "panel fields" },
+    h("div", { class: "shop-rec" + ((c.subs || []).length ? " numbered" : ""), style: `--shop-c:${shopColor(0)}` }, h("div", { class: "panel fields c-head" },
       field("団体名", h("input", { id: "c-group", value: c.groupName, placeholder: "例：○○高等学校", oninput: (e) => { c.groupName = e.target.value; ch(); } })),
       field("ご利用日", h("input", { id: "c-visit", type: "date", value: c.visitDate, oninput: (e) => { c.visitDate = e.target.value; ch(); } })),
       storeField(),
-      field("コース", h("div", {}, sel([["", "指定なし（共通設定の内容で作成）"], ...[...S.courses.values()].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja")).map((x) => [x.id, (x.name || "（名称未入力）") + (x.approved ? "【上長承認済】" : "")])], S.courses.has(c.courseId) ? c.courseId : "", (v) => { c.courseId = v; const m = M(v); c.rows.forEach((r) => regen(r, m)); ch(); render(); }, { id: "c-course" }),
+      field("コース", h("div", {}, sel([["", "指定なし（共通設定の内容で作成）"], ...[...S.courses.values()].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja")).map((x) => [x.id, (x.name || "（名称未入力）") + (x.approved ? "【上長承認済】" : "")])], S.courses.has(c.courseId) ? c.courseId : "", (v) => { c.courseId = v; c.rows.forEach((r) => { if (!subOf(c, r)) regen(r, stOf(r)); }); ch(); render(); }, { id: "c-course" }),
         !S.courses.has(c.courseId) && S.courses.size && c.rows.length ? h("div", { class: "small", id: "c-course-hint", style: "color:var(--warn);margin-top:4px", text: "コースが未選択です。選ぶと、そのコースの成分表で注意文と対応を作り直します。" }) : null)),
       field("作成日", h("input", { id: "c-created", type: "date", value: c.createdDate, oninput: (e) => { c.createdDate = e.target.value; ch(); } })),
       signField(c, ch)),
-    partyPanel(c, () => caseSaver.touch()),
+      partyPanel(shopHost(c, ""), () => caseSaver.touch())),
+    ...(c.subs || []).map((sb, i) => h("div", { class: "shop-rec sub numbered", style: `--shop-c:${shopColor(i + 1)}` }, subPanel(sb, i), partyPanel(shopHost(c, sb.id), () => caseSaver.touch(), sb.id))),
+    addShopRow(),
     stale ? h("div", { class: "banner warn" }, `コース成分表または共通設定が変更されています。${stale}名分の文章が現在の内容と異なります。`,
-      h("button", { type: "button", class: "btn sm", text: "現在の内容で更新する", onclick: () => { c.rows.forEach((r) => regen(r, store)); ch(); render(); } })) : null,
+      h("button", { type: "button", class: "btn sm", text: "現在の内容で更新する", onclick: () => { c.rows.forEach((r) => regen(r, stOf(r))); ch(); render(); } })) : null,
     h("div", { class: "panel drop", id: "drop",
       ondragover: (e) => { e.preventDefault(); e.currentTarget.classList.add("over"); },
       ondragleave: (e) => e.currentTarget.classList.remove("over"),
@@ -2049,8 +2145,8 @@ function viewCase() {
     h("div", { class: "row" }, summary, h("span", { style: "margin-left:auto" }),
       h("button", { type: "button", class: "btn sm lgb", id: "lg-open-imp", text: `取込データ確認（${(c.imps || []).length}回）`, onclick: () => caseLogDialog(c, "imp", "") }),
       h("button", { type: "button", class: "btn sm lgb", id: "lg-open-hist", text: "履歴", onclick: () => { caseTrack(c, "手入力"); caseLogDialog(c, "chg", ""); } })),
-    h("div", { class: "sheet scroll" }, h("div", { class: "sheet-in" },
-      h("div", { class: "srow head" }, ...["年", "組", "性別", "氏名（敬称略）", "アレルギー", "成分可否", "アレルゲンの要素", "対応", "症状", "備考", ""].map((t) => h("div", { text: t }))),
+    h("div", { class: "sheet scroll" }, h("div", { class: "sheet-in" + ((c.subs || []).length ? " shops" : "") },
+      h("div", { class: "srow head" }, ...[...((c.subs || []).length ? ["店舗"] : []), "年", "組", "性別", "氏名（敬称略）", "アレルギー", "成分可否", "アレルゲンの要素", "対応", "症状", "備考", ""].map((t) => h("div", { text: t }))),
       body)),
     bar,
   ];
@@ -2568,7 +2664,7 @@ function reviewDialog(people, add, groupName, warn, meta) {
     draft.visitDate = hd.visit;
     if (usePt && meta.party) draft.party = clone(meta.party);
     if (useSign && meta.sign && !isLay) { draft.signed = true; draft.signDate = meta.sign.date || ""; draft.signer = (meta.sign.name || "").trim(); }
-    if (!isLay) { draft.courseId = hd.course === "__" ? "" : hd.course; const m = M(draft.courseId); draft.rows.forEach((r) => regen(r, m)); }
+    if (!isLay) { draft.courseId = hd.course === "__" ? "" : hd.course; draft.rows.forEach((r) => regen(r, rowM(draft, r))); }
   };
   const count = h("strong", {});
   const upd = () => { const k = on.filter(Boolean).length, f = fin.filter(Boolean).length; count.textContent = k || f ? [k ? `${k}名を取り込みます` : "", f ? `${f}名は登録済みの人に反映します` : ""].filter(Boolean).join("、") : hasMeta ? "店舗・ご利用日・利用人数だけを取り込みます" : "0名を取り込みます"; };
@@ -2612,7 +2708,7 @@ function reviewDialog(people, add, groupName, warn, meta) {
       h("button", { type: "button", class: "btn primary", id: "rv-ok", text: "取り込む", disabled: !(people.length || hasMeta) || (!isLay && people.length > 0 && hd.course === "__"), onclick: () => { const list = people.filter((_, i) => on[i]).map((p) => { const q = { ...p }; delete q.unclear; return q; }); const fins = people.map((p, i) => (fin[i] ? [p, same[i]] : null)).filter(Boolean); dlg.close(); if (list.length || hasMeta || fins.length) { const ib = impBegin(draft), its = people.map((p, i) => (on[i] ? { p, act: "new" } : fin[i] ? { p, act: "merge", rid: pick(p, i).id } : { p, act: "skip", rid: dup[i] ? pick(p, i).id : "" })); if (groupName && draft && !draft.groupName) draft.groupName = groupName; if (list.length) add(list, true);
         // 同じ氏名が複数いるときは、年・組が合う人へ。合う人がいなければ最初の人へ
         const done = []; for (const [p, rs] of fins) { const r = rs.find((x) => norm(x.kumi) === norm(p.kumi) && half(x.year || "") === half(p.year || "")) || rs.find((x) => norm(x.kumi) === norm(p.kumi)) || rs[0]; mergePerson(r, p); done.push(r); }
-        applyHead(); if (done.length) { const m = M(draft.courseId); done.forEach((r) => regen(r, m)); } impEnd(draft, ib, its); caseSaver.touch(); render(); if (!list.length) toast(fins.length ? `${fins.length}名の登録済みの内容に反映しました` : "店舗・ご利用日・利用人数を取り込みました"); } } }))));
+        applyHead(); if (done.length) done.forEach((r) => regen(r, rowM(draft, r))); impEnd(draft, ib, its); caseSaver.touch(); render(); if (!list.length) toast(fins.length ? `${fins.length}名の登録済みの内容に反映しました` : "店舗・ご利用日・利用人数を取り込みました"); } } }))));
   // 横幅は通常の約1.5倍。右端のつまみをドラッグすると変えられ、閉じるまで（次に開くときも）その幅を保つ。
   const grip = h("div", { class: "dlg-grip", id: "rv-grip", title: "ドラッグして横幅を変更" });
   const clampW = (w) => Math.max(Math.min(640, window.innerWidth - 32), Math.min(window.innerWidth - 32, w));
@@ -3149,7 +3245,8 @@ async function exportCasePdf(c) {
   const msg = $("#export-msg"), btn = $("#btn-pdf"), st = { ...SET_DEFAULTS(), ...S.settings }, aps = validApprovals(c);
   if (aps.length < NEED_APPROVALS) return;
   msg.style.color = ""; msg.textContent = "プレビューを作成中…"; btn.disabled = true;
-  const course = c.courseId && S.courses.get(c.courseId), storeName = S.stores.get(c.storeId)?.name || c.storeName || "";
+  let G = c, course = null, storeName = ""; // 店舗が複数あるときは、店舗ごとにページを分ける（G＝今のページの店舗）
+  const setG = (g) => { G = g; course = g.courseId && S.courses.get(g.courseId); storeName = shopName(g); };
   const B = "1px solid #000", W = 1123, PADX = 40, PADY = 34, PAGE_H = 794;
   const el = (tag, style, ...kids) => { const n = document.createElement(tag); n.style.cssText = style; for (const k of kids.flat()) if (k != null && k !== false) n.append(k); return n; };
   const pre = "white-space:pre-wrap;word-break:break-all";
@@ -3161,13 +3258,13 @@ async function exportCasePdf(c) {
     el("tr", "", ...["組", "性別", "氏名（敬称略）", "アレルギー", "成分可否", "アレルゲンの要素", "対応", "症状", "備考"].map((t) => el("th", `border:${B};font-weight:400;padding:1px 2px`, t))));
   const rowEl = (r) => el("tr", "",
     ...[r.year ? `${half(r.year)}年${/^\d+$/.test(half(r.kumi)) ? half(r.kumi) + "組" : r.kumi || ""}` : r.kumi, r.sex, r.name, r.allergy || ((r.name || "").trim() ? "なし" : ""), seibunOut(r)].map((v) => el("td", `border:${B};padding:4px 3px;text-align:center;vertical-align:middle;${pre}`, v || "")),
-    ...[r.element, respOut(r, M(c.courseId)), r.symptom, r.remark].map((v) => el("td", `border:${B};padding:4px 5px;vertical-align:middle;font-size:10.5px;${pre}`, v || "")));
+    ...[r.element, respOut(r, M(G.courseId)), r.symptom, r.remark].map((v) => el("td", `border:${B};padding:4px 5px;vertical-align:middle;font-size:10.5px;${pre}`, v || "")));
   const table = (rows) => el("table", "border-collapse:collapse;width:100%;table-layout:fixed;font-size:11.5px", colgroup(), head(), el("tbody", "", ...rows.map(rowEl)));
   const title = () => el("div", "display:flex;gap:70px;margin-bottom:8px;align-items:stretch",
     el("div", `border:${B};padding:3px 14px;font-weight:700;font-size:11px;display:flex;align-items:center`, "【アレルギー対応　一覧表】"),
     el("div", "flex:1;display:flex", el("div", `border:${B};border-right:0;padding:3px 22px;display:flex;align-items:center`, "団体名"),
-      el("div", `border:${B};flex:1;text-align:left;font-size:14px;font-weight:700;padding:3px 12px`, (c.groupName || "") + "　御一行様")));
-  const sub = () => el("div", "display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:3px", el("span", "", c.visitDate ? "ご利用日：" + jpDate(c.visitDate) : ""), el("span", "", course ? "コース：" + (course.name || "") : ""));
+      el("div", `border:${B};flex:1;text-align:left;font-size:14px;font-weight:700;padding:3px 12px`, (G.groupName || "") + "　御一行様")));
+  const sub = () => el("div", "display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:3px", el("span", "", G.visitDate ? "ご利用日：" + jpDate(G.visitDate) : ""), el("span", "", course ? "コース：" + (course.name || "") : ""));
   const stamp = (name) => el("div", "width:50px;height:50px;border:2px solid #d8201c;border-radius:50%;color:#d8201c;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:18px;font-weight:700;line-height:1.05;font-family:'Yu Mincho','Hiragino Mincho ProN',serif", ...[...String(name).slice(0, 3)].map((chr) => el("div", "", chr)));
   const footer = () => el("div", "margin-top:10px",
     el("div", "display:flex", el("div", `border:${B};flex:1`, el("div", "font-weight:700;font-size:12px;padding:1px 4px", "ご注意事項"), el("div", `padding:2px 4px;font-size:10px;${pre}`, st.notes || "")),
@@ -3175,7 +3272,7 @@ async function exportCasePdf(c) {
     el("div", "display:flex;justify-content:space-between;align-items:flex-end;margin-top:3px",
       el("div", "flex:1", el("div", `font-size:10px;${pre}`, st.signNote || ""), ...((so) => [el("div", `margin-top:${so.note ? 14 : 26}px;width:560px;border-bottom:1px solid #000;font-size:10.5px;padding-left:${so.note ? 30 : 70}px;display:flex;align-items:baseline;gap:18px`, el("span", "", so.note ? so.line : "年　　　月　　　日　　ご署名（自署）"), so.name ? el("span", "font-size:15px;font-family:'Yu Mincho','Hiragino Mincho ProN',serif;letter-spacing:.12em", so.name) : null),
         so.note ? el("div", "font-size:8.5px;color:#333;margin-top:2px;width:660px;white-space:nowrap", so.note) : null])(signOut(c))),
-      el("div", "font-size:11.5px;text-align:right;margin-right:16px", el("div", "border-bottom:1px solid #000", "作成日　" + jpDate(c.createdDate || today())), el("div", "", [st.company, st.dept].filter(Boolean).join("　")), st.tel ? el("div", "", "TEL：" + st.tel) : null, st.fax ? el("div", "", "FAX：" + st.fax) : null),
+      el("div", "font-size:11.5px;text-align:right;margin-right:16px", el("div", "border-bottom:1px solid #000", "作成日　" + jpDate(G.createdDate || today())), el("div", "", [st.company, st.dept].filter(Boolean).join("　")), st.tel ? el("div", "", "TEL：" + st.tel) : null, st.fax ? el("div", "", "FAX：" + st.fax) : null),
       el("div", "display:flex", ...[0, 1].map((i) => el("div", `border:${B};${i ? "border-left:0;" : ""}width:92px`, el("div", "border-bottom:1px solid #000;text-align:center;font-size:9px", "検印"), el("div", "height:62px;display:flex;align-items:center;justify-content:center", aps[i] ? stamp(aps[i].name) : null))))));
   const sheet = (kids) => el("div", `position:fixed;left:-20000px;top:0;width:${W}px;box-sizing:border-box;padding:${PADY}px ${PADX}px;background:#fff;color:#000;font-family:'BIZ UDPGothic','Hiragino Sans','Yu Gothic',Meiryo,sans-serif;font-size:11.5px;line-height:1.4`, ...kids);
   const made = [];
@@ -3183,24 +3280,28 @@ async function exportCasePdf(c) {
     await loadScript(LIB.h2c); await loadScript(LIB.jspdf);
     try { await document.fonts.ready; } catch (_) {}
     // まず全体を1枚に組んで各行の高さを測り、A4横に収まるようページに分ける
-    const rows = c.rows.length ? c.rows : [newRow()];
-    const probe = sheet([title(), sub(), table(rows), footer()]); document.body.append(probe); made.push(probe);
-    const tb = probe.querySelector("tbody"), rowH = [...tb.children].map((tr) => tr.getBoundingClientRect().height);
-    const headH = probe.querySelector("thead").getBoundingClientRect().height, topH = probe.children[0].getBoundingClientRect().height + probe.children[1].getBoundingClientRect().height + 12, footH = probe.lastElementChild.getBoundingClientRect().height + 12;
-    const avail = PAGE_H - PADY * 2, pages = [[]]; let used = topH + headH;
-    rows.forEach((r, i) => { if (used + rowH[i] > avail && pages[pages.length - 1].length) { pages.push([]); used = headH + 20; } pages[pages.length - 1].push(r); used += rowH[i]; });
-    const footOnNew = used + footH > avail;
-    probe.remove();
-    const canvases = [];
-    const total = pages.length + (footOnNew ? 1 : 0);
-    for (let i = 0; i < total; i++) {
-      const kids = [];
-      if (i === 0) kids.push(title(), sub()); else kids.push(el("div", "font-size:10px;margin-bottom:4px;text-align:right", `${c.groupName || ""}　${i + 1}/${total}`));
-      if (pages[i]) kids.push(table(pages[i]));
-      if (i === total - 1) kids.push(footer());
-      const pg = sheet(kids); pg.style.minHeight = PAGE_H + "px"; document.body.append(pg); made.push(pg);
-      canvases.push(await html2canvas(pg, { scale: 2.5, backgroundColor: "#ffffff", logging: false, windowWidth: W })); pg.remove();
+    const canvases = [], all = shopGroups(c), groups = all.filter((g, k) => g.rows.length || (k === 0 && !c.rows.length)); let total = 0;
+    for (const g of groups) {
+      setG(g);
+      const rows = g.rows.length ? g.rows : [newRow()];
+      const probe = sheet([title(), sub(), table(rows), footer()]); document.body.append(probe); made.push(probe);
+      const tb = probe.querySelector("tbody"), rowH = [...tb.children].map((tr) => tr.getBoundingClientRect().height);
+      const headH = probe.querySelector("thead").getBoundingClientRect().height, topH = probe.children[0].getBoundingClientRect().height + probe.children[1].getBoundingClientRect().height + 12, footH = probe.lastElementChild.getBoundingClientRect().height + 12;
+      const avail = PAGE_H - PADY * 2, pages = [[]]; let used = topH + headH;
+      rows.forEach((r, i) => { if (used + rowH[i] > avail && pages[pages.length - 1].length) { pages.push([]); used = headH + 20; } pages[pages.length - 1].push(r); used += rowH[i]; });
+      const footOnNew = used + footH > avail;
+      probe.remove();
+      total = pages.length + (footOnNew ? 1 : 0);
+      for (let i = 0; i < total; i++) {
+        const kids = [];
+        if (i === 0) kids.push(title(), sub()); else kids.push(el("div", "font-size:10px;margin-bottom:4px;text-align:right", `${G.groupName || ""}${groups.length > 1 ? "　" + storeName : ""}　${i + 1}/${total}`));
+        if (pages[i]) kids.push(table(pages[i]));
+        if (i === total - 1) kids.push(footer());
+        const pg = sheet(kids); pg.style.minHeight = PAGE_H + "px"; document.body.append(pg); made.push(pg);
+        canvases.push(await html2canvas(pg, { scale: 2.5, backgroundColor: "#ffffff", logging: false, windowWidth: W })); pg.remove();
+      }
     }
+    total = canvases.length;
     const imgs = canvases.map((cv) => cv.toDataURL("image/jpeg", 0.92)), dlg = $("#dlg"), dmsg = h("span", { class: "small" });
     const save = h("button", { type: "button", class: "btn primary", id: "pv-save", text: "PDFで保存", onclick: async () => {
       save.disabled = true; dmsg.style.color = ""; dmsg.textContent = "保存中…";
@@ -3212,7 +3313,7 @@ async function exportCasePdf(c) {
         dlg.close(); msg.textContent = "出力しました。";
       } catch (e) { dmsg.style.color = "var(--bad)"; dmsg.textContent = e && e.code === "declined" ? "" : e && e.code ? "この表示環境では保存できませんでした。" : "PDFを作成できませんでした。"; save.disabled = false; }
     } });
-    const as = c.rows.map((r) => analyse(r, M(c.courseId))), un = as.filter((x) => x.ask).length, pd = as.filter((x) => x.pending).length;
+    const as = c.rows.map((r) => analyse(r, rowM(c, r))), un = as.filter((x) => x.ask).length, pd = as.filter((x) => x.pending).length;
     dlg.replaceChildren(h("div", { class: "dlg" },
       h("div", { class: "row" }, h("h3", { text: "PDFのプレビュー" }), h("span", { class: "muted small", text: `A4横・${total}ページ` }), h("span", { style: "margin-left:auto" }), dmsg,
         h("button", { type: "button", class: "btn", text: "閉じる", onclick: () => dlg.close() }), save),
@@ -5446,53 +5547,54 @@ async function layExportPdf(lay, title, fname, say) {
   } catch (e) { made.forEach((x) => x.remove()); say(e && e.code === "declined" ? "" : e && e.code ? "この表示環境では保存できませんでした。" : "PDFを作成できませんでした。", true); }
 }
 /** 案件画面の「利用人数」欄。 */
-function partyPanel(c, ch) {
+function partyPanel(c, ch, subId) {
+  const PF = subId ? subId + "-pt-" : "pt-"; // 店舗ごとに置くので、id が重ならないようにする
   if (!c.party) c.party = newParty();
   const p = c.party; p.staff = p.staff || {}; p.others = p.others || []; p.classes = p.classes || [];
-  const total = h("strong", { id: "pt-total" }), allSt = h("span", { class: "pill", id: "pt-match", hidden: true });
+  const total = h("strong", { id: PF + "total" }), allSt = h("span", { class: "pill", id: PF + "match", hidden: true });
   // レイアウトに書かれた人数と、利用人数が合っているか（レイアウトを作っていない案件では出さない）
   const mark = (el, ok) => { el.hidden = false; el.className = "pill " + (ok ? "ok" : "bad"); el.textContent = ok ? "レイアウト人数 一致" : "レイアウト人数 不一致"; };
   const upd = () => {
     total.textContent = `合計 ${partyTotal(p)}名`;
     if (!c.layout) { allSt.hidden = true; return; }
     const cnt = layoutCounts(c.layout), gs = partyGroups(p), want = new Map(gs.map((g) => [g.label, g.n]));
-    p.classes.forEach((k, i) => { const el = $("#pt-" + i + "-st"); if (!el) return; const mine = gs.filter((g) => g.key === `c${i + 1}m` || g.key === `c${i + 1}f`); if (!mine.length) { el.hidden = true; return; } mark(el, mine.every((g) => (cnt.get(g.label) || 0) === g.n)); });
+    p.classes.forEach((k, i) => { const el = $("#" + PF + i + "-st"); if (!el) return; const mine = gs.filter((g) => g.key === `c${i + 1}m` || g.key === `c${i + 1}f`); if (!mine.length) { el.hidden = true; return; } mark(el, mine.every((g) => (cnt.get(g.label) || 0) === g.n)); });
     mark(allSt, gs.length > 0 && gs.every((g) => (cnt.get(g.label) || 0) === g.n) && [...cnt.keys()].every((l) => want.has(l)));
   };
   const n = (obj, key, id, label) => h("input", { id, type: "text", inputmode: "numeric", value: obj[key] || "", "aria-label": label, style: "width:56px;text-align:right", oninput: (e) => { obj[key] = e.target.value; upd(); ch(); } });
-  const list = h("div", { class: "stack", style: "gap:6px" }), others = h("div", { class: "stack", style: "gap:6px" });
+  const list = h("div", { class: "pt-flow" }), others = h("div", { class: "pt-flow" });
   // 行を消すボタン（ゴミ箱のアイコン）
   const trash = (id, fn) => { const b = h("button", { type: "button", class: "x pt-del", id, title: "この行を削除", "aria-label": "この行を削除", onclick: fn }); b.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>'; return b; };
   const MODES = [["class", "クラス・男女別"], ["sex", "男女別の合計"], ["total", "合計のみ（仮組）"]];
-  const modeBar = h("div", { class: "row pt-mode", id: "pt-mode", role: "group", "aria-label": "人数の入れ方" });
-  const drawMode = () => { const m = partyMode(p); modeBar.replaceChildren(h("span", { class: "small muted", text: "人数の入れ方" }), ...MODES.map(([k, t]) => h("button", { type: "button", class: "btn sm" + (m === k ? " primary" : ""), id: "pt-mode-" + k, "aria-pressed": m === k ? "true" : "false", text: t, onclick: () => { p.mode = k === "class" ? undefined : k; if (k === "class") delete p.mode; drawC(); drawMode(); upd(); ch(); } })),
-    m !== "class" ? h("span", { class: "small", style: "color:var(--warn)", id: "pt-mode-note", text: "内訳が決まっていないときの仮組用です。内訳が決まったら「クラス・男女別」に入れ直して、配席を作り直してください。" }) : ""); };
-  const drawC = () => { const m = partyMode(p); addBtn.hidden = m !== "class"; if (m === "sex") return list.replaceChildren(h("div", { class: "row pt-row" }, h("span", { class: "muted small", text: "男子" }), n(p, "sexM", "pt-sm", "男子の合計人数"), h("span", { text: "人" }), h("span", { class: "muted small", style: "margin-left:8px", text: "女子" }), n(p, "sexF", "pt-sf", "女子の合計人数"), h("span", { text: "人" })));
-    if (m === "total") return list.replaceChildren(h("div", { class: "row pt-row" }, h("span", { class: "muted small", text: "参加者の合計" }), n(p, "all", "pt-all", "参加者の合計人数"), h("span", { text: "人" }), h("span", { class: "small muted", style: "margin-left:8px", text: "（引率・添乗員などは下の欄に入れます）" })));
+  const modeBar = h("div", { class: "row pt-mode", id: PF + "mode", role: "group", "aria-label": "人数の入れ方" });
+  const drawMode = () => { const m = partyMode(p); modeBar.replaceChildren(h("span", { class: "small muted", text: "人数の入れ方" }), ...MODES.map(([k, t]) => h("button", { type: "button", class: "btn sm" + (m === k ? " primary" : ""), id: PF + "mode-" + k, "aria-pressed": m === k ? "true" : "false", text: t, onclick: () => { p.mode = k === "class" ? undefined : k; if (k === "class") delete p.mode; drawC(); drawMode(); upd(); ch(); } })),
+    m !== "class" ? h("span", { class: "small", style: "color:var(--warn)", id: PF + "mode-note", text: "内訳が決まっていないときの仮組用です。内訳が決まったら「クラス・男女別」に入れ直して、配席を作り直してください。" }) : ""); };
+  const drawC = () => { const m = partyMode(p); addBtn.hidden = m !== "class"; if (m === "sex") return list.replaceChildren(h("div", { class: "row pt-row" }, h("span", { class: "muted small", text: "男子" }), n(p, "sexM", PF + "sm", "男子の合計人数"), h("span", { text: "人" }), h("span", { class: "muted small", style: "margin-left:8px", text: "女子" }), n(p, "sexF", PF + "sf", "女子の合計人数"), h("span", { text: "人" })));
+    if (m === "total") return list.replaceChildren(h("div", { class: "row pt-row" }, h("span", { class: "muted small", text: "参加者の合計" }), n(p, "all", PF + "all", "参加者の合計人数"), h("span", { text: "人" }), h("span", { class: "small muted", style: "margin-left:8px", text: "（引率・添乗員などは下の欄に入れます）" })));
     drawCls(); };
   const drawCls = () => list.replaceChildren(...p.classes.map((k, i) => h("div", { class: "row pt-row" },
-    n(k, "year", `pt-${i}-y`, "年"), h("span", { text: "年" }), n(k, "kumi", `pt-${i}-k`, "組"), h("span", { text: "組" }),
-    h("span", { class: "muted small", style: "margin-left:8px", text: "男子" }), n(k, "m", `pt-${i}-m`, "男子の人数"), h("span", { text: "人" }),
-    h("span", { class: "muted small", style: "margin-left:8px", text: "女子" }), n(k, "f", `pt-${i}-f`, "女子の人数"), h("span", { text: "人" }),
-    p.classes.length > 1 ? trash(`pt-${i}-del`, () => { p.classes.splice(i, 1); drawCls(); upd(); ch(); }) : null,
-    h("span", { class: "pill", id: `pt-${i}-st`, style: "margin-left:8px", hidden: true }))));
+    n(k, "year", `${PF}${i}-y`, "年"), h("span", { text: "年" }), n(k, "kumi", `${PF}${i}-k`, "組"), h("span", { text: "組" }),
+    h("span", { class: "muted small", style: "margin-left:8px", text: "男子" }), n(k, "m", `${PF}${i}-m`, "男子の人数"), h("span", { text: "人" }),
+    h("span", { class: "muted small", style: "margin-left:8px", text: "女子" }), n(k, "f", `${PF}${i}-f`, "女子の人数"), h("span", { text: "人" }),
+    p.classes.length > 1 ? trash(`${PF}${i}-del`, () => { p.classes.splice(i, 1); drawCls(); upd(); ch(); }) : null,
+    h("span", { class: "pill", id: `${PF}${i}-st`, style: "margin-left:8px", hidden: true }))));
   const drawO = () => others.replaceChildren(...p.others.map((o, i) => h("div", { class: "row pt-row" },
-    h("input", { id: `pt-o${i}-n`, value: o.name || "", placeholder: "区分名（例：保護者）", "aria-label": "その他の区分名", style: "width:180px", oninput: (e) => { o.name = e.target.value; ch(); } }),
-    n(o, "n", `pt-o${i}-c`, "人数"), h("span", { text: "人" }),
-    trash(`pt-o${i}-del`, () => { p.others.splice(i, 1); drawO(); upd(); ch(); }))));
-  const addBtn = h("button", { type: "button", class: "btn sm", id: "pt-add", text: "＋ クラスを追加", onclick: () => { p.classes.push({ id: uid("k"), year: "", kumi: "", m: "", f: "" }); drawCls(); upd(); ch(); } });
+    h("input", { id: `${PF}o${i}-n`, value: o.name || "", placeholder: "区分名（例：保護者）", "aria-label": "その他の区分名", style: "width:180px", oninput: (e) => { o.name = e.target.value; ch(); } }),
+    n(o, "n", `${PF}o${i}-c`, "人数"), h("span", { text: "人" }),
+    trash(`${PF}o${i}-del`, () => { p.others.splice(i, 1); drawO(); upd(); ch(); }))));
+  const addBtn = h("button", { type: "button", class: "btn sm", id: PF + "add", text: "＋ クラスを追加", onclick: () => { p.classes.push({ id: uid("k"), year: "", kumi: "", m: "", f: "" }); drawCls(); upd(); ch(); } });
   drawC(); drawMode(); drawO(); queueMicrotask(upd);
   const lay = S.layouts.get(c.storeId), has = !!(lay && (lay.floors || []).length) || !!c.layout;
-  const open = () => go({ name: "clayout", id: c.id });
+  const open = () => go({ name: "clayout", id: c.id, ...(subId ? { sub: subId } : {}) });
   const prev = has ? layoutPreview(c.layout || lay, open, c.layout ? layoutTitle(c) : "") : null;
-  return h("div", { class: "panel stack", id: "party" },
-    h("div", { class: "row" }, h("h3", { text: "利用人数" }), total, allSt, h("span", { style: "margin-left:auto" }),
-      h("button", { type: "button", class: "btn primary", id: "btn-layout", disabled: !has, text: c.layout ? "レイアウトを開く" : "レイアウト作成", onclick: open })),
-    has ? null : h("div", { class: "small muted", text: c.storeId ? "この店舗にはレイアウトが登録されていません。店舗マスタの「レイアウト」で登録すると、ここから配席を作成できます。" : "店舗マスタに登録済みの店舗を選ぶと、その店舗のレイアウトで配席を作成できます。" }),
-    h("div", { class: "pt-body" }, h("div", { class: "stack" },
-      modeBar, list, h("div", {}, addBtn),
-      h("div", { class: "row", style: "gap:6px 18px" }, ...STAFF.map(([id, label]) => h("label", { class: "row small", style: "gap:6px" }, label, n(p.staff, id, "pt-" + id, label), "人"))),
-      others, h("div", {}, h("button", { type: "button", class: "btn sm", id: "pt-other", text: "＋ その他を追加", onclick: () => { p.others.push({ id: uid("o"), name: "", n: "" }); drawO(); ch(); } }))),
+  return h("div", { class: "panel stack pt-c", id: subId ? subId + "-party" : "party" },
+    h("div", { class: "row", style: "gap:6px 14px" }, h("h3", { text: "利用人数", style: "margin:0" }), total, allSt, modeBar, h("span", { style: "margin-left:auto" }),
+      h("button", { type: "button", class: "btn primary sm", id: subId ? subId + "-btn-layout" : "btn-layout", disabled: !has, text: c.layout ? "レイアウトを開く" : "レイアウト作成", onclick: open })),
+    has ? null : h("div", { class: "small muted", style: "margin-top:-4px", text: c.storeId ? "この店舗にはレイアウトが登録されていません。店舗マスタの「レイアウト」で登録すると、ここから配席を作成できます。" : "店舗マスタに登録済みの店舗を選ぶと、その店舗のレイアウトで配席を作成できます。" }),
+    h("div", { class: "pt-body" + (prev ? "" : " noprev") }, h("div", { class: "pt-flow" },
+      list, addBtn, h("span", { class: "pt-sep" }),
+      ...STAFF.map(([id, label]) => h("label", { class: "row small", style: "gap:4px" }, label, n(p.staff, id, PF + id, label), "人")),
+      others, h("button", { type: "button", class: "btn sm", id: PF + "other", text: "＋ その他", title: "その他の区分（保護者など）を追加", onclick: () => { p.others.push({ id: uid("o"), name: "", n: "" }); drawO(); ch(); } })),
       prev),
     c.layout ? layUpdatePop(c, ch, () => render()) : null);
 }
@@ -5539,7 +5641,7 @@ function layUpdatePop(c, ch, onUse) {
 /** 案件ごとのレイアウト画面：店舗のレイアウトを写し、利用人数から配席を作る。 */
 function viewCaseLayout() {
   if (!draft) { const c0 = S.cases.get(view.id); if (!c0 || c0.locked) return [h("div", { class: "empty", text: "この案件は見つかりません。" })]; draft = clone(c0); }
-  const c = draft, ch = () => caseSaver.touch(), back = h("div", {}, h("button", { type: "button", class: "linkbtn", text: c.kind === "layout" ? "← 利用人数の入力に戻る" : "← 案件に戻る", onclick: () => go({ name: "case", id: c.id }) }));
+  const c0 = draft, c = shopHost(c0, view.sub || ""), ch = () => caseSaver.touch(), back = h("div", {}, h("button", { type: "button", class: "linkbtn", text: c.kind === "layout" ? "← 利用人数の入力に戻る" : "← 案件に戻る", onclick: () => go({ name: "case", id: c0.id }) }));
   const base = S.layouts.get(c.storeId), fresh = () => layFresh(c);
   if (!c.layout) {
     if (!base || !(base.floors || []).length) return [back, h("div", { class: "banner warn", text: "この店舗にはレイアウトが登録されていません。店舗マスタの「レイアウト」で登録してください。" })];
@@ -5682,8 +5784,8 @@ ${text}
   sumText();
   queueMicrotask(info); showPrompt();
   ed.addEventListener("pointerup", () => queueMicrotask(info)); ed.addEventListener("click", () => queueMicrotask(info));
-  return [layUpdatePop(c, ch, () => { draft = clone(c); app0(); }), h("div", { class: "row", style: "gap:14px" }, back, h("strong", { style: "font-size:15px", id: "lay-title", text: layoutTitle(c) })),
-    moved ? h("div", { class: "banner warn row" }, h("span", { text: "案件の店舗が変わっています。今のレイアウトは変更前の店舗のものです。" }), h("span", { style: "margin-left:auto" }), confirmBtn("今の店舗のレイアウトで作り直す", "本当に作り直す", () => { c.layout = fresh(); ch(); draft = clone(c); app0(); }, "btn sm")) : null,
+  return [layUpdatePop(c, ch, () => { draft = clone(c0); app0(); }), h("div", { class: "row", style: "gap:14px" }, back, h("strong", { style: "font-size:15px", id: "lay-title", text: layoutTitle(c) })),
+    moved ? h("div", { class: "banner warn row" }, h("span", { text: "案件の店舗が変わっています。今のレイアウトは変更前の店舗のものです。" }), h("span", { style: "margin-left:auto" }), confirmBtn("今の店舗のレイアウトで作り直す", "本当に作り直す", () => { c.layout = fresh(); ch(); draft = clone(c0); app0(); }, "btn sm")) : null,
     panel, ed].filter(Boolean);
   function app0() { const a = $("#app"); a.replaceChildren(...viewCaseLayout()); }
 }
