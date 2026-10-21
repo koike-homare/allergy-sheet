@@ -403,6 +403,7 @@ table.pj th:nth-child(1),table.pj th:nth-child(2){min-width:230px} table.pj th:n
 .hl-wrap{position:relative} .hl-wrap textarea{position:relative;background:transparent}
 .hl-back{position:absolute;inset:0;padding:4px 6px;border:1px solid transparent;border-radius:4px;background:var(--surface);color:transparent;white-space:pre-wrap;overflow-wrap:break-word;font:inherit;line-height:1.5;overflow:hidden;pointer-events:none;box-sizing:border-box}
 .hl-back mark{background:#ffe45c;color:transparent;border-radius:2px}
+.hl-quail .hl-back mark{background:#ffb26b}
 .sb-each{margin:4px 0;padding:4px 6px;border:1px dashed var(--line);border-radius:4px;display:grid;gap:3px} .sb-each .sb-t{font-size:11px;color:var(--muted)}
 .sb-each label{display:grid;grid-template-columns:minmax(0,1fr) 98px;gap:6px;align-items:center;font-size:12px} .sb-each select{padding:2px 4px}
 tr.rv-dup>td{background:#fff8e6} tr.rv-old>td{background:#fff8e6;padding:2px 8px 6px;border-top:0}
@@ -550,7 +551,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 160</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 163</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -676,6 +677,8 @@ function matchTag(store, tag) {
   return best;
 }
 const DEFAULT_TPL = {
+  tplMayo: "コース内容に「マヨネーズ（卵）」を使用しております（{料理}）。",
+  tplNutSoy: "調味料、ソース、調理油等に「大豆」の成分が含まれております。",
   tplNone: "コース内容に「{食材}」の現物は使用しておりません。",
   tplUsed: "コース内容に「{食材}」を使用しております。",
   tplSeibun: "調味料、ソース、調理油等に「{分類}」の成分が含まれております。",
@@ -713,6 +716,25 @@ const DEFAULT_DICT = [
 /** 果物の扱い：ソース類は「果物エキス」としか分からないため、果物はすべて「果物」の成分ありとして扱う（共通設定で変更可）。 */
 const FRUITS_DEFAULT = "オレンジ、キウイフルーツ、バナナ、もも、りんご、パイナップル、パイン、すいか、メロン、いちご、苺、ぶどう、葡萄、マンゴー、さくらんぼ、チェリー、梨、洋梨、柿、びわ、いちじく、ブルーベリー、ラズベリー、ざくろ、パパイヤ、ライチ、アボカド、プラム、すもも、あんず、梅、ドラゴンフルーツ、パッションフルーツ、グアバ、ココナッツ";
 const fruitOn = () => S.settings.fruitMode !== false;
+/* ---------- 卵とマヨネーズ、ナッツと大豆 ----------
+   マヨネーズは成分表の「卵」の欄に出てこないことがある（トッピング）。料理名やコースの補足にマヨネーズがあれば、卵のアレルギーに「マヨネーズ（卵）」を書き添えて該当ありにする。
+   ナッツ類のアレルギーには、コースに大豆の成分があれば、その旨を書き添える（現物・成分の判定は変えない）。 */
+const MAYO_WORDS_DEFAULT = "お好み焼き、お好み焼、たこ焼き、たこやき、たこ焼、明石焼き、マヨネーズ、マヨ";
+const EGG_RE = /^(卵|生卵|鶏卵|たまご|生たまご|玉子|生玉子|全卵|卵黄|卵白|まよねーず|egg|eggs|rawegg)$/;
+const NUT_RE = /なっつ|木の実|くるみ|胡桃|あーもんど|かしゅー|まかだみあ|ぴすたちお|へーぜる|ぺかん|落花生|ぴーなっつ|nut|almond|walnut|peanut|cashew|pistachio|hazel|pecan|macadamia/;
+/** コースの中でマヨネーズを使う料理（料理名に含まれる言葉、またはコースの補足の文にマヨネーズがある料理）。 */
+function mayoDishes(co) {
+  if (!co) return [];
+  const words = splitList(S.settings.mayoWords || MAYO_WORDS_DEFAULT).map(norm).filter(Boolean), out = [];
+  const add = (n) => { n = String(n || "").trim(); if (n && !out.includes(n)) out.push(n); };
+  for (const d of co.dishes || []) if (words.some((w) => norm(d.name).includes(w))) add(d.name);
+  for (const nt of co.notes || []) if (/マヨネーズ|まよねーず|マヨ/.test(nt.text || "")) { const d = (co.dishes || []).find((x) => norm(x.name) === norm(nt.item) || (nt.item && norm(nt.item).includes(norm(x.name)))); add(d ? d.name : nt.item); }
+  return out;
+}
+const QUAIL_RE = /うずら|鶉|quail/;
+const isQuail = (it) => QUAIL_RE.test(norm(it.ja || it.tag));
+const isEggItem = (it) => !isQuail(it) && (EGG_RE.test(norm(it.ja || it.tag)) || (it.parts || []).some((p) => EGG_RE.test(norm(p.name || (p.entry && p.entry.name) || ""))));
+const isNutItem = (it) => NUT_RE.test(norm(it.ja || it.tag)) || (it.parts || []).some((p) => NUT_RE.test(norm(p.name || (p.entry && p.entry.name) || "")));
 let fruitMemo = { key: null, set: null };
 function fruitSet() {
   const src = S.settings.fruits || FRUITS_DEFAULT, key = src + "#" + JSON.stringify(S.settings.spec || 0);
@@ -804,6 +826,11 @@ function analyse(row, store) {
     else if (it.j.missing.length) { it.state = "warn"; it.tip = `「${it.j.missing.join("、")}」の使用状況が確認できていません`; }
     else if (it.kind === "fruit") { it.state = "ok"; it.tip = "成分表にない果物：現物は使用なし、ソース類は「果物」の成分ありとして判定"; }
     else { it.state = "ok"; it.tip = it.kind === "dict" ? `辞書により「${it.parts.map((p) => p.name).join("、")}」として判定` + (it.j.extP.length ? `（※は成分表にない食材：現物は使用なしとして扱います）` : "") : `「${it.parts[0].name}」に一致`; }
+    // 卵のアレルギーで、コースにマヨネーズを使う料理があれば、該当ありにする
+    if (store && (store.mayo || []).length && !["nonfood", "dish", "broad", "unknownAl"].includes(it.kind) && isEggItem(it)) {
+      it.mayo = store.mayo; it.j = { ...it.j, hit: true, clear: false, g: "used", s: it.j.s === "none" ? "contained" : it.j.s }; // マヨネーズはソースでもあるので「成分なし」とは書かない
+      it.tip = (it.tip ? it.tip + "／" : "") + `マヨネーズ（卵）を使う料理：${store.mayo.join("、")}`;
+    }
     return it;
   });
   // 原本照合は申告内容（食材の並び）に対して行う。申告を書き換えたら照合し直しになる。コースを変えても照合は保つ。
@@ -857,9 +884,15 @@ function genElement(row, store) {
   if (nonFoods.length) L.push(`「${nonFoods.join("、")}」は食品ではないため、当店では判断ができません。`);
   if (none.length) L.push(T.tplNone.replace("{食材}", none.join("、")));
   if (used.length) L.push(T.tplUsed.replace("{食材}", used.join("、")));
+  const mayo = items.find((it) => it.mayo); if (mayo) L.push(T.tplMayo.replace("{料理}", mayo.mayo.join("、")));
   if (groups.length) L.push(T.tplSeibun.replace("{分類}", groups.join("、")));
   if (fruits.length) L.push(T.tplFruit.replace("{食材}", fruits.join("、")));
   if (sNone.length) L.push(T.tplSeibunNone.replace("{食材}", sNone.join("、")));
+  // ナッツ類のアレルギー：コースに大豆の成分があれば書き添える（本人が大豆も申告していて、すでに書いてあれば重ねない）
+  if (S.settings.nutSoy !== false && items.some((it) => !["nonfood", "dish", "broad", "unknownAl"].includes(it.kind) && isNutItem(it)) && !groups.includes("大豆") && !used.some((u) => u.startsWith("大豆"))) {
+    const soy = ((store && store.entries) || []).find((e) => norm(e.name) === norm("大豆"));
+    if (soy && (soy.seibun === "contained" || soy.genbutsu === "used")) L.push(T.tplNutSoy);
+  }
   if (exts.length && T.tplExt) L.push(T.tplExt.replace("{食材}", exts.join("、")));
   L.push(...notes);
   // 厨房での微量混入の注意は、食品のアレルギーが1つでもあるときだけ書く（食品以外だけの人には書かない）
@@ -904,6 +937,9 @@ function seibunOut(row) {
   return tags.map((x) => `${x}：${sbOf(row, x) || "—"}`).join("\n");
 }
 /** 入力欄の文字のうち、指定した言葉に一致する部分の背景を黄色くする（入力欄の裏に、同じ文章を色付きで重ねる）。 */
+/** うずら玉子の申告に色を付ける（判定は変えない。揚げ油に成分が入ることがあるため、目で気づけるようにする）。 */
+const QUAIL_HL = /(?:うずら|ウズラ|鶉)[^\s、,，・\/／（(）)]*/g;
+function quailHl(ta) { const w = hlWrap(ta, () => ta.value.match(QUAIL_HL) || []); w.classList.add("hl-quail"); w.title = "うずら玉子の申告があります（串かつなどの揚げ油に成分が入ることがあります）"; queueMicrotask(w.sync); return w; }
 function hlWrap(ta, termsFn) {
   const back = h("div", { class: "hl-back", "aria-hidden": "true" }), wrap = h("div", { class: "hl-wrap" }, back, ta);
   const esc = (s) => s.replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]));
@@ -984,7 +1020,7 @@ function M(courseId) {
   for (const sp of specList()) { if (!sp.name) continue; const ts = entryTerms({ name: sp.name }); if (!rowTerms.some((rt) => rt.some((x) => ts.includes(x)))) entries.push({ id: "v-" + sp.id, name: sp.name, aliases: "", group: "", genbutsu: "", usedIn: "", seibun: "", note: "" }); }
   const fruit = fruitOn();
   if (fruit) for (const e of entries) if (e.genbutsu && e.seibun && isFruit(e.name)) { e.group = "果物"; e.seibun = "contained"; }
-  return { ...base, id: "course:" + co.id + (fruit ? "+f" : ""), entries, course: co, fruit };
+  return { ...base, id: "course:" + co.id + (fruit ? "+f" : ""), entries, course: co, fruit, mayo: mayoDishes(co) };
 }
 const SET_DEFAULTS = () => ({ ...DEFAULT_TPL, company: "", dept: "", tel: "", fax: "", notes: "", special: "", signNote: "", courseSub: "", courseNotes: "", coursePolicy: "", commonNote: "", response: "", responseOk: "", entries: [], dict: [], spec: clone(SPEC_DEFAULT), fruitMode: true, fruits: FRUITS_DEFAULT, nonFood: NONFOOD_DEFAULT, dishNames: DISH_DEFAULT, broadWords: BROAD_DEFAULT });
 function regen(row, store) {
@@ -1947,7 +1983,7 @@ function viewCase() {
       h("div", {}, lab("組"), inp("kumi")),
       h("div", {}, lab("性別"), sel([["", ""], "男", "女"], r.sex, (v) => { r.sex = v; ch(); }, { id: r.id + "-sex" })),
       h("div", { class: "w" }, lab("氏名（敬称略）"), inp("name")),
-      h("div", { class: "w" }, lab("アレルギー"), h("textarea", { id: r.id + "-al", rows: 2, value: r.allergy, placeholder: "例：えび、かに（少量なら可）", oninput: (e) => { r.allergy = e.target.value; upd(); ch(); } }), chips, sbBox, state),
+      h("div", { class: "w" }, lab("アレルギー"), quailHl(h("textarea", { id: r.id + "-al", rows: 2, value: r.allergy, placeholder: "例：えび、かに（少量なら可）", oninput: (e) => { r.allergy = e.target.value; upd(); ch(); } })), chips, sbBox, state),
       h("div", {}, lab("成分可否"), sel([["", ""], ...SEIBUN], r.seibun, (v) => { r.seibun = v; upd(); ch(); }, { id: r.id + "-sb" })),
       h("div", { class: "w" }, lab("アレルゲンの要素"), elWrap, elMark),
       h("div", { class: "w" }, lab("対応"), selBox,
@@ -2698,7 +2734,7 @@ function reviewDialog(people, add, groupName, warn, meta) {
         h("td", {}, un(p.unclear, "kumi", h("input", { id: `rv-${i}-kumi`, "aria-label": "組", value: p.kumi, oninput: (e) => { p.kumi = e.target.value; } }))),
         h("td", {}, un(p.unclear, "sex", sel([["", ""], "男", "女"], p.sex, (v) => { p.sex = v; }, { id: `rv-${i}-sex`, "aria-label": "性別" }))),
         h("td", {}, un(p.unclear, "name", h("input", { id: `rv-${i}-name`, "aria-label": "氏名", value: p.name, oninput: (e) => { p.name = e.target.value; } }))),
-        h("td", {}, un(p.unclear, "allergy", h("textarea", { id: `rv-${i}-al`, "aria-label": "アレルギー", rows: 2, placeholder: "なし（申告なし）", value: p.allergy, oninput: (e) => { p.allergy = e.target.value; judge(i); } }))),
+        h("td", {}, quailHl(un(p.unclear, "allergy", h("textarea", { id: `rv-${i}-al`, "aria-label": "アレルギー", rows: 2, placeholder: "なし（申告なし）", value: p.allergy, oninput: (e) => { p.allergy = e.target.value; judge(i); } })))),
         h("td", {}, un(p.unclear, "seibun", sel([["", ""], ...SEIBUN], p.seibun, (v) => { p.seibun = v; judge(i); }, { id: `rv-${i}-sb`, "aria-label": "成分可否" }))),
         h("td", {}, un(p.unclear, "symptom", h("textarea", { id: `rv-${i}-sy`, "aria-label": "症状", rows: 1, value: p.symptom || "不明", oninput: (e) => { p.symptom = e.target.value; } }))),
         h("td", {}, h("input", { id: `rv-${i}-ch`, "aria-label": "最終的な対応（資料の記載）", placeholder: "例：チキンステーキ", value: p.choice || "", oninput: (e) => { p.choice = e.target.value.trim(); } })),
@@ -3402,6 +3438,10 @@ function viewSettings() {
       h("label", { class: "row" }, h("input", { id: "set-fruitMode", type: "checkbox", style: "width:auto", checked: s.fruitMode !== false, onchange: (e) => { s.fruitMode = e.target.checked; ch(); } }), "ソース類の果物は種類を特定できないため、果物はすべて「果物」の成分ありとして扱う"),
       h("div", { class: "muted small", text: "コースを指定した案件に適用されます。果物の申告は、調味料・ソース・調理油の成分を「果物」と表記して「該当あり」と判定します。成分表にない果物（パイナップルなど）は、現物は使用なしとして扱います。" }),
       field("果物として扱う食材（「、」で区切る。特定原材料の「別の呼び方」も含まれます）", ta("fruits", 4))),
+    h("div", { class: "panel stack", id: "egg-nut" }, h("h3", { text: "卵（マヨネーズ）とナッツ類の扱い" }),
+      h("div", { class: "muted small", text: "卵のアレルギーの人は、コースにマヨネーズを使う料理があれば「マヨネーズ（卵）を使用」と書き、該当ありにします。マヨネーズを使う料理は、料理名に下の言葉が入っているもの、またはコース成分表の補足にマヨネーズと書かれた料理です。" }),
+      field("マヨネーズを使う料理（料理名に含まれる言葉。「、」で区切る）", h("input", { id: "set-mayoWords", value: s.mayoWords || "", placeholder: MAYO_WORDS_DEFAULT, oninput: (e) => { s.mayoWords = e.target.value; ch(); } })),
+      h("label", { class: "row" }, h("input", { id: "set-nutSoy", type: "checkbox", style: "width:auto", checked: s.nutSoy !== false, onchange: (e) => { s.nutSoy = e.target.checked; ch(); } }), "ナッツ類のアレルギーの人には、コースに大豆の成分があれば「調味料、ソース、調理油等に「大豆」の成分が含まれております。」と書き添える")),
     h("div", { class: "panel stack", id: "gdrive" }, h("h3", { text: "Googleドライブ連携" }),
       h("div", { class: "muted small", text: "PJ管理の案件のフォルダとスプレッドシート、アレルギー対応の案件で取り込んだ資料を、Googleドライブに置くための設定です。操作する人が自分の Google アカウントでログインし、その人の権限で、下の保存先フォルダの中に作ります。クライアントIDは Google Cloud の「OAuth クライアントID（ウェブ アプリケーション）」で、パスワードのような秘密の値ではありません。Google Cloud のプロジェクトでは「Google Drive API」と「Google Sheets API」の両方を有効にしてください。" }),
       h("div", { class: "fields" },
