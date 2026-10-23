@@ -419,23 +419,62 @@ table.pj th:nth-child(1),table.pj th:nth-child(2){min-width:230px} table.pj th:n
 .td-pick-list{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:2px}
 .td-pick-item{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;cursor:pointer;font-size:13px}
 .td-pick-item:hover{background:var(--sunken)} .td-pick-item input{width:auto;margin:0} .td-pick-item .nm{flex:1;overflow-wrap:anywhere}
-.td-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start}
-.td-card2{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:5px}
+.td-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;align-items:stretch}
+.td-card2{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
 .td-card2.lv-bad{border-left-color:var(--bad)} .td-card2.lv-warn{border-left-color:var(--warn)} .td-card2.lv-good{border-left-color:var(--ok)}
-.td-c-t{font-size:14px} .td-c-big{font-size:24px;font-weight:700;line-height:1.2} .td-c-txt{font-size:13px;white-space:pre-line}
-.td-c-list{margin:0;padding-left:18px;font-size:12.5px;display:flex;flex-direction:column;gap:2px}
-.td-c-todo{margin-top:auto;padding:7px 10px;background:var(--accent-soft);border-radius:6px;font-size:12.5px;display:flex;gap:8px;align-items:flex-start}
+.td-c-h{display:flex;gap:8px;align-items:center;min-width:0;height:22px}
+.td-c-t{font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.td-c-bigrow{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.td-c-big{font-size:24px;font-weight:700;line-height:1.2;font-variant-numeric:tabular-nums}
+.td-delta{font-size:12.5px;font-weight:700;padding:1px 8px;border-radius:99px;white-space:nowrap}
+.td-delta.bad{color:var(--bad);background:var(--bad-soft)} .td-delta.warn{color:var(--warn);background:var(--warn-soft)} .td-delta.ok{color:var(--ok);background:var(--ok-soft)} .td-delta.flat{color:var(--muted);background:var(--sunken)}
+.td-c-sub{font-size:12px;color:var(--muted);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.td-c-txt{font-size:13px;line-height:1.55;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.td-c-list{margin:0;padding-left:18px;font-size:12.5px;display:flex;flex-direction:column;gap:1px}
+.td-c-list li{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.td-c-todo{margin-top:auto;padding:7px 10px;background:var(--accent-soft);border-radius:6px;font-size:12.5px;line-height:1.5;display:flex;gap:8px;align-items:flex-start}
 .td-c-todo-h{flex:none;font-weight:700;color:var(--accent)}
+.td-c-todo-t{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.td-mini{display:flex;flex-direction:column;gap:3px;margin:2px 0}
+.td-mini-r{display:grid;grid-template-columns:88px 1fr 84px;align-items:center;gap:8px;font-size:11.5px}
+.td-mini-l{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.td-mini-bar{height:10px;background:var(--sunken);border-radius:3px;overflow:hidden} .td-mini-bar i{display:block;height:100%;border-radius:3px}
+.td-mini-v{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+.td-mm-cols{display:grid;grid-template-columns:repeat(12,1fr);gap:3px;align-items:end}
+.td-mm-c{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--muted)}
+.td-mm-b{display:flex;gap:1px;align-items:flex-end;height:44px;width:100%;justify-content:center} .td-mm-b i{display:block;width:40%;min-height:1px;border-radius:2px 2px 0 0}
+.td-mm-c.fut .td-mm-b i{opacity:.45} .td-mm-c.weak span{color:var(--bad);font-weight:700}
+.td-mm-leg,.td-viz-leg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11px;color:var(--muted);margin-top:3px}
+.td-mm-leg i,.td-viz-leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px} .td-mm-leg .bad{color:var(--bad)}
 .td-card2{cursor:pointer;transition:box-shadow .15s} .td-card2:hover{box-shadow:0 2px 10px rgba(0,0,0,.08)} .td-card2.on{outline:2px solid var(--accent);outline-offset:1px}
 .td-card2:focus-visible{outline:2px solid var(--accent)}
 .td-c-more{font-size:12px;color:var(--accent);font-weight:700;text-align:right}
-.td-detail{display:flex;flex-direction:column;gap:12px;border-top:3px solid var(--accent)}
-.td-ai2{background:var(--accent-soft);border-radius:8px;padding:12px 14px;font-size:13.5px}
-.td-ai-sum{font-size:15px;font-weight:700;margin-bottom:6px}
-.td-ai-sec{margin-top:8px} .td-ai-h{font-weight:700;color:var(--accent);font-size:13px} .td-ai-sec ul{margin:2px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:3px}
-.td-dts{display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:14px}
+.td-detail{display:flex;flex-direction:column;gap:14px;border-top:3px solid var(--accent)}
+.td-det-h{display:flex;gap:10px;align-items:center} .td-det-h h3{margin:0;font-size:16px}
+.td-det-kpi{display:grid;grid-template-columns:minmax(220px,1fr) minmax(260px,1.4fr);gap:10px 24px;align-items:center}
+@media (max-width:700px){.td-det-kpi{grid-template-columns:1fr}}
+.td-ai2{font-size:13.5px}
+.td-ai-wait{display:flex;gap:10px;align-items:center;padding:14px;background:var(--accent-soft);border-radius:8px;color:var(--muted)}
+.td-spin{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:tdspin 1s linear infinite} @keyframes tdspin{to{transform:rotate(360deg)}}
+.td-ai-sum{display:flex;gap:12px;align-items:flex-start;font-size:15px;font-weight:700;line-height:1.6;padding:12px 14px;background:var(--accent-soft);border-left:4px solid var(--accent);border-radius:6px}
+.td-ai-tag{flex:none;font-size:11px;color:#fff;background:var(--accent);border-radius:99px;padding:2px 8px;margin-top:3px}
+.td-ai-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;margin-top:10px}
+.td-ai-box{border:1px solid var(--line);border-top:3px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--surface)}
+.td-ai-box.c1{border-top-color:var(--td-y0)} .td-ai-box.c2{border-top-color:var(--muted)} .td-ai-box.c3{border-top-color:var(--ok);background:var(--ok-soft)}
+.td-ai-h{display:flex;align-items:baseline;gap:8px;font-weight:700;font-size:14px;margin-bottom:4px} .td-ai-hs{font-size:11px;font-weight:400;color:var(--muted)}
+.td-ai-box ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;line-height:1.6}
+.td-ai2 b{font-variant-numeric:tabular-nums} .td-ai2 b.dn{color:var(--bad)} .td-ai2 b.up{color:var(--ok)}
+.td-dt-head{font-weight:700;font-size:14px;padding-top:4px;border-top:1px solid var(--line)}
+.td-dts{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:18px 24px}
+@media (max-width:700px){.td-dts{grid-template-columns:1fr}}
 .td-dt-t{font-weight:700;font-size:13px;margin-bottom:4px}
-.td-badge{font-weight:700;white-space:nowrap}
+.td-viz-r{display:grid;grid-template-columns:minmax(90px,150px) 1fr 96px;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid var(--line)}
+.td-viz-l{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.td-viz-bars{display:flex;flex-direction:column;gap:2px;min-width:0}
+.td-viz-b{display:grid;grid-template-columns:1fr 78px;align-items:center;gap:6px;font-size:11px;font-variant-numeric:tabular-nums;color:var(--muted)} .td-viz-b>span:last-child{text-align:right;white-space:nowrap} .td-viz-b .tr{display:block;height:8px} .td-viz-b i{display:block;height:8px;min-width:1px;border-radius:2px}
+.td-viz-d{font-size:12px;font-weight:700;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--muted)} .td-viz-d.up{color:var(--ok)} .td-viz-d.dn{color:var(--bad)}
+.td-viz-tbl{margin-top:6px} .td-viz-tbl>summary{cursor:pointer;font-size:12px;color:var(--accent)}
+.td-badge{display:inline-flex;justify-content:center;align-items:center;flex:none;min-width:70px;height:20px;padding:0 8px;font-size:11px;font-weight:700;white-space:nowrap;box-sizing:border-box}
 .td-head2{display:flex;flex-direction:column;gap:4px}
 .td-weak{font-size:10px;fill:var(--bad);font-weight:700}
 .td-ahead td .pill{font-size:11px}
@@ -631,7 +670,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 172</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 175</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -5985,10 +6024,11 @@ function tdFilterEls(idp, re) {
   const corps = [...counts.keys()].sort(ja);
   tdView.corps = tdView.corps.filter((c) => counts.has(c));
   const stores = [...tdStoreOf(tdView.corps)].sort(ja);
-  const noCorp = rows.length && rows.some((r) => r.ho === undefined);
+  const noCorp = rows.length && rows.some((r) => r.ho === undefined), oldY = rows.length && rows.some((r) => r.v !== 2);
   return [h("div", { class: "row small", style: "gap:6px" }, h("span", { text: "飲食法人" }), tdCorpPicker(idp, corps, counts, re)),
     h("label", { class: "row small", style: "gap:6px" }, "店舗", sel([["", tdView.corps.length ? "選んだ法人のすべての店舗" : "すべての店舗"], ...stores.map((x) => [x, x])], tdView.store, (v) => { tdView.store = v; re(); }, { id: idp + "-store", style: "max-width:320px" })),
-    noCorp ? h("span", { class: "small", style: "color:var(--warn)", text: "飲食法人の項目がない予約があります。同じExcelをもう一度取り込むと、飲食法人で絞り込めるようになります。" }) : null];
+    oldY ? h("div", { class: "banner warn", style: "flex-basis:100%", id: "td-old", text: "売上の計算のしかたを直しました（当日追加の金額が二重に数えられていました）。同じExcelをもう一度取り込むと、正しい金額になります。" })
+      : noCorp ? h("span", { class: "small", style: "color:var(--warn)", text: "飲食法人の項目がない予約があります。同じExcelをもう一度取り込むと、飲食法人で絞り込めるようになります。" }) : null];
 }
 
 const tdIsCancel = (r) => /キャンセル|取り下げ|お断り/.test(r.s || "");
@@ -6013,7 +6053,11 @@ function tdParse(rows) {
     const id = String(x[TD_COLS.id] == null ? "" : x[TD_COLS.id]).trim(), d = tdDate(x[TD_COLS.date]); if (!id || !d) continue;
     let r = byId.get(id);
     if (!r) { r = { i: id, d, t: tdTime(x[TD_COLS.start]), s: String(x[TD_COLS.status] || ""), k: String(x[TD_COLS.kubun] || ""), n: String(x[TD_COLS.nat] || ""), p: tdNum(x[TD_COLS.total]), a: tdNum(x[TD_COLS.adult]), c: tdNum(x[TD_COLS.child]), st: String(x[TD_COLS.store] || ""), ho: String(x[TD_COLS.corp] || ""), ag: String(x[TD_COLS.agency] || ""), co: "", py: String(x[TD_COLS.pay] || ""), y: 0, r: tdDate(x[TD_COLS.reg]) || tdDate(x[TD_COLS.req]) }; byId.set(id, r); }
-    const yc = tdNum(x[TD_COLS.sum]), yx = tdNum(x[TD_COLS.osum]); r.y += yc + yx; r.yc = (r.yc || 0) + yc; r.yx = (r.yx || 0) + yx; // コースと追加（コース以外）を分けても持つ
+    // 売上＝各行の「コース合計」（税込）。当日追加の行の金額は「コース以外合計」にも同じ額が入っているので、足さない（二重になる）。
+    // 内訳：yc＝メイン・アレンジのコース、yx＝当日追加。飲み放題・サブコース・添乗員などは売上には入れ、内訳では「その他」になる。
+    const amt = tdNum(x[TD_COLS.sum]), pt = String(x[TD_COLS.ptype] || ""); r.y += amt; r.v = 2;
+    if (/メイン|アレンジ/.test(pt)) r.yc = (r.yc || 0) + amt; else if (/当日追加/.test(pt)) r.yx = (r.yx || 0) + amt;
+    r.yc = r.yc || 0; r.yx = r.yx || 0;
     if (!r.co && /メイン|アレンジ/.test(String(x[TD_COLS.ptype] || ""))) r.co = String(x[TD_COLS.course] || "");
   }
   return [...byId.values()];
@@ -6205,7 +6249,8 @@ function viewTd() {
 const TD_YC = ["var(--td-y0)", "var(--td-y1)", "var(--td-y2)"]; // 0=今年 1=前年 2=前々年
 const TD_TYPES = ["国内一般", "教育", "学生", "国内募集型", "訪日"];
 /** 団体の種類：訪日（区分がインバウンド、または国籍が日本以外）／教育／学生（コース名に「学生」）／国内募集型／国内一般 */
-const tdType = (r) => (r.k === "インバウンド" || (r.n && r.n !== "日本") ? "訪日" : r.k === "教育" ? "教育" : /学生/.test(r.co || "") ? "学生" : r.k === "国内募集型" ? "国内募集型" : "国内一般");
+const tdIb = (r) => !!r.n && r.n !== "日本"; // 訪日＝国籍が日本以外（トラベルダインの集計と同じ）
+const tdType = (r) => (tdIb(r) ? "訪日" : r.k === "教育" ? "教育" : /学生/.test(r.co || "") ? "学生" : r.k === "国内募集型" ? "国内募集型" : "国内一般");
 const TD_SIZES = [[1, 9, "個人旅行（1〜9名）"], [10, 29, "小型団体（10〜29名）"], [30, 99, "中型団体（30〜99名）"], [100, 1e9, "大型団体（100名以上）"]];
 const tdSize = (r) => (TD_SIZES.find(([lo, hi]) => r.p >= lo && r.p <= hi) || [0, 0, ""])[2];
 const TD_PRICES = [[0, 1999, "〜1,999円"], [2000, 2999, "2,000〜2,999円"], [3000, 3999, "3,000〜3,999円"], [4000, 5999, "4,000〜5,999円"], [6000, 1e12, "6,000円〜"]];
@@ -6302,7 +6347,7 @@ function viewTd3() {
   const yAll = ys.map((y) => all.filter((r) => ok(r) && +r.d.slice(0, 4) === y)), firstYm = all.reduce((a, r) => (r.d < a ? r.d : a), "9999").slice(0, 7);
   const series = (f) => ys.map((y, i) => { const v = monthly(yAll[i], f), hasYear = yAll[i].length > 0; return { label: yl[i], short: ysh[i], color: TD_YC[i], vals: v.map((x, m) => (!hasYear || (y === Y && m >= lastM) || `${y}-${String(m + 1).padStart(2, "0")}` < firstYm ? null : x)) }; }); // データを取り始める前の月は「なし」にする
   const season = h("div", { class: "panel", id: "td3-season" }, h("h3", { text: "シーズン動向（月ごとの団体の種類）" }),
-    h("div", { class: "small muted", style: "margin-bottom:6px", text: `月ごとの${unit === "p" ? "人数" : "予約件数"}です。訪日＝区分がインバウンド、または国籍が日本以外。学生＝コース名に「学生」が入るもの（教育を除く）。` }),
+    h("div", { class: "small muted", style: "margin-bottom:6px", text: `月ごとの${unit === "p" ? "人数" : "予約件数"}です。訪日＝国籍が日本以外。学生＝コース名に「学生」が入るもの（教育を除く）。` }),
     h("div", { class: "td-sms" }, tdLine("すべて", series(() => true), u), ...TD_TYPES.map((t) => tdLine(t, series((r) => tdType(r) === t), u))),
     // 今年の月ごとの構成（どの月にどの団体が多いか）
     (() => { const cols = TD_TYPES, rows = Array.from({ length: 12 }, (_, m) => m).filter((m) => m < lastM || !yAll[0].length);
@@ -6356,6 +6401,34 @@ const tdPctTxt = (v) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(0)
 const tdLvl = (v, lo = -5, hi = 5) => (v == null ? "flat" : v <= lo ? "bad" : v >= hi ? "good" : "flat");
 const TD_LV = { bad: ["要注意", "▼", "bad"], warn: ["注意", "!", "warn"], good: ["好調", "▲", "ok"], flat: ["変化小", "―", "plain"] };
 const tdBadge = (lv) => h("span", { class: "pill " + TD_LV[lv][2] + " td-badge", text: `${TD_LV[lv][1]} ${TD_LV[lv][0]}` });
+/** 前年→今年の増減チップ（色はカードの判定に合わせる） */
+function tdDelta(c, lv) {
+  const d = c.b - c.a, up = d > 0, pt = c.max === 100;
+  const t = !c.a && !pt ? "前年なし" : pt ? `${d >= 0 ? "+" : ""}${d.toFixed(0)}ポイント` : tdPctTxt(tdPct(c.a, c.b));
+  return h("span", { class: "td-delta " + (lv === "bad" ? "bad" : lv === "warn" ? "warn" : lv === "good" ? "ok" : "flat"), text: `${d === 0 ? "―" : up ? "▲" : "▼"} ${t}` });
+}
+/** カードの中の小さな横棒（前年と今年） */
+function tdMini(c) {
+  const mx = c.max || Math.max(1, c.a || 0, c.b || 0), row = (lab, v, col) => h("div", { class: "td-mini-r" }, h("span", { class: "td-mini-l", text: lab }),
+    h("span", { class: "td-mini-bar" }, h("i", { style: `width:${Math.max(1, (v / mx) * 100).toFixed(1)}%;background:${col}` })), h("span", { class: "td-mini-v", text: c.fmt(v) }));
+  return h("div", { class: "td-mini" }, c.a != null ? row(c.la || "前年", c.a, "var(--td-y1)") : null, row(c.lb || "今年", c.b, "var(--td-y0)"));
+}
+/** カードの中の小さな月別棒（例年と今年） */
+function tdMiniMonths({ base, mY, weak, M }) {
+  const mx = Math.max(1, ...base, ...mY);
+  return h("div", { class: "td-mm" }, h("div", { class: "td-mm-cols" }, ...[...Array(12).keys()].map((i) => h("div", { class: "td-mm-c" + (weak.includes(i) ? " weak" : "") + (i >= M - 1 ? " fut" : ""), title: `${i + 1}月：例年 ${tdMan(base[i])}／今年 ${tdMan(mY[i])}${i >= M - 1 ? "（予約済みの分）" : ""}` },
+      h("div", { class: "td-mm-b" }, h("i", { style: `height:${((base[i] / mx) * 100).toFixed(1)}%;background:var(--td-y1)` }), h("i", { style: `height:${((mY[i] / mx) * 100).toFixed(1)}%;background:var(--td-y0)` })),
+      h("span", { text: weak.includes(i) ? "▼" : String(i + 1) })))),
+    h("div", { class: "td-mm-leg" }, h("span", {}, h("i", { style: "background:var(--td-y1)" }), "例年"), h("span", {}, h("i", { style: "background:var(--td-y0)" }), "今年"), h("span", { class: "bad", text: "▼ 例年より少ない月" })));
+}
+/** 文中の数字を太字にして読みやすくする */
+function tdRich(str) {
+  const out = [], re = /((?<![\w\d.,])[+＋\-−]?[¥￥]?[\d,]+(?:\.\d+)?(?:万円|円|名|件|社|%|％|ポイント|日|か月|倍)?)/g; let i = 0, m;
+  str = String(str);
+  while ((m = re.exec(str))) { if (m.index > i) out.push(str.slice(i, m.index)); const neg = /^[\-−]/.test(m[1]) || /^[+＋]/.test(m[1]); out.push(h("b", { class: neg ? (/^[\-−]/.test(m[1]) ? "dn" : "up") : "", text: m[1] })); i = m.index + m[1].length; }
+  if (i < str.length) out.push(str.slice(i));
+  return out;
+}
 /** n点の折れ線（累計の推移など）。marks: 縦の目印（基準日など）。 */
 function tdLineN(title, labels, series, fmt, marks = []) {
   const n = labels.length, W = 640, H = 200, L = 58, R = 46, T = 10, B = 22, iw = W - L - R, ih = H - T - B, NS = "http://www.w3.org/2000/svg";
@@ -6421,7 +6494,7 @@ function viewTdHome() {
   const book = all.filter((r) => yr(r) === Y && r.d <= Hd && r.r && r.r <= asOf), bookL = all.filter((r) => yr(r) === Y - 1 && r.d <= HdL && r.r && r.r <= ly), finL = all.filter((r) => yr(r) === Y - 1);
   const vB = sumY(book), vBL = sumY(bookL), pB = tdPct(vBL, vB);
   card({ id: "pace", lv: tdLvl(pB), title: futureOK ? "今年の売上の積み上がり（予約済み）" : `今年の売上（利用日 1/1〜${jd(Hd)}）`,
-    big: tdMan(vB), sub: `前年の同じ日（${Y - 1}/${jd(ly)}）は ${tdMan(vBL)}（${tdPctTxt(pB)}）`,
+    big: tdMan(vB), cmp: { a: vBL, b: vB, fmt: tdMan, la: `前年 ${jd(ly)}時点`, lb: `今年 ${jd(asOf)}時点` }, sub: `前年の同じ日（${Y - 1}/${jd(ly)}）は ${tdMan(vBL)}（${tdPctTxt(pB)}）`,
     text: pB == null ? "前年のデータがないため比べられません。" : pB < 0 ? `${Y}年に利用する予約の売上は、前年の同じ時期より ${tdMan(vBL - vB)} 少ない状態です。前年は最終的に ${tdMan(sumY(finL))} でした。` : `前年の同じ時期より ${tdMan(vB - vBL)} 多く積み上がっています。前年は最終的に ${tdMan(sumY(finL))} でした。`,
     todo: !futureOK ? "どの月で差がついているかは、下の「月ごとの売上」で確認できます。先の月の予約と比べるには、利用日を数か月先まで含めて出力したExcelを取り込んでください。" : pB != null && pB < 0 ? "下の「これからの月の予約状況」で、前年より少ない月を確認し、その月に向けた提案・営業を優先してください。" : "この調子を保てるよう、これからの月で前年より少ない月がないか確認してください。" });
   /* 2. 客単価（1人あたりの売上） */
@@ -6430,7 +6503,7 @@ function viewTdHome() {
   const topCo = [...cAgg(ytd).entries()].filter(([, x]) => x.n >= 5).sort((a, b) => b[1].y / b[1].p - a[1].y / a[1].p).slice(0, 3);
   const noNow = !sumP(ytd);
   card({ id: "unit", lv: noNow ? "flat" : tdLvl(pU), title: "客単価（1人あたりの売上）",
-    big: up ? "¥" + Math.round(up).toLocaleString() : "—", sub: noNow ? `今年（1/1〜${jd(asOf)}）の利用はまだありません` : `前年 ¥${Math.round(upL).toLocaleString()}（${tdPctTxt(pU)}）`,
+    big: up ? "¥" + Math.round(up).toLocaleString() : "—", cmp: noNow ? null : { a: upL, b: up, fmt: (v) => "¥" + Math.round(v).toLocaleString() }, sub: noNow ? `今年（1/1〜${jd(asOf)}）の利用はまだありません` : `前年 ¥${Math.round(upL).toLocaleString()}（${tdPctTxt(pU)}）`,
     text: noNow ? "今年の利用が入ると、前年と比べられます。" : pU == null ? "前年のデータがないため比べられません。" : pU < 0 ? `1人あたりの売上が前年より ¥${Math.round(upL - up).toLocaleString()} 下がっています。安いコースや、コース以外の注文が少ない予約が増えています。` : "1人あたりの売上は前年以上です。",
     todo: noNow ? "—" : pU != null && pU < 0 ? `問い合わせの際は、単価の高いコースも一緒に案内してください${topCo.length ? `（今年よく出ている高単価のコース：${topCo.map(([c, x]) => `${c} ¥${Math.round(x.y / x.p).toLocaleString()}`).join("／")}）` : ""}。飲み放題・追加メニューの提案も有効です。` : "高単価のコースを、引き続き案内してください。" });
   /* 3. アクティブな旅行会社（直近1年に予約を入れた会社） */
@@ -6441,9 +6514,9 @@ function viewTdHome() {
   const down = [...actL.entries()].filter(([a]) => act.has(a)).map(([a, v]) => [a, v, act.get(a)]).filter(([, v, n]) => n < v * 0.6 && v - n >= 300000).sort((a, b) => (b[1] - b[2]) - (a[1] - a[2]));
   const pA = tdPct(actL.size, act.size), fresh = [...act.keys()].filter((a) => !actL.has(a)).length;
   card({ id: "agency", lv: actL.size ? (pA <= -5 || lost.length >= 5 ? "bad" : tdLvl(pA)) : "flat", title: "アクティブな旅行会社（直近1年に利用あり）",
-    big: `${act.size}社`, sub: `その前の1年は ${actL.size}社（${tdPctTxt(pA)}）・新しく増えた会社 ${fresh}社`,
+    big: `${act.size}社`, cmp: { a: actL.size, b: act.size, fmt: (v) => v + "社", la: "その前の1年", lb: "直近1年" }, sub: `その前の1年は ${actL.size}社（${tdPctTxt(pA)}）・新しく増えた会社 ${fresh}社`,
     text: lost.length ? `前の1年は利用があったのに、直近1年は利用がない旅行会社が ${lost.length}社 あります。${down.length ? `大きく減っている会社も ${down.length}社 あります。` : ""}` : "前の1年に予約のあった会社は、直近1年も予約があります。",
-    list: [...lost.slice(0, 3).map(([a, v]) => `${a}：直近1年 利用なし（前の1年 ${tdMan(v)}）`), ...down.slice(0, 3).map(([a, v, n]) => `${a}：${tdMan(v)} → ${tdMan(n)}`), ...(lost.length + down.length > 6 ? [`ほか ${lost.length + down.length - 6}社（「もっと詳しく見る」の旅行会社の表で確認できます）`] : [])],
+    list: [...lost.slice(0, 2).map(([a, v]) => `${a}：利用なし（前 ${tdMan(v)}）`), ...down.slice(0, 1).map(([a, v, n]) => `${a}：${tdMan(v)} → ${tdMan(n)}`)],
     todo: lost.length || down.length ? "上の会社に、近況の確認やコース・空き状況の案内を送ってください。担当者が変わっていないかも確認しましょう。" : "新しく増えた会社との取引を続けられるよう、利用後のお礼や次回の案内をしましょう。" });
   /* 4. 団体の規模（大型が減って小型が増えていないか） */
   const sz = (rows, lo, hi) => rows.filter((r) => r.p >= lo && r.p <= hi);
@@ -6451,15 +6524,15 @@ function viewTdHome() {
   const shSm = ytd.length ? (sm / ytd.length) * 100 : 0, shSmL = ytdL.length ? (smL / ytdL.length) * 100 : 0;
   const pBig = tdPct(bigL + midL, big + mid);
   card({ id: "size", lv: pBig == null ? "flat" : pBig <= -5 ? "bad" : pBig >= 5 ? "good" : "flat", title: "団体の規模（大型・中型が減っていないか）",
-    big: `30名以上 ${(big + mid).toLocaleString()}件`, sub: `前年 ${(bigL + midL).toLocaleString()}件（${tdPctTxt(pBig)}）／ 100名以上 ${bigL}件 → ${big}件`,
+    big: `30名以上 ${(big + mid).toLocaleString()}件`, cmp: { a: bigL + midL, b: big + mid, fmt: (v) => v.toLocaleString() + "件" }, sub: `前年 ${(bigL + midL).toLocaleString()}件（${tdPctTxt(pBig)}）／ 100名以上 ${bigL}件 → ${big}件`,
     text: `29名以下の小さな予約は ${smL.toLocaleString()}件 → ${sm.toLocaleString()}件（全体の ${shSmL.toFixed(0)}% → ${shSm.toFixed(0)}%）。${pBig != null && pBig < 0 ? "大きな団体が減り、小さな予約が増えているため、件数のわりに人数・売上が伸びにくくなっています。" : ""}`,
     todo: pBig != null && pBig < 0 ? "修学旅行・社員旅行など大人数の団体を扱う旅行会社に、貸切やフロア利用、まとめての配席ができることを案内してください。" : "大人数の団体の受け入れを続けられるよう、席の確保を早めに進めましょう。" });
   /* 5. 国内・訪日の割合（人数） */
-  const ib = (rows) => sumP(rows.filter((r) => r.k === "インバウンド" || (r.n && r.n !== "日本")));
+  const ib = (rows) => sumP(rows.filter(tdIb)), ibY = (rows) => sumY(rows.filter(tdIb));
   const iP = sumP(ytd) ? (ib(ytd) / sumP(ytd)) * 100 : 0, iPL = sumP(ytdL) ? (ib(ytdL) / sumP(ytdL)) * 100 : 0, dI = iP - iPL, pIb = tdPct(ib(ytdL), ib(ytd));
   const natD = (() => { const m = (rows) => { const x = new Map(); for (const r of rows) if (r.n && r.n !== "日本") x.set(r.n, (x.get(r.n) || 0) + r.p); return x; }; const a = m(ytd), b = m(ytdL); return [...new Set([...a.keys(), ...b.keys()])].map((k) => [k, (a.get(k) || 0) - (b.get(k) || 0)]).sort((p, q) => p[1] - q[1]); })();
   card({ id: "inbound", lv: pIb == null ? "flat" : tdLvl(pIb), title: "訪日（海外からの団体）",
-    big: `${Math.round(ib(ytd)).toLocaleString()}名`, sub: `前年 ${Math.round(ib(ytdL)).toLocaleString()}名（${tdPctTxt(pIb)}）・人数の割合 ${iPL.toFixed(0)}% → ${iP.toFixed(0)}%`,
+    big: `${Math.round(ib(ytd)).toLocaleString()}名`, cmp: { a: ib(ytdL), b: ib(ytd), fmt: (v) => Math.round(v).toLocaleString() + "名" }, sub: `前年 ${Math.round(ib(ytdL)).toLocaleString()}名（${tdPctTxt(pIb)}）・人数の割合 ${iPL.toFixed(0)}% → ${iP.toFixed(0)}%・売上の割合 ${sumY(ytdL) ? ((ibY(ytdL) / sumY(ytdL)) * 100).toFixed(0) : 0}% → ${sumY(ytd) ? ((ibY(ytd) / sumY(ytd)) * 100).toFixed(0) : 0}%`,
     text: `人数で見た訪日の割合は ${dI >= 0 ? "+" : ""}${dI.toFixed(1)}ポイント。${natD.length && natD[0][1] < 0 ? `減っている国：${natD.filter((x) => x[1] < 0).slice(0, 3).map(([k, v]) => `${k}（${Math.round(v).toLocaleString()}名）`).join("、")}。` : ""}${natD.length && natD[natD.length - 1][1] > 0 ? `増えている国：${natD.filter((x) => x[1] > 0).slice(-3).reverse().map(([k, v]) => `${k}（+${Math.round(v).toLocaleString()}名）`).join("、")}。` : ""}`,
     todo: pIb != null && pIb < 0 ? "訪日を扱う旅行会社に、多言語メニューや人気のコースを案内してください。減っている国に強い会社を優先しましょう。" : "増えている国に向けた案内（言語・食事の配慮）を整えておきましょう。" });
   /* 6. 例年売上が取れている月なのに、今年は取れていない月（終わった月） */
@@ -6469,33 +6542,35 @@ function viewTdHome() {
   const weak = [...Array(M - 1).keys()].filter((i) => base[i] && mY[i] < base[i] * 0.9);
   const weakStrong = weak.filter((i) => strong.includes(i));
   card({ id: "months", lv: weakStrong.length ? "bad" : weak.length ? "warn" : "good", title: "例年売上が取れている月",
-    big: weak.length ? `${weak.length}か月が例年より少ない` : "例年並み以上", sub: `例年＝${has2 ? "前年と前々年の平均" : "前年"}／例年いちばん売上の多い月：${strong.map((i) => i + 1 + "月").join("・")}`,
-    text: weak.length ? weak.map((i) => `${i + 1}月：例年 ${tdMan(base[i])} → 今年 ${tdMan(mY[i])}（${tdPctTxt(tdPct(base[i], mY[i]))}）${strong.includes(i) ? "【例年の稼ぎどき】" : ""}`).join("\n") : "終わった月は、例年と同じかそれ以上の売上です。",
+    big: weak.length ? `${weak.length}か月が例年より少ない` : "例年並み以上", months: { base, mY, weak, M }, sub: `例年＝${has2 ? "前年と前々年の平均" : "前年"}／例年いちばん売上の多い月：${strong.map((i) => i + 1 + "月").join("・")}`,
+    text: weak.length ? `少ない月：${weak.map((i) => i + 1 + "月" + (strong.includes(i) ? "★" : "")).join("・")}${weakStrong.length ? "（★は例年の稼ぎどき）" : ""}` : "終わった月は、例年と同じかそれ以上の売上です。",
     todo: weakStrong.length ? "例年の稼ぎどきの月で売上が落ちています。来年の同じ月に向けて、早めに旅行会社へ案内を始めてください。" : "下のグラフで、これからの月も例年並みに予約が入っているか確認してください。" });
   /* 7. 予約の入り方が直前になっていないか（30日以内の予約の割合） */
   const near = (rows) => { const x = rows.filter((r) => r.r); return x.length ? (x.filter((r) => (Date.parse(r.d) - Date.parse(r.r)) / 864e5 <= 30).length / x.length) * 100 : 0; };
   const nr = near(ytd), nrL = near(ytdL);
   card({ id: "lead", lv: nr - nrL >= 5 ? "warn" : "flat", title: "予約の入り方（直前の予約）",
-    big: `${nr.toFixed(0)}%`, sub: `利用日の30日前より後に入った予約の割合・前年 ${nrL.toFixed(0)}%`,
+    big: `${nr.toFixed(0)}%`, cmp: { a: nrL, b: nr, fmt: (v) => v.toFixed(0) + "%", max: 100 }, sub: `利用日の30日前より後に入った予約の割合・前年 ${nrL.toFixed(0)}%`,
     text: nr - nrL >= 5 ? "直前に入る予約が増えています。先の月の予約が少なく見えても、直前で埋まることがあります。" : "予約が入る時期は、前年と大きく変わっていません。",
     todo: nr - nrL >= 5 ? "直前の問い合わせにすぐ答えられるよう、空き状況を旅行会社へこまめに案内してください。" : "早めの予約を増やすため、先の月の空き状況を案内しましょう。" });
   /* 8. 特定の旅行会社への偏り（売上の何割を1社が占めるか） */
   const agY = new Map(); for (const r of ytd) if (r.ag) agY.set(r.ag, (agY.get(r.ag) || 0) + r.y);
   const topAg = [...agY.entries()].sort((a, b) => b[1] - a[1])[0], shTop = topAg && sumY(ytd) ? (topAg[1] / sumY(ytd)) * 100 : 0;
   if (topAg && shTop >= 30) card({ id: "depend", lv: shTop >= 40 ? "warn" : "flat", title: "1社への偏り",
-    big: `${shTop.toFixed(0)}%`, sub: `今年の売上のうち「${topAg[0]}」が占める割合`,
+    big: `${shTop.toFixed(0)}%`, cmp: { b: shTop, fmt: (v) => v.toFixed(0) + "%", max: 100, lb: "1社の割合" }, sub: `今年の売上のうち「${topAg[0]}」が占める割合`,
     text: "1社の割合が大きいと、その会社の動きで売上が大きく変わります。", todo: "2番手・3番手の旅行会社との取引を増やす案内を続けましょう。" });
   const order = { bad: 0, warn: 1, flat: 2, good: 3 };
   cards.sort((a, b) => order[a.lv] - order[b.lv]);
   const cardEl = (c) => h("div", { class: "td-card2 lv-" + c.lv + (tdView.open === c.id ? " on" : ""), id: "tdc-" + c.id, role: "button", tabindex: "0", "aria-expanded": tdView.open === c.id ? "true" : "false", title: "押すと、内訳とAIによる分析が出ます",
     onclick: (e) => { if (e.target.closest("a,button")) return; tdView.open = tdView.open === c.id ? "" : c.id; render(); requestAnimationFrame(() => { const d = $("#td-detail"); if (d) d.scrollIntoView({ behavior: "smooth", block: "start" }); }); },
     onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } } },
-    h("div", { class: "row", style: "gap:8px;align-items:center" }, tdBadge(c.lv), h("strong", { class: "td-c-t", text: c.title })),
-    h("div", { class: "td-c-big", text: c.big }), h("div", { class: "small muted", text: c.sub }),
+    h("div", { class: "td-c-h" }, tdBadge(c.lv), h("span", { class: "td-c-t", text: c.title, title: c.title })),
+    h("div", { class: "td-c-bigrow" }, h("span", { class: "td-c-big", text: c.big }), c.cmp && c.cmp.a != null ? tdDelta(c.cmp, c.lv) : null),
+    h("div", { class: "td-c-sub", text: c.sub, title: c.sub }),
+    c.months ? tdMiniMonths(c.months) : c.cmp ? tdMini(c.cmp) : null,
     h("div", { class: "td-c-txt", text: c.text }),
-    c.list && c.list.length ? h("ul", { class: "td-c-list" }, ...c.list.map((x) => h("li", { text: x }))) : null,
-    h("div", { class: "td-c-todo" }, h("span", { class: "td-c-todo-h", text: "やること" }), h("span", { text: c.todo })),
-    h("div", { class: "td-c-more", text: tdView.open === c.id ? "▲ 詳しく見るを閉じる" : "詳しく見る（内訳とAIの分析） ›" }));
+    c.list && c.list.length ? h("ul", { class: "td-c-list" }, ...c.list.map((x) => h("li", { text: x, title: x }))) : null,
+    h("div", { class: "td-c-todo" }, h("span", { class: "td-c-todo-h", text: "やること" }), h("span", { class: "td-c-todo-t", text: c.todo })),
+    h("div", { class: "td-c-more", text: tdView.open === c.id ? "▲ 閉じる" : "詳しく見る ›" }));
   const nBad = cards.filter((c) => c.lv === "bad").length, nWarn = cards.filter((c) => c.lv === "warn").length;
   /* これからの月の予約状況（基準日時点で入っている予約と、前年の同じ日の予約） */
   const ahead = [...Array(6).keys()].filter((k) => { const mm = ((M - 1 + k) % 12) + 1, yy = Y + Math.floor((M - 1 + k) / 12); return `${yy}-${String(mm).padStart(2, "0")}` <= Hd.slice(0, 7); }).map((k) => { const mm = ((M - 1 + k) % 12) + 1, yy = Y + Math.floor((M - 1 + k) / 12), key = `${yy}-${String(mm).padStart(2, "0")}`, keyL = `${yy - 1}-${String(mm).padStart(2, "0")}`;
@@ -6563,7 +6638,7 @@ function tdDetailTable(title, rows, note) {
   if (!rows || !rows.length) return null;
   const cols = Object.keys(rows[0]), money = (c) => /売上|1人あたり|差/.test(c) && !/割合/.test(c);
   const fmt = (c, v) => (typeof v !== "number" ? v : money(c) ? (Math.abs(v) >= 1e4 ? (v / 1e4).toLocaleString(undefined, { maximumFractionDigits: 0 }) + "万円" : (v < 0 ? "-¥" : "¥") + Math.abs(v).toLocaleString()) : /割合/.test(c) ? v.toFixed(1) + "%" : v.toLocaleString());
-  return h("div", { class: "td-dt" }, h("div", { class: "td-dt-t", text: title }), note ? h("div", { class: "small muted", text: note }) : null,
+  return h("div", { class: "td-dt" }, title ? h("div", { class: "td-dt-t", text: title }) : null, note ? h("div", { class: "small muted", text: note }) : null,
     h("div", { class: "scroll" }, h("table", { class: "td-tbl" }, h("thead", {}, h("tr", {}, ...cols.map((c) => h("th", { class: typeof rows[0][c] === "number" ? "num" : "", text: c })))),
       h("tbody", {}, ...rows.map((r) => h("tr", {}, ...cols.map((c) => h("td", { class: typeof r[c] === "number" ? "num" : "lab", text: fmt(c, r[c]) }))))))));
 }
@@ -6572,10 +6647,11 @@ function tdDetailData(id, X) {
   const { ytd, ytdL, book, bookL, all, Y, asOf, ly, Hd } = X, sumY = (rows) => rows.reduce((s, r) => s + r.y, 0), sumP = (rows) => rows.reduce((s, r) => s + r.p, 0);
   const T = [], F = {};
   if (id === "unit") {
-    const hasSplit = ytd.some((r) => r.yc != null) && ytdL.some((r) => r.yc != null);
+    const hasSplit = ytd.some((r) => r.v === 2) && ytdL.some((r) => r.v === 2);
     const per = (rows, k) => { const p = sumP(rows); return p ? Math.round(rows.reduce((s, r) => s + (r[k] || 0), 0) / p) : 0; };
-    if (hasSplit) { F.コースと追加の1人あたり = { 前年: { コース: per(ytdL, "yc"), 追加: per(ytdL, "yx") }, 今年: { コース: per(ytd, "yc"), 追加: per(ytd, "yx") } }; T.push({ title: "1人あたりの売上の内訳（コース・追加）", rows: [{ 区分: "コース", 前年の1人あたり: per(ytdL, "yc"), 今年の1人あたり: per(ytd, "yc"), 差: per(ytd, "yc") - per(ytdL, "yc") }, { 区分: "追加（コース以外）", 前年の1人あたり: per(ytdL, "yx"), 今年の1人あたり: per(ytd, "yx"), 差: per(ytd, "yx") - per(ytdL, "yx") }] }); }
-    else F.注意 = "コースと追加の売上の内訳はまだ保存されていない（Excelの取り込み直しが必要）";
+    if (hasSplit) { F.コースと追加の1人あたり = { 前年: { コース: per(ytdL, "yc"), 追加: per(ytdL, "yx") }, 今年: { コース: per(ytd, "yc"), 追加: per(ytd, "yx") } }; const oth = (rows) => { const p = sumP(rows); return p ? Math.round(rows.reduce((s, r) => s + r.y - (r.yc || 0) - (r.yx || 0), 0) / p) : 0; };
+      F.コースと追加の1人あたり.前年.その他 = oth(ytdL); F.コースと追加の1人あたり.今年.その他 = oth(ytd);
+      T.push({ title: "1人あたりの売上の内訳", rows: [{ 区分: "コース（メイン・アレンジ）", 前年の1人あたり: per(ytdL, "yc"), 今年の1人あたり: per(ytd, "yc"), 差: per(ytd, "yc") - per(ytdL, "yc") }, { 区分: "当日追加", 前年の1人あたり: per(ytdL, "yx"), 今年の1人あたり: per(ytd, "yx"), 差: per(ytd, "yx") - per(ytdL, "yx") }, { 区分: "その他（飲み放題・サブコース・添乗員など）", 前年の1人あたり: oth(ytdL), 今年の1人あたり: oth(ytd), 差: oth(ytd) - oth(ytdL) }] }); }
     for (const [k, f] of [["時間帯", tdTimeOf], ["団体の種類", tdType], ["団体の規模", tdSizeOf]]) { const m = tdMix(ytdL, ytd, f); if (m) { F[k + "で分けた単価の差"] = m; T.push({ title: `${k}ごとの割合と1人あたり（構成の変化 ${m.割合が変わったことによる差 >= 0 ? "+" : ""}¥${m.割合が変わったことによる差.toLocaleString()}／単価そのもの ${m.単価そのものの変化による差 >= 0 ? "+" : ""}¥${m.単価そのものの変化による差.toLocaleString()}）`, rows: m.内訳 }); } }
     const co = (rows) => tdGrp(rows.filter((r) => r.co && !/未定/.test(r.co)), (r) => r.co), ca = co(ytdL), cb = co(ytd);
     const cr = [...cb.entries()].sort((a, b) => b[1].p - a[1].p).slice(0, 10).map(([k, z]) => { const x = ca.get(k); return { コース: k, 前年の人数: x ? x.p : 0, 今年の人数: z.p, 前年の1人あたり: x && x.p ? Math.round(x.y / x.p) : 0, 今年の1人あたり: z.p ? Math.round(z.y / z.p) : 0 }; });
@@ -6599,7 +6675,7 @@ function tdDetailData(id, X) {
     const bigAg = tdCmp(ytdL.filter((r) => r.p >= 30), ytd.filter((r) => r.p >= 30), (r) => r.ag, 12); F["30名以上の団体の旅行会社ごとの差"] = bigAg; T.push({ title: "30名以上の団体：差の大きい旅行会社", rows: bigAg });
     const bigTy = tdCmp(ytdL.filter((r) => r.p >= 30), ytd.filter((r) => r.p >= 30), tdType); F["30名以上の団体の種類ごとの差"] = bigTy; T.push({ title: "30名以上の団体：団体の種類ごと", rows: bigTy });
   } else if (id === "inbound") {
-    const ib = (r) => r.k === "インバウンド" || (r.n && r.n !== "日本"), a = ytdL.filter(ib), b = ytd.filter(ib);
+    const ib = tdIb, a = ytdL.filter(ib), b = ytd.filter(ib);
     F.国ごと = tdCmp(a, b, (r) => r.n || "国籍なし", 15); T.push({ title: "国ごとの比較（差の大きい順）", rows: F.国ごと });
     F.訪日の旅行会社ごと = tdCmp(a, b, (r) => r.ag, 12); T.push({ title: "訪日：差の大きい旅行会社", rows: F.訪日の旅行会社ごと });
     F.国内と訪日 = tdCmp(ytdL, ytd, (r) => (ib(r) ? "訪日" : "国内")); T.push({ title: "国内と訪日", rows: F.国内と訪日 });
@@ -6619,17 +6695,44 @@ function tdDetailData(id, X) {
   }
   return { tables: T, facts: F };
 }
+/** 内訳を「前年と今年の横棒＋増減」で見せる。元の表は「表で見る」で開ける。 */
+function tdDetailViz(t) {
+  const rows = t.rows; if (!rows || !rows.length) return null;
+  const ks = Object.keys(rows[0]), num = (k) => typeof rows[0][k] === "number";
+  const P = [["前年の売上", "今年の売上"], ["前の1年の売上", "直近1年の売上"], ["前年の1人あたり", "今年の1人あたり"], ["例年", "今年"], ["前年", "今年"], ["前年の人数", "今年の人数"], ["前年の件数", "今年の件数"]].find(([a, b]) => ks.includes(a) && ks.includes(b) && num(a) && num(b));
+  const table = tdDetailTable("", rows);
+  if (!P) return h("div", { class: "td-dt" }, h("div", { class: "td-dt-t", text: t.title }), table);
+  const [ka, kb] = P, lab = ks.find((k) => !num(k)) || ks[0], pctT = /%|割合/.test(t.title) && !/売上|1人あたり/.test(ka);
+  const fmt = (v) => (pctT ? v.toFixed(1) + "%" : /売上|1人あたり|例年/.test(ka) ? tdMan(v) : Math.round(v).toLocaleString() + (/人数/.test(ka) ? "名" : /件数/.test(ka) ? "件" : ""));
+  const show = rows.slice(0, 10), mx = Math.max(1, ...show.flatMap((r) => [r[ka], r[kb]]));
+  const nameA = ka.replace(/の(売上|1人あたり|人数|件数)$/, ""), nameB = kb.replace(/の(売上|1人あたり|人数|件数)$/, "");
+  const unit = ka.match(/(売上|1人あたり|人数|件数)$/);
+  return h("div", { class: "td-dt td-viz" },
+    h("div", { class: "td-dt-t", text: t.title }),
+    h("div", { class: "td-viz-leg" }, unit ? h("span", { class: "muted", text: unit[1] + "：" }) : null, h("span", {}, h("i", { style: "background:var(--td-y1)" }), nameA), h("span", {}, h("i", { style: "background:var(--td-y0)" }), nameB)),
+    ...show.map((r) => { const a = r[ka] || 0, b = r[kb] || 0, d = b - a;
+      return h("div", { class: "td-viz-r" }, h("div", { class: "td-viz-l", text: String(r[lab]), title: String(r[lab]) }),
+        h("div", { class: "td-viz-bars" },
+          h("div", { class: "td-viz-b" }, h("span", { class: "tr" }, h("i", { style: `width:${((a / mx) * 100).toFixed(1)}%;background:var(--td-y1)` })), h("span", { text: fmt(a) })),
+          h("div", { class: "td-viz-b" }, h("span", { class: "tr" }, h("i", { style: `width:${((b / mx) * 100).toFixed(1)}%;background:var(--td-y0)` })), h("span", { text: fmt(b) }))),
+        h("span", { class: "td-viz-d " + (d > 0 ? "up" : d < 0 ? "dn" : ""), text: d === 0 ? "―" : `${d > 0 ? "▲ +" : "▼ "}${pctT ? d.toFixed(1) + "pt" : fmt(d).replace(/^-/, "−")}` })); }),
+    rows.length > show.length ? h("div", { class: "small muted", text: `ほか ${rows.length - show.length}件は「表で見る」にあります。` }) : null,
+    h("details", { class: "td-viz-tbl" }, h("summary", { text: "表で見る" }), table));
+}
 /** 詳細の欄。AIの分析は、まだなら頼み、終わったらこの欄だけを書き換える。 */
 function tdDetailEl(c, X) {
   const { tables, facts } = tdDetailData(c.id, X);
   const key = [c.id, X.asOf, tdView.corps.join(","), tdView.store].join("|");
   const box = h("div", { class: "td-ai2", id: "td-ai2" });
   const showAi = (res) => {
-    if (!res) return box.replaceChildren(h("div", { class: "small muted", text: "AIが分析しています…（10〜30秒ほどかかります）" }));
+    if (!res) return box.replaceChildren(h("div", { class: "td-ai-wait" }, h("span", { class: "td-spin" }), h("span", { text: "AIが分析しています…（10〜30秒ほどかかります）" })));
     if (res.error) return box.replaceChildren(h("div", { class: "small", style: "color:var(--bad)", text: res.error }), retry());
-    const sec = (t, list) => (list && list.length ? h("div", { class: "td-ai-sec" }, h("div", { class: "td-ai-h", text: t }), h("ul", {}, ...list.map((x) => h("li", { text: String(x) })))) : null);
-    box.replaceChildren(h("div", { class: "td-ai-sum", text: res.summary || "" }), sec("原因（数字から言えること）", res.causes), sec("考えられること（推測）", res.hypotheses), sec("やること", res.actions),
-      h("div", { class: "row small muted", style: "gap:8px;margin-top:6px" }, h("span", { text: "AIによる分析です。数字は下の表で確認してください。" }), retry("分析し直す")));
+    const sec = (t, sub, list, cls) => (list && list.length ? h("div", { class: "td-ai-box " + cls }, h("div", { class: "td-ai-h" }, h("span", { text: t }), h("span", { class: "td-ai-hs", text: sub })),
+      h("ol", {}, ...list.map((x) => h("li", {}, ...tdRich(x))))) : null);
+    box.replaceChildren(
+      h("div", { class: "td-ai-sum" }, h("span", { class: "td-ai-tag", text: "ひとことで" }), h("div", {}, ...tdRich(res.summary || ""))),
+      h("div", { class: "td-ai-cols" }, sec("何が起きているか", "数字から言えること", res.causes, "c1"), sec("考えられる理由", "推測", res.hypotheses, "c2"), sec("やること", "明日からできること", res.actions, "c3")),
+      h("div", { class: "row small muted", style: "gap:8px;margin-top:8px" }, h("span", { text: "AIによる分析です。数字は下のグラフ・表で確認してください。" }), retry("分析し直す")));
   };
   const retry = (label = "もう一度試す") => h("button", { type: "button", class: "btn sm", id: "td-ai2-re", text: label, onclick: () => { tdAiCache.delete(key); run(); } });
   const run = async () => {
@@ -6638,11 +6741,11 @@ function tdDetailEl(c, X) {
     const ctx = { 会社: "株式会社HASSIN 観光事業部（旅行会社から団体の飲食予約を受ける。予約はトラベルダインで管理）", 基準日: X.asOf, 比べる相手: `前年の同じ日（${X.ly}）`, 絞り込み: { 飲食法人: tdView.corps.length ? tdView.corps : "すべて", 店舗: tdView.store || "すべて" }, データの範囲: `利用日 ${X.Hd} まで`, カード: { 項目: c.title, 数字: c.big, 比較: c.sub, 説明: c.text } };
     const prompt = `あなたは飲食店の団体予約（旅行会社経由）の売上分析を担当しています。読み手は分析に慣れていない一般スタッフです。目的は売上を伸ばすことです。
 次の集計（金額は円、割合は%）をもとに、このカードの項目について「何が起きているか」「なぜか」を分析してください。
-・数字の根拠を必ず添える（例：ランチの割合が69%→82%）。データにないことは書かない。
+・数字の根拠を必ず添える（例：ランチの割合が69%→82%）。金額は「万円」で丸めて書く（例：38万円）。データにないことは書かない。
 ・原因は、集計から言えることだけを書く。推測は「考えられること」に分けて書く。
 ・やることは、スタッフが明日から行える具体的な行動にする（誰に・何を）。
-・やさしい言葉で、1項目は1〜2文。専門用語は使わない。
-JSONだけで {"summary":"一言でいうと（2文以内）","causes":["…"],"hypotheses":["…"],"actions":["…"]} の形で返してください（各3〜5項目）。
+・やさしい言葉で、1項目は1文・60字以内を目安に短く。専門用語は使わない。
+JSONだけで {"summary":"一言でいうと（1〜2文・80字以内）","causes":["…"],"hypotheses":["…"],"actions":["…"]} の形で返してください（各3〜4項目）。
 前提：${JSON.stringify(ctx)}
 集計：${JSON.stringify(facts)}`;
     try {
@@ -6653,8 +6756,12 @@ JSONだけで {"summary":"一言でいうと（2文以内）","causes":["…"],"
   };
   if (tdAiCache.has(key)) showAi(tdAiCache.get(key)); else queueMicrotask(run);
   return h("div", { class: "panel td-detail", id: "td-detail" },
-    h("div", { class: "row", style: "gap:8px" }, tdBadge(c.lv), h("h3", { text: `${c.title}：詳しく見る` }), h("span", { style: "margin-left:auto" }), h("button", { type: "button", class: "btn sm", id: "td-detail-close", text: "閉じる", onclick: () => { tdView.open = ""; render(); } })),
-    box, h("div", { class: "td-dts" }, ...tables.map((t) => tdDetailTable(t.title, t.rows, t.note)).filter(Boolean)));
+    h("div", { class: "td-det-h" }, tdBadge(c.lv), h("h3", { text: `${c.title}` }), h("span", { style: "margin-left:auto" }), h("button", { type: "button", class: "btn sm", id: "td-detail-close", text: "閉じる", onclick: () => { tdView.open = ""; render(); } })),
+    h("div", { class: "td-det-kpi" }, h("div", {}, h("div", { class: "td-c-bigrow" }, h("span", { class: "td-c-big", text: c.big }), c.cmp && c.cmp.a != null ? tdDelta(c.cmp, c.lv) : null), h("div", { class: "td-c-sub", text: c.sub })),
+      c.months ? tdMiniMonths(c.months) : c.cmp ? tdMini(c.cmp) : null),
+    box,
+    h("div", { class: "td-dt-head", text: "数字の内訳（オレンジ＝前年、青＝今年）" }),
+    h("div", { class: "td-dts" }, ...tables.map((t) => tdDetailViz(t)).filter(Boolean)));
 }
 
 /* ---------- 起動 ---------- */
