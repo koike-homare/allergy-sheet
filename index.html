@@ -410,6 +410,15 @@ table.pj th:nth-child(1),table.pj th:nth-child(2){min-width:230px} table.pj th:n
   --td-h1:#e6f0fc;--td-h2:#cde2fb;--td-h3:#9ec5f4;--td-h4:#5598e7;--td-h5:#1c5cab;--td-h4i:#fff;--td-grid:#e1e0d9;--td-axis:#c3c2b7}
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){--td-b:#3987e5;--td-a:#d95926;--td-y0:#3987e5;--td-y1:#d95926;--td-y2:#199e70;--td-h1:#16263b;--td-h2:#184f95;--td-h3:#256abf;--td-h4:#5598e7;--td-h5:#9ec5f4;--td-h4i:#0b0b0b;--td-grid:#2c2c2a;--td-axis:#383835;--td-o1:#cde2fb;--td-o2:#86b6ef;--td-o3:#3987e5;--td-o4:#184f95;--td-p1:#cde2fb;--td-p2:#9ec5f4;--td-p3:#5598e7;--td-p4:#2a78d6;--td-p5:#184f95} }
 :root[data-theme="dark"]{--td-b:#3987e5;--td-a:#d95926;--td-y0:#3987e5;--td-y1:#d95926;--td-y2:#199e70;--td-h1:#16263b;--td-h2:#184f95;--td-h3:#256abf;--td-h4:#5598e7;--td-h5:#9ec5f4;--td-h4i:#0b0b0b;--td-grid:#2c2c2a;--td-axis:#383835;--td-o1:#cde2fb;--td-o2:#86b6ef;--td-o3:#3987e5;--td-o4:#184f95;--td-p1:#cde2fb;--td-p2:#9ec5f4;--td-p3:#5598e7;--td-p4:#2a78d6;--td-p5:#184f95}
+.td-pick{position:relative}
+.td-pick-btn{display:inline-flex;align-items:center;gap:8px;min-width:220px;max-width:300px;height:32px;padding:0 10px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);color:var(--ink);font:inherit;font-size:13px;cursor:pointer;text-align:left}
+.td-pick-btn:hover,.td-pick-btn[aria-expanded="true"]{border-color:var(--accent)}
+.td-pick-txt{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .td-pick-caret{color:var(--muted);font-size:11px}
+.td-pick-pop{position:absolute;z-index:50;top:calc(100% + 4px);left:0;width:340px;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:10px}
+.td-pick-pop input[type=search]{width:100%;height:32px}
+.td-pick-list{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:2px}
+.td-pick-item{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;cursor:pointer;font-size:13px}
+.td-pick-item:hover{background:var(--sunken)} .td-pick-item input{width:auto;margin:0} .td-pick-item .nm{flex:1;overflow-wrap:anywhere}
 .td-sms{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:8px 16px}
 .td-sm-t{font-size:12.5px;font-weight:700;margin-bottom:2px}
 .td-svg{width:100%;height:auto;display:block;overflow:visible}
@@ -602,7 +611,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 169</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 170</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -5907,18 +5916,61 @@ ${text}
    管理画面から出力した Excel（予約一覧）を取り込み、利用月ごとに tdstats/YYYY-MM として持つ。
    氏名・連絡先・コメントなどは持たない（分析に使う項目だけ）。同じ予約ID は新しい内容で置き換える。 */
 const TD_COLS = { id: "ID", date: "予約日付", start: "予約開始時間", status: "ステータス名", kubun: "区分", nat: "国籍", total: "合計人数", adult: "大人", child: "小人", store: "店舗名", corp: "飲食法人名", agency: "旅行会社名", ptype: "商品区分", course: "コース名称", pay: "支払い方法", sum: "コース合計", osum: "コース以外合計", reg: "登録日時", req: "リクエスト日時" };
-let tdView = { bFrom: "", bTo: "", aFrom: "", aTo: "", cancel: false, corp: "", store: "", unit: "n", ai: "" };
+let tdView = { bFrom: "", bTo: "", aFrom: "", aTo: "", cancel: false, corps: [], store: "", unit: "n", ai: "" };
 /** 飲食法人・店舗の絞り込み（店舗の候補は、選んだ飲食法人の店舗だけにする）。 */
-const tdPass = (r) => (!tdView.corp || r.ho === tdView.corp) && (!tdView.store || r.st === tdView.store);
+const tdPass = (r) => (!tdView.corps.length || tdView.corps.includes(r.ho)) && (!tdView.store || r.st === tdView.store);
+const tdCorpLabel = () => (!tdView.corps.length ? "すべての飲食法人" : tdView.corps.length === 1 ? tdView.corps[0] : `${tdView.corps.length}社を選択中`);
+/** 飲食法人の選び方：検索できる・複数選べる一覧（チェックボックス）。一覧を閉じたときに絞り込みに反映する。 */
+function tdCorpPicker(idp, corps, counts, re) {
+  let pick = new Set(tdView.corps), open = false, q = "";
+  const btn = h("button", { type: "button", class: "td-pick-btn", id: idp + "-corp", "aria-haspopup": "true", "aria-expanded": "false", title: tdView.corps.join("\n") || "すべての飲食法人" }, h("span", { class: "td-pick-txt", text: tdCorpLabel() }), h("span", { class: "td-pick-caret", text: "▾" }));
+  const search = h("input", { type: "search", id: idp + "-corp-q", placeholder: "法人名で検索", autocomplete: "off", "aria-label": "飲食法人を検索" });
+  const list = h("div", { class: "td-pick-list", role: "group", "aria-label": "飲食法人" }), info = h("span", { class: "small muted" });
+  const pop = h("div", { class: "td-pick-pop", id: idp + "-corp-pop", hidden: true });
+  const drawList = () => {
+    const nq = norm(q), shown = corps.filter((c) => !nq || norm(c).includes(nq));
+    list.replaceChildren(...(shown.length ? shown.map((c) => h("label", { class: "td-pick-item" },
+      h("input", { type: "checkbox", checked: pick.has(c), onchange: (e) => { if (e.target.checked) pick.add(c); else pick.delete(c); info.textContent = pick.size ? `${pick.size}社を選択` : "未選択＝すべて"; } }),
+      h("span", { class: "nm", text: c }), h("span", { class: "small muted", text: (counts.get(c) || 0).toLocaleString() + "件" }))) : [h("div", { class: "small muted", style: "padding:6px", text: "見つかりません" })]));
+    info.textContent = pick.size ? `${pick.size}社を選択` : "未選択＝すべて";
+    return shown;
+  };
+  const close = (apply) => {
+    if (!open) return; open = false; pop.hidden = true; btn.setAttribute("aria-expanded", "false");
+    document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", esc, true);
+    const next = corps.filter((c) => pick.has(c));
+    if (apply && next.join("\n") !== tdView.corps.join("\n")) {
+      tdView.corps = next;
+      if (tdView.store && next.length && !tdStoreOf(next).has(tdView.store)) tdView.store = "";
+      re();
+    }
+  };
+  const outside = (e) => { if (!wrap.contains(e.target)) close(true); }, esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(true); btn.focus(); } };
+  btn.onclick = () => { if (open) return close(true); open = true; pick = new Set(tdView.corps); q = ""; search.value = ""; drawList(); pop.hidden = false; btn.setAttribute("aria-expanded", "true"); setTimeout(() => { document.addEventListener("pointerdown", outside, true); document.addEventListener("keydown", esc, true); search.focus(); }); };
+  search.oninput = () => { q = search.value; drawList(); };
+  pop.append(search,
+    h("div", { class: "row", style: "gap:6px;margin:6px 0" },
+      h("button", { type: "button", class: "btn sm", id: idp + "-corp-all", text: "表示中をすべて選ぶ", onclick: () => { const nq = norm(q); for (const c of corps) if (!nq || norm(c).includes(nq)) pick.add(c); drawList(); } }),
+      h("button", { type: "button", class: "btn sm", id: idp + "-corp-none", text: "選択を解除", onclick: () => { pick.clear(); drawList(); } }), h("span", { style: "margin-left:auto" }), info),
+    list,
+    h("div", { class: "row", style: "margin-top:8px" }, h("span", { style: "margin-left:auto" }), h("button", { type: "button", class: "btn sm primary", id: idp + "-corp-ok", text: "絞り込む", onclick: () => close(true) })));
+  const wrap = h("div", { class: "td-pick" }, btn, pop);
+  return wrap;
+}
+/** 選んだ飲食法人の店舗。 */
+function tdStoreOf(corps) { const set = new Set(); for (const d of S.td.values()) for (const r of d.rows || []) if (!corps.length || corps.includes(r.ho)) if (r.st) set.add(r.st); return set; }
 function tdFilterEls(idp, re) {
   const rows = [...S.td.values()].flatMap((d) => d.rows || []), ja = (a, b) => a.localeCompare(b, "ja");
-  const corps = [...new Set(rows.map((r) => r.ho).filter(Boolean))].sort(ja);
-  const stores = [...new Set(rows.filter((r) => !tdView.corp || r.ho === tdView.corp).map((r) => r.st).filter(Boolean))].sort(ja);
+  const counts = new Map(); for (const r of rows) if (r.ho) counts.set(r.ho, (counts.get(r.ho) || 0) + 1);
+  const corps = [...counts.keys()].sort(ja);
+  tdView.corps = tdView.corps.filter((c) => counts.has(c));
+  const stores = [...tdStoreOf(tdView.corps)].sort(ja);
   const noCorp = rows.length && rows.some((r) => r.ho === undefined);
-  return [h("label", { class: "row small", style: "gap:6px" }, "飲食法人", sel([["", "すべての飲食法人"], ...corps.map((x) => [x, x])], tdView.corp, (v) => { tdView.corp = v; if (v && tdView.store && !rows.some((r) => r.ho === v && r.st === tdView.store)) tdView.store = ""; re(); }, { id: idp + "-corp", style: "max-width:280px" })),
-    h("label", { class: "row small", style: "gap:6px" }, "店舗", sel([["", tdView.corp ? "この法人のすべての店舗" : "すべての店舗"], ...stores.map((x) => [x, x])], tdView.store, (v) => { tdView.store = v; re(); }, { id: idp + "-store", style: "max-width:320px" })),
+  return [h("div", { class: "row small", style: "gap:6px" }, h("span", { text: "飲食法人" }), tdCorpPicker(idp, corps, counts, re)),
+    h("label", { class: "row small", style: "gap:6px" }, "店舗", sel([["", tdView.corps.length ? "選んだ法人のすべての店舗" : "すべての店舗"], ...stores.map((x) => [x, x])], tdView.store, (v) => { tdView.store = v; re(); }, { id: idp + "-store", style: "max-width:320px" })),
     noCorp ? h("span", { class: "small", style: "color:var(--warn)", text: "飲食法人の項目がない予約があります。同じExcelをもう一度取り込むと、飲食法人で絞り込めるようになります。" }) : null];
 }
+
 const tdIsCancel = (r) => /キャンセル|取り下げ|お断り/.test(r.s || "");
 function tdDate(v) {
   if (v == null || v === "") return "";
@@ -6104,7 +6156,7 @@ function viewTd() {
       : h("ul", { class: "td-list" }, ...big.map((x) => h("li", {}, h("strong", { text: `${x.t}：「${x.k}」` }), ` ${x.sa.toFixed(1)}% → ${x.sb.toFixed(1)}%（${x.d >= 0 ? "+" : ""}${x.d.toFixed(1)}pt）`))),
     hasA && sample ? h("div", { class: "row", style: "gap:8px;margin-top:6px" }, h("button", { type: "button", class: "btn sm", id: "td-ai", text: "AIに変化をまとめてもらう", onclick: async (e) => {
       e.target.disabled = true; const box = $("#td-ai-out"); box.hidden = false; box.textContent = "まとめています…";
-      const data = { 対象期間: `${tdView.bFrom}〜${tdView.bTo}`, 比較期間: `${tdView.aFrom}〜${tdView.aTo}`, 飲食法人: tdView.corp || "すべて", 店舗: tdView.store || "すべて", 単位: u, 数字: { 比較: sa, 対象: sb }, 表: tables.map((t) => ({ 項目: t.dim.title, 行: t.rows.map((r) => [r.k, r.a, +r.sa.toFixed(1), r.b, +r.sb.toFixed(1)]) })) };
+      const data = { 対象期間: `${tdView.bFrom}〜${tdView.bTo}`, 比較期間: `${tdView.aFrom}〜${tdView.aTo}`, 飲食法人: tdView.corps.length ? tdView.corps.join("、") : "すべて", 店舗: tdView.store || "すべて", 単位: u, 数字: { 比較: sa, 対象: sb }, 表: tables.map((t) => ({ 項目: t.dim.title, 行: t.rows.map((r) => [r.k, r.a, +r.sa.toFixed(1), r.b, +r.sb.toFixed(1)]) })) };
       try {
         const res = await sample.json(`あなたは飲食店の団体予約の分析担当です。次の集計（行は [項目, 比較期間の${u}, 比較期間の割合%, 対象期間の${u}, 対象期間の割合%]）から、比較期間に比べて対象期間でどのような変化が起きているかを、日本語で、やさしい言葉で、5〜8項目の箇条書きにしてください。数字の根拠を必ず添え、データから言えることと推測を分け、推測には「（推測）」と付けてください。件数が少ない項目の割合の変化は大きく見えやすいので注意してください。JSONで {"points":["…","…"]} の形で返してください。\n集計：${JSON.stringify(data)}`);
         tdView.ai = (res && Array.isArray(res.points) ? res.points : []).map(String).join("\n"); box.replaceChildren(h("ul", { class: "td-list" }, ...tdView.ai.split("\n").filter(Boolean).map((x) => h("li", { text: x }))));
