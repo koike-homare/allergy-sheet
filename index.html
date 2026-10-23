@@ -419,6 +419,26 @@ table.pj th:nth-child(1),table.pj th:nth-child(2){min-width:230px} table.pj th:n
 .td-pick-list{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:2px}
 .td-pick-item{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;cursor:pointer;font-size:13px}
 .td-pick-item:hover{background:var(--sunken)} .td-pick-item input{width:auto;margin:0} .td-pick-item .nm{flex:1;overflow-wrap:anywhere}
+.td-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;align-items:start}
+.td-card2{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--line);border-radius:var(--r);padding:12px 14px;display:flex;flex-direction:column;gap:5px}
+.td-card2.lv-bad{border-left-color:var(--bad)} .td-card2.lv-warn{border-left-color:var(--warn)} .td-card2.lv-good{border-left-color:var(--ok)}
+.td-c-t{font-size:14px} .td-c-big{font-size:24px;font-weight:700;line-height:1.2} .td-c-txt{font-size:13px;white-space:pre-line}
+.td-c-list{margin:0;padding-left:18px;font-size:12.5px;display:flex;flex-direction:column;gap:2px}
+.td-c-todo{margin-top:auto;padding:7px 10px;background:var(--accent-soft);border-radius:6px;font-size:12.5px;display:flex;gap:8px;align-items:flex-start}
+.td-c-todo-h{flex:none;font-weight:700;color:var(--accent)}
+.td-card2{cursor:pointer;transition:box-shadow .15s} .td-card2:hover{box-shadow:0 2px 10px rgba(0,0,0,.08)} .td-card2.on{outline:2px solid var(--accent);outline-offset:1px}
+.td-card2:focus-visible{outline:2px solid var(--accent)}
+.td-c-more{font-size:12px;color:var(--accent);font-weight:700;text-align:right}
+.td-detail{display:flex;flex-direction:column;gap:12px;border-top:3px solid var(--accent)}
+.td-ai2{background:var(--accent-soft);border-radius:8px;padding:12px 14px;font-size:13.5px}
+.td-ai-sum{font-size:15px;font-weight:700;margin-bottom:6px}
+.td-ai-sec{margin-top:8px} .td-ai-h{font-weight:700;color:var(--accent);font-size:13px} .td-ai-sec ul{margin:2px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:3px}
+.td-dts{display:grid;grid-template-columns:repeat(auto-fit,minmax(460px,1fr));gap:14px}
+.td-dt-t{font-weight:700;font-size:13px;margin-bottom:4px}
+.td-badge{font-weight:700;white-space:nowrap}
+.td-head2{display:flex;flex-direction:column;gap:4px}
+.td-weak{font-size:10px;fill:var(--bad);font-weight:700}
+.td-ahead td .pill{font-size:11px}
 .td-sms{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:8px 16px}
 .td-sm-t{font-size:12.5px;font-weight:700;margin-bottom:2px}
 .td-svg{width:100%;height:auto;display:block;overflow:visible}
@@ -611,7 +631,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 170</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 172</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -5993,7 +6013,7 @@ function tdParse(rows) {
     const id = String(x[TD_COLS.id] == null ? "" : x[TD_COLS.id]).trim(), d = tdDate(x[TD_COLS.date]); if (!id || !d) continue;
     let r = byId.get(id);
     if (!r) { r = { i: id, d, t: tdTime(x[TD_COLS.start]), s: String(x[TD_COLS.status] || ""), k: String(x[TD_COLS.kubun] || ""), n: String(x[TD_COLS.nat] || ""), p: tdNum(x[TD_COLS.total]), a: tdNum(x[TD_COLS.adult]), c: tdNum(x[TD_COLS.child]), st: String(x[TD_COLS.store] || ""), ho: String(x[TD_COLS.corp] || ""), ag: String(x[TD_COLS.agency] || ""), co: "", py: String(x[TD_COLS.pay] || ""), y: 0, r: tdDate(x[TD_COLS.reg]) || tdDate(x[TD_COLS.req]) }; byId.set(id, r); }
-    r.y += tdNum(x[TD_COLS.sum]) + tdNum(x[TD_COLS.osum]);
+    const yc = tdNum(x[TD_COLS.sum]), yx = tdNum(x[TD_COLS.osum]); r.y += yc + yx; r.yc = (r.yc || 0) + yc; r.yx = (r.yx || 0) + yx; // コースと追加（コース以外）を分けても持つ
     if (!r.co && /メイン|アレンジ/.test(String(x[TD_COLS.ptype] || ""))) r.co = String(x[TD_COLS.course] || "");
   }
   return [...byId.values()];
@@ -6173,7 +6193,10 @@ function viewTd() {
       readOnly ? null : h("button", { type: "button", class: "x", style: "font-size:12px;padding:0 2px", title: `${tdLabel(m)}のデータを削除`, "aria-label": `${tdLabel(m)}のデータを削除`, text: "×", onclick: async (e) => { if (e.currentTarget.dataset.armed !== "1") { e.currentTarget.dataset.armed = "1"; e.currentTarget.textContent = "削除する"; return; } S.td.delete(m); try { if (db && !localOnly) await db.doc("tdstats/" + m).delete(); } catch (_) {} tdView.bFrom = ""; render(); } })))));
   const more = h("details", { class: "td-more", id: "td-more", open: !!tdView.more, ontoggle: (e) => { tdView.more = e.target.open; } }, h("summary", { text: "期間を指定して詳しく比べる（区分・国籍・時間帯・予約の早さ・コース・支払い方法など）" }),
     h("div", { class: "stack", style: "gap:12px;margin-top:10px" }, ctrl, legend, tiles, bigEl, h("div", { class: "td-grid" }, ...tables.map((t) => t.el))));
-  return [...head, ...viewTd3(), more, monthsEl];
+  const filt = h("div", { class: "row", style: "gap:8px 18px" }, ...tdFilterEls("tdh", re));
+  const deep = h("details", { class: "td-more", id: "td-deep", open: !!tdView.deep, ontoggle: (e) => { tdView.deep = e.target.open; } }, h("summary", { text: "もっと詳しく見る（3年の比較・旅行会社×店舗・シーズン動向・団体特性）" }),
+    h("div", { class: "stack", style: "gap:12px;margin-top:10px" }, ...viewTd3(), more));
+  return [...head, filt, ...viewTdHome(), deep, monthsEl];
 }
 
 /* ---------- ツアー分析：前々年・前年・今年の3年で比べる画面 ----------
@@ -6322,6 +6345,316 @@ function viewTd3() {
           return h("td", { class: "lv" + lv, title: `${ag} → ${i < sts.length ? sts[i] : "その他"}：${v.toLocaleString()}${u}（${pc.toFixed(1)}%）`, text: v ? v.toLocaleString() : "" }); })); })))));
   const agency = h("div", { class: "panel", id: "td3-agency" }, h("h3", { text: "旅行会社別・利用店舗別の実績" }), h("div", { class: "scroll" }, agTbl), heat);
   return [ctrl, tiles, season, traits, agency];
+}
+
+/* ---------- ツアー分析：スタッフ向けの「気づき」画面 ----------
+   目的は売上を伸ばすこと。何が変わっているか（前年と比べて）と、何をすればよいかを、カードで上から順に示す。
+   基準日＝取り込んだデータの中でいちばん新しい予約登録日（今日より後にはしない）。前年は、その1年前の同じ日。 */
+const tdMan = (y) => (Math.abs(y) >= 1e4 ? Math.round(y / 1e4).toLocaleString() + "万円" : (y < 0 ? "-¥" : "¥") + Math.abs(Math.round(y)).toLocaleString());
+const tdPct = (a, b) => (a ? ((b - a) / a) * 100 : null);
+const tdPctTxt = (v) => (v == null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(0)}%`);
+const tdLvl = (v, lo = -5, hi = 5) => (v == null ? "flat" : v <= lo ? "bad" : v >= hi ? "good" : "flat");
+const TD_LV = { bad: ["要注意", "▼", "bad"], warn: ["注意", "!", "warn"], good: ["好調", "▲", "ok"], flat: ["変化小", "―", "plain"] };
+const tdBadge = (lv) => h("span", { class: "pill " + TD_LV[lv][2] + " td-badge", text: `${TD_LV[lv][1]} ${TD_LV[lv][0]}` });
+/** n点の折れ線（累計の推移など）。marks: 縦の目印（基準日など）。 */
+function tdLineN(title, labels, series, fmt, marks = []) {
+  const n = labels.length, W = 640, H = 200, L = 58, R = 46, T = 10, B = 22, iw = W - L - R, ih = H - T - B, NS = "http://www.w3.org/2000/svg";
+  const max = Math.max(1, ...series.flatMap((s) => s.vals.filter((v) => v != null)));
+  const nice = (m) => { const p = Math.pow(10, Math.floor(Math.log10(m))), f = m / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p; }, top = nice(max);
+  const X = (i) => L + (i * iw) / Math.max(1, n - 1), Y = (v) => T + ih - (v / top) * ih;
+  const el = (tag, at, txt) => { const e = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(at)) e.setAttribute(k, v); if (txt != null) e.textContent = txt; return e; };
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, class: "td-svg", role: "img", "aria-label": title });
+  for (const f of [0, 0.25, 0.5, 0.75, 1]) { const y = Y(top * f); svg.append(el("line", { x1: L, x2: W - R, y1: y, y2: y, class: f ? "td-grid-l" : "td-axis-l" }), el("text", { x: L - 4, y: y + 3, class: "td-tick", "text-anchor": "end" }, fmt(top * f))); }
+  labels.forEach((t, i) => { if (t) svg.append(el("text", { x: X(i), y: H - 6, class: "td-tick", "text-anchor": "middle" }, t)); });
+  for (const m of marks) { svg.append(el("line", { x1: X(m.i), x2: X(m.i), y1: T, y2: T + ih, class: "td-cross" }), el("text", { x: X(m.i) + 3, y: T + 9, class: "td-tick" }, m.label)); }
+  const hov = el("line", { x1: 0, x2: 0, y1: T, y2: T + ih, class: "td-cross", visibility: "hidden" }); svg.append(hov);
+  for (const s of [...series].reverse()) {
+    let d = ""; s.vals.forEach((v, i) => { if (v == null) return; d += (d && s.vals[i - 1] != null ? "L" : "M") + X(i).toFixed(1) + " " + Y(v).toFixed(1); });
+    svg.append(el("path", { d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round", ...(s.dash ? { "stroke-dasharray": "4 3" } : {}) }));
+    const li = s.vals.reduce((a, v, i) => (v != null ? i : a), -1);
+    if (li >= 0) { svg.append(el("circle", { cx: X(li), cy: Y(s.vals[li]), r: 3.5, fill: s.color, stroke: "var(--surface)", "stroke-width": 1.5 })); svg.append(el("text", { x: X(li) + 6, y: Y(s.vals[li]) + 3, class: "td-endlab" }, s.short)); }
+  }
+  for (let i = 0; i < n; i++) {
+    const r = el("rect", { x: X(i) - iw / (2 * Math.max(1, n - 1)), y: T, width: iw / Math.max(1, n - 1), height: ih, fill: "transparent" });
+    r.addEventListener("mousemove", (e) => { hov.setAttribute("x1", X(i)); hov.setAttribute("x2", X(i)); hov.setAttribute("visibility", "visible");
+      tdTip(e, `<b>${tdEsc(labels.full ? labels.full[i] : labels[i])}</b>` + series.map((s) => `<div class="td-tip-r"><i style="background:${s.color}"></i>${tdEsc(s.label)}<span>${s.vals[i] == null ? "—" : fmt(s.vals[i])}</span></div>`).join("")); });
+    r.addEventListener("mouseleave", () => { hov.setAttribute("visibility", "hidden"); tdTip(null); });
+    svg.append(r);
+  }
+  return svg;
+}
+/** 月ごとの売上の棒（今年・前年・前々年を並べる）。weak の月には印を付ける。 */
+function tdMonthBars(rowsByYear, labels, weak, fmt) {
+  const W = 640, H = 210, L = 58, R = 8, T = 18, B = 22, iw = W - L - R, ih = H - T - B, NS = "http://www.w3.org/2000/svg";
+  const max = Math.max(1, ...rowsByYear.flatMap((s) => s.vals.filter((v) => v != null)));
+  const nice = (m) => { const p = Math.pow(10, Math.floor(Math.log10(m))), f = m / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p; }, top = nice(max), Y = (v) => T + ih - (v / top) * ih;
+  const el = (tag, at, txt) => { const e = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(at)) e.setAttribute(k, v); if (txt != null) e.textContent = txt; return e; };
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, class: "td-svg", role: "img", "aria-label": "月ごとの売上" });
+  for (const f of [0, 0.5, 1]) { const y = Y(top * f); svg.append(el("line", { x1: L, x2: W - R, y1: y, y2: y, class: f ? "td-grid-l" : "td-axis-l" }), el("text", { x: L - 4, y: y + 3, class: "td-tick", "text-anchor": "end" }, fmt(top * f))); }
+  const gw = iw / 12, k = rowsByYear.length, bw = Math.min(12, (gw - 6) / k);
+  for (let m = 0; m < 12; m++) {
+    const gx = L + m * gw + (gw - bw * k - 2 * (k - 1)) / 2;
+    rowsByYear.forEach((s, j) => { const v = s.vals[m]; if (!v) return; const x = gx + j * (bw + 2), y = Y(v); svg.append(el("path", { d: `M${x} ${T + ih}V${y + 3}q0 -3 3 -3h${bw - 6}q3 0 3 3V${T + ih}Z`, fill: s.color, opacity: s.ghost && m >= s.ghost ? 0.45 : 1 })); });
+    svg.append(el("text", { x: L + m * gw + gw / 2, y: H - 6, class: "td-tick", "text-anchor": "middle" }, labels[m]));
+    if (weak.includes(m)) svg.append(el("text", { x: L + m * gw + gw / 2, y: T - 4, class: "td-weak", "text-anchor": "middle" }, "▼"));
+    const r = el("rect", { x: L + m * gw, y: T, width: gw, height: ih, fill: "transparent" });
+    r.addEventListener("mousemove", (e) => tdTip(e, `<b>${m + 1}月の売上</b>` + rowsByYear.map((s) => `<div class="td-tip-r"><i style="background:${s.color}"></i>${tdEsc(s.label)}<span>${s.vals[m] == null ? "—" : fmt(s.vals[m])}</span></div>`).join("") + (weak.includes(m) ? `<div style="margin-top:4px">▼ 例年より少ない月です</div>` : "")));
+    r.addEventListener("mouseleave", () => tdTip(null)); svg.append(r);
+  }
+  return svg;
+}
+function viewTdHome() {
+  const all = [...S.td.values()].flatMap((d) => d.rows || []).filter((r) => tdPass(r) && !tdIsCancel(r)); if (!all.length) return [h("div", { class: "panel empty", text: "条件に合う予約がありません。" })];
+  const today = new Date().toISOString().slice(0, 10), asOf = all.reduce((a, r) => (r.r && r.r <= today && r.r > a ? r.r : a), "");
+  if (!asOf) return [];
+  const Y = +asOf.slice(0, 4), md = asOf.slice(5), ly = `${Y - 1}-${md}`, M = +asOf.slice(5, 7), jd = (d) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
+  const yr = (r) => +r.d.slice(0, 4), sumY = (rows) => rows.reduce((s, r) => s + r.y, 0), sumP = (rows) => rows.reduce((s, r) => s + r.p, 0);
+  // 利用日が「1/1〜基準日」の実績（今年）と、前年の同じ期間
+  const ytd = all.filter((r) => yr(r) === Y && r.d <= asOf), ytdL = all.filter((r) => yr(r) === Y - 1 && r.d <= ly);
+  // 取り込んだデータの利用日の最後（出力の期間）。これより先の予約はデータにないので、前年もこの日までで比べる
+  const dShift = (d, days) => new Date(Date.parse(d) + days * 864e5).toISOString().slice(0, 10);
+  const Hd = all.reduce((a, r) => (r.d > a ? r.d : a), ""), HdL = `${+Hd.slice(0, 4) - 1}${Hd.slice(4)}`, futureOK = Hd >= dShift(asOf, 30);
+  if (!all.some((r) => yr(r) === Y)) return [h("div", { class: "panel empty", text: `この条件では、${Y}年の予約がありません。飲食法人・店舗の絞り込みを変えてください。` })];
+  const cards = [];
+  const card = (o) => cards.push(o);
+  /* 1. 売上の積み上がり（予約登録日ベース）：今年に利用する予約の売上が、基準日までにいくら入っているか */
+  const book = all.filter((r) => yr(r) === Y && r.d <= Hd && r.r && r.r <= asOf), bookL = all.filter((r) => yr(r) === Y - 1 && r.d <= HdL && r.r && r.r <= ly), finL = all.filter((r) => yr(r) === Y - 1);
+  const vB = sumY(book), vBL = sumY(bookL), pB = tdPct(vBL, vB);
+  card({ id: "pace", lv: tdLvl(pB), title: futureOK ? "今年の売上の積み上がり（予約済み）" : `今年の売上（利用日 1/1〜${jd(Hd)}）`,
+    big: tdMan(vB), sub: `前年の同じ日（${Y - 1}/${jd(ly)}）は ${tdMan(vBL)}（${tdPctTxt(pB)}）`,
+    text: pB == null ? "前年のデータがないため比べられません。" : pB < 0 ? `${Y}年に利用する予約の売上は、前年の同じ時期より ${tdMan(vBL - vB)} 少ない状態です。前年は最終的に ${tdMan(sumY(finL))} でした。` : `前年の同じ時期より ${tdMan(vB - vBL)} 多く積み上がっています。前年は最終的に ${tdMan(sumY(finL))} でした。`,
+    todo: !futureOK ? "どの月で差がついているかは、下の「月ごとの売上」で確認できます。先の月の予約と比べるには、利用日を数か月先まで含めて出力したExcelを取り込んでください。" : pB != null && pB < 0 ? "下の「これからの月の予約状況」で、前年より少ない月を確認し、その月に向けた提案・営業を優先してください。" : "この調子を保てるよう、これからの月で前年より少ない月がないか確認してください。" });
+  /* 2. 客単価（1人あたりの売上） */
+  const up = sumP(ytd) ? sumY(ytd) / sumP(ytd) : 0, upL = sumP(ytdL) ? sumY(ytdL) / sumP(ytdL) : 0, pU = upL ? tdPct(upL, up) : null;
+  const cAgg = (rows) => { const m = new Map(); for (const r of rows) { if (!r.co || !r.p || /未定|なし|^-$/.test(r.co)) continue; const x = m.get(r.co) || { n: 0, p: 0, y: 0 }; x.n++; x.p += r.p; x.y += r.y; m.set(r.co, x); } return m; };
+  const topCo = [...cAgg(ytd).entries()].filter(([, x]) => x.n >= 5).sort((a, b) => b[1].y / b[1].p - a[1].y / a[1].p).slice(0, 3);
+  const noNow = !sumP(ytd);
+  card({ id: "unit", lv: noNow ? "flat" : tdLvl(pU), title: "客単価（1人あたりの売上）",
+    big: up ? "¥" + Math.round(up).toLocaleString() : "—", sub: noNow ? `今年（1/1〜${jd(asOf)}）の利用はまだありません` : `前年 ¥${Math.round(upL).toLocaleString()}（${tdPctTxt(pU)}）`,
+    text: noNow ? "今年の利用が入ると、前年と比べられます。" : pU == null ? "前年のデータがないため比べられません。" : pU < 0 ? `1人あたりの売上が前年より ¥${Math.round(upL - up).toLocaleString()} 下がっています。安いコースや、コース以外の注文が少ない予約が増えています。` : "1人あたりの売上は前年以上です。",
+    todo: noNow ? "—" : pU != null && pU < 0 ? `問い合わせの際は、単価の高いコースも一緒に案内してください${topCo.length ? `（今年よく出ている高単価のコース：${topCo.map(([c, x]) => `${c} ¥${Math.round(x.y / x.p).toLocaleString()}`).join("／")}）` : ""}。飲み放題・追加メニューの提案も有効です。` : "高単価のコースを、引き続き案内してください。" });
+  /* 3. アクティブな旅行会社（直近1年に予約を入れた会社） */
+  const yAgo = dShift(asOf, -365), y2Ago = dShift(asOf, -730);
+  const act = new Map(), actL = new Map();
+  for (const r of all) { if (!r.ag) continue; if (r.d > yAgo && r.d <= asOf) act.set(r.ag, (act.get(r.ag) || 0) + r.y); else if (r.d > y2Ago && r.d <= yAgo) actL.set(r.ag, (actL.get(r.ag) || 0) + r.y); } // 利用日で数える（先の予約はデータにないことがあるため）
+  const lost = [...actL.entries()].filter(([a]) => !act.has(a)).sort((a, b) => b[1] - a[1]);
+  const down = [...actL.entries()].filter(([a]) => act.has(a)).map(([a, v]) => [a, v, act.get(a)]).filter(([, v, n]) => n < v * 0.6 && v - n >= 300000).sort((a, b) => (b[1] - b[2]) - (a[1] - a[2]));
+  const pA = tdPct(actL.size, act.size), fresh = [...act.keys()].filter((a) => !actL.has(a)).length;
+  card({ id: "agency", lv: actL.size ? (pA <= -5 || lost.length >= 5 ? "bad" : tdLvl(pA)) : "flat", title: "アクティブな旅行会社（直近1年に利用あり）",
+    big: `${act.size}社`, sub: `その前の1年は ${actL.size}社（${tdPctTxt(pA)}）・新しく増えた会社 ${fresh}社`,
+    text: lost.length ? `前の1年は利用があったのに、直近1年は利用がない旅行会社が ${lost.length}社 あります。${down.length ? `大きく減っている会社も ${down.length}社 あります。` : ""}` : "前の1年に予約のあった会社は、直近1年も予約があります。",
+    list: [...lost.slice(0, 3).map(([a, v]) => `${a}：直近1年 利用なし（前の1年 ${tdMan(v)}）`), ...down.slice(0, 3).map(([a, v, n]) => `${a}：${tdMan(v)} → ${tdMan(n)}`), ...(lost.length + down.length > 6 ? [`ほか ${lost.length + down.length - 6}社（「もっと詳しく見る」の旅行会社の表で確認できます）`] : [])],
+    todo: lost.length || down.length ? "上の会社に、近況の確認やコース・空き状況の案内を送ってください。担当者が変わっていないかも確認しましょう。" : "新しく増えた会社との取引を続けられるよう、利用後のお礼や次回の案内をしましょう。" });
+  /* 4. 団体の規模（大型が減って小型が増えていないか） */
+  const sz = (rows, lo, hi) => rows.filter((r) => r.p >= lo && r.p <= hi);
+  const big = sz(ytd, 100, 1e9).length, bigL = sz(ytdL, 100, 1e9).length, mid = sz(ytd, 30, 99).length, midL = sz(ytdL, 30, 99).length, sm = sz(ytd, 1, 29).length, smL = sz(ytdL, 1, 29).length;
+  const shSm = ytd.length ? (sm / ytd.length) * 100 : 0, shSmL = ytdL.length ? (smL / ytdL.length) * 100 : 0;
+  const pBig = tdPct(bigL + midL, big + mid);
+  card({ id: "size", lv: pBig == null ? "flat" : pBig <= -5 ? "bad" : pBig >= 5 ? "good" : "flat", title: "団体の規模（大型・中型が減っていないか）",
+    big: `30名以上 ${(big + mid).toLocaleString()}件`, sub: `前年 ${(bigL + midL).toLocaleString()}件（${tdPctTxt(pBig)}）／ 100名以上 ${bigL}件 → ${big}件`,
+    text: `29名以下の小さな予約は ${smL.toLocaleString()}件 → ${sm.toLocaleString()}件（全体の ${shSmL.toFixed(0)}% → ${shSm.toFixed(0)}%）。${pBig != null && pBig < 0 ? "大きな団体が減り、小さな予約が増えているため、件数のわりに人数・売上が伸びにくくなっています。" : ""}`,
+    todo: pBig != null && pBig < 0 ? "修学旅行・社員旅行など大人数の団体を扱う旅行会社に、貸切やフロア利用、まとめての配席ができることを案内してください。" : "大人数の団体の受け入れを続けられるよう、席の確保を早めに進めましょう。" });
+  /* 5. 国内・訪日の割合（人数） */
+  const ib = (rows) => sumP(rows.filter((r) => r.k === "インバウンド" || (r.n && r.n !== "日本")));
+  const iP = sumP(ytd) ? (ib(ytd) / sumP(ytd)) * 100 : 0, iPL = sumP(ytdL) ? (ib(ytdL) / sumP(ytdL)) * 100 : 0, dI = iP - iPL, pIb = tdPct(ib(ytdL), ib(ytd));
+  const natD = (() => { const m = (rows) => { const x = new Map(); for (const r of rows) if (r.n && r.n !== "日本") x.set(r.n, (x.get(r.n) || 0) + r.p); return x; }; const a = m(ytd), b = m(ytdL); return [...new Set([...a.keys(), ...b.keys()])].map((k) => [k, (a.get(k) || 0) - (b.get(k) || 0)]).sort((p, q) => p[1] - q[1]); })();
+  card({ id: "inbound", lv: pIb == null ? "flat" : tdLvl(pIb), title: "訪日（海外からの団体）",
+    big: `${Math.round(ib(ytd)).toLocaleString()}名`, sub: `前年 ${Math.round(ib(ytdL)).toLocaleString()}名（${tdPctTxt(pIb)}）・人数の割合 ${iPL.toFixed(0)}% → ${iP.toFixed(0)}%`,
+    text: `人数で見た訪日の割合は ${dI >= 0 ? "+" : ""}${dI.toFixed(1)}ポイント。${natD.length && natD[0][1] < 0 ? `減っている国：${natD.filter((x) => x[1] < 0).slice(0, 3).map(([k, v]) => `${k}（${Math.round(v).toLocaleString()}名）`).join("、")}。` : ""}${natD.length && natD[natD.length - 1][1] > 0 ? `増えている国：${natD.filter((x) => x[1] > 0).slice(-3).reverse().map(([k, v]) => `${k}（+${Math.round(v).toLocaleString()}名）`).join("、")}。` : ""}`,
+    todo: pIb != null && pIb < 0 ? "訪日を扱う旅行会社に、多言語メニューや人気のコースを案内してください。減っている国に強い会社を優先しましょう。" : "増えている国に向けた案内（言語・食事の配慮）を整えておきましょう。" });
+  /* 6. 例年売上が取れている月なのに、今年は取れていない月（終わった月） */
+  const mon = (rows) => { const v = Array(12).fill(0); for (const r of rows) v[+r.d.slice(5, 7) - 1] += r.y; return v; };
+  const mY = mon(all.filter((r) => yr(r) === Y)), mL = mon(finL), m2 = mon(all.filter((r) => yr(r) === Y - 2)), has2 = m2.some(Boolean);
+  const base = mL.map((v, i) => (has2 && m2[i] ? (v + m2[i]) / 2 : v)), strong = base.map((v, i) => [i, v]).sort((a, b) => b[1] - a[1]).slice(0, 4).map((x) => x[0]);
+  const weak = [...Array(M - 1).keys()].filter((i) => base[i] && mY[i] < base[i] * 0.9);
+  const weakStrong = weak.filter((i) => strong.includes(i));
+  card({ id: "months", lv: weakStrong.length ? "bad" : weak.length ? "warn" : "good", title: "例年売上が取れている月",
+    big: weak.length ? `${weak.length}か月が例年より少ない` : "例年並み以上", sub: `例年＝${has2 ? "前年と前々年の平均" : "前年"}／例年いちばん売上の多い月：${strong.map((i) => i + 1 + "月").join("・")}`,
+    text: weak.length ? weak.map((i) => `${i + 1}月：例年 ${tdMan(base[i])} → 今年 ${tdMan(mY[i])}（${tdPctTxt(tdPct(base[i], mY[i]))}）${strong.includes(i) ? "【例年の稼ぎどき】" : ""}`).join("\n") : "終わった月は、例年と同じかそれ以上の売上です。",
+    todo: weakStrong.length ? "例年の稼ぎどきの月で売上が落ちています。来年の同じ月に向けて、早めに旅行会社へ案内を始めてください。" : "下のグラフで、これからの月も例年並みに予約が入っているか確認してください。" });
+  /* 7. 予約の入り方が直前になっていないか（30日以内の予約の割合） */
+  const near = (rows) => { const x = rows.filter((r) => r.r); return x.length ? (x.filter((r) => (Date.parse(r.d) - Date.parse(r.r)) / 864e5 <= 30).length / x.length) * 100 : 0; };
+  const nr = near(ytd), nrL = near(ytdL);
+  card({ id: "lead", lv: nr - nrL >= 5 ? "warn" : "flat", title: "予約の入り方（直前の予約）",
+    big: `${nr.toFixed(0)}%`, sub: `利用日の30日前より後に入った予約の割合・前年 ${nrL.toFixed(0)}%`,
+    text: nr - nrL >= 5 ? "直前に入る予約が増えています。先の月の予約が少なく見えても、直前で埋まることがあります。" : "予約が入る時期は、前年と大きく変わっていません。",
+    todo: nr - nrL >= 5 ? "直前の問い合わせにすぐ答えられるよう、空き状況を旅行会社へこまめに案内してください。" : "早めの予約を増やすため、先の月の空き状況を案内しましょう。" });
+  /* 8. 特定の旅行会社への偏り（売上の何割を1社が占めるか） */
+  const agY = new Map(); for (const r of ytd) if (r.ag) agY.set(r.ag, (agY.get(r.ag) || 0) + r.y);
+  const topAg = [...agY.entries()].sort((a, b) => b[1] - a[1])[0], shTop = topAg && sumY(ytd) ? (topAg[1] / sumY(ytd)) * 100 : 0;
+  if (topAg && shTop >= 30) card({ id: "depend", lv: shTop >= 40 ? "warn" : "flat", title: "1社への偏り",
+    big: `${shTop.toFixed(0)}%`, sub: `今年の売上のうち「${topAg[0]}」が占める割合`,
+    text: "1社の割合が大きいと、その会社の動きで売上が大きく変わります。", todo: "2番手・3番手の旅行会社との取引を増やす案内を続けましょう。" });
+  const order = { bad: 0, warn: 1, flat: 2, good: 3 };
+  cards.sort((a, b) => order[a.lv] - order[b.lv]);
+  const cardEl = (c) => h("div", { class: "td-card2 lv-" + c.lv + (tdView.open === c.id ? " on" : ""), id: "tdc-" + c.id, role: "button", tabindex: "0", "aria-expanded": tdView.open === c.id ? "true" : "false", title: "押すと、内訳とAIによる分析が出ます",
+    onclick: (e) => { if (e.target.closest("a,button")) return; tdView.open = tdView.open === c.id ? "" : c.id; render(); requestAnimationFrame(() => { const d = $("#td-detail"); if (d) d.scrollIntoView({ behavior: "smooth", block: "start" }); }); },
+    onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.currentTarget.click(); } } },
+    h("div", { class: "row", style: "gap:8px;align-items:center" }, tdBadge(c.lv), h("strong", { class: "td-c-t", text: c.title })),
+    h("div", { class: "td-c-big", text: c.big }), h("div", { class: "small muted", text: c.sub }),
+    h("div", { class: "td-c-txt", text: c.text }),
+    c.list && c.list.length ? h("ul", { class: "td-c-list" }, ...c.list.map((x) => h("li", { text: x }))) : null,
+    h("div", { class: "td-c-todo" }, h("span", { class: "td-c-todo-h", text: "やること" }), h("span", { text: c.todo })),
+    h("div", { class: "td-c-more", text: tdView.open === c.id ? "▲ 詳しく見るを閉じる" : "詳しく見る（内訳とAIの分析） ›" }));
+  const nBad = cards.filter((c) => c.lv === "bad").length, nWarn = cards.filter((c) => c.lv === "warn").length;
+  /* これからの月の予約状況（基準日時点で入っている予約と、前年の同じ日の予約） */
+  const ahead = [...Array(6).keys()].filter((k) => { const mm = ((M - 1 + k) % 12) + 1, yy = Y + Math.floor((M - 1 + k) / 12); return `${yy}-${String(mm).padStart(2, "0")}` <= Hd.slice(0, 7); }).map((k) => { const mm = ((M - 1 + k) % 12) + 1, yy = Y + Math.floor((M - 1 + k) / 12), key = `${yy}-${String(mm).padStart(2, "0")}`, keyL = `${yy - 1}-${String(mm).padStart(2, "0")}`;
+    const cur = all.filter((r) => r.d.slice(0, 7) === key && r.r && r.r <= asOf), prev = all.filter((r) => r.d.slice(0, 7) === keyL && r.r && r.r <= ly), fin = all.filter((r) => r.d.slice(0, 7) === keyL);
+    return { key, mm, yy, cur: sumY(cur), curN: cur.length, prev: sumY(prev), prevN: prev.length, fin: sumY(fin) }; });
+  const aheadTbl = h("table", { class: "td-tbl td-ahead", id: "td-ahead" },
+    h("thead", {}, h("tr", {}, h("th", { text: "利用月" }), h("th", { class: "num", text: `今年 入っている予約（${jd(asOf)}時点）` }), h("th", { class: "num", text: `前年の同じ日（${jd(ly)}時点）` }), h("th", { class: "num", text: "前年の同じ日と比べて" }), h("th", { class: "num", text: "前年の最終実績" }), h("th", { class: "num", text: "前年の最終に対して" }))),
+    h("tbody", {}, ...ahead.map((a) => { const p = tdPct(a.prev, a.cur), lv = a.prev ? tdLvl(p, -10, 10) : "flat";
+      return h("tr", {}, h("td", { class: "lab", text: `${a.yy}年${a.mm}月` }), h("td", { class: "num", text: `${tdMan(a.cur)}（${a.curN}件）` }), h("td", { class: "num muted", text: `${tdMan(a.prev)}（${a.prevN}件）` }),
+        h("td", { class: "num" }, a.prev ? tdBadge(lv) : null, " ", tdPctTxt(p)), h("td", { class: "num muted", text: tdMan(a.fin) }), h("td", { class: "num", text: a.fin ? `${Math.round((a.cur / a.fin) * 100)}%` : "—" })); })));
+  /* 売上の積み上がりのグラフ：今年に利用する予約の売上を、登録日ごとに累計（前年は1年ずらして重ねる） */
+  const startM = `${Y - 1}-01`, months = [...Array(24).keys()].map((k) => { const yy = Y - 1 + Math.floor(k / 12), mm = (k % 12) + 1; return `${yy}-${String(mm).padStart(2, "0")}`; });
+  const cum = (rows, shift) => { const v = Array(24).fill(0); for (const r of rows) { if (!r.r) continue; let ym = r.r.slice(0, 7); if (shift) ym = `${+ym.slice(0, 4) + 1}${ym.slice(4)}`; let i = months.indexOf(ym); if (ym < startM) i = 0; if (i < 0) continue; v[i] += r.y; } for (let i = 1; i < 24; i++) v[i] += v[i - 1]; return v; };
+  const cY = cum(all.filter((r) => yr(r) === Y && r.d <= Hd), false).map((v, i) => (months[i] > asOf.slice(0, 7) ? null : v)), cL = cum(finL.filter((r) => r.d <= HdL), true);
+  const idxNow = months.indexOf(asOf.slice(0, 7)); const labs = months.map((m) => (m.endsWith("-01") || m.endsWith("-07") ? `${m.slice(2, 4)}/${+m.slice(5, 7)}` : "")); labs.full = months.map((m) => `${m.slice(0, 4)}年${+m.slice(5, 7)}月末までに登録`);
+  const paceChart = tdLineN("今年の売上の積み上がり", labs, [{ label: `${Y}年に利用する予約`, short: `${Y}年`, color: "var(--td-y0)", vals: cY }, { label: `${Y - 1}年に利用した予約（1年ずらして表示）`, short: `${Y - 1}年`, color: "var(--td-y1)", vals: cL }], tdMan, idxNow >= 0 ? [{ i: idxNow, label: "今" }] : []);
+  const barChart = tdMonthBars([{ label: `${Y}年`, color: "var(--td-y0)", vals: mY, ghost: M }, { label: `${Y - 1}年`, color: "var(--td-y1)", vals: mL }, ...(has2 ? [{ label: `${Y - 2}年`, color: "var(--td-y2)", vals: m2 }] : [])], [...Array(12).keys()].map((i) => i + 1 + "月"), weak, tdMan);
+  return [
+    h("div", { class: "panel td-head2" },
+      h("div", { class: "row", style: "gap:8px 14px" }, h("strong", { style: "font-size:16px", text: `${Y}年${+asOf.slice(5, 7)}月${+asOf.slice(8, 10)}日時点のまとめ` }),
+        nBad ? h("span", { class: "pill bad", text: `▼ 要注意 ${nBad}件` }) : null, nWarn ? h("span", { class: "pill warn", text: `! 注意 ${nWarn}件` }) : null,
+        h("span", { class: "small muted", text: `前年の同じ日（${Y - 1}年${+ly.slice(5, 7)}月${+ly.slice(8, 10)}日）と比べています。キャンセル・お断りは除いています。` })),
+      h("div", { class: "small muted", text: "上から、気をつけたい順に並んでいます。「やること」を参考に、旅行会社への案内や提案を進めてください。" })),
+    futureOK ? null : h("div", { class: "banner warn", id: "td-nofuture", text: `取り込んだデータは利用日 ${Hd.replace(/-/g, "/")} までです。これから先の予約（${jd(asOf)}以降の利用分）が入っていないため、「売上の積み上がり」と「これからの月の予約状況」は比べられる範囲だけを出しています。トラベルダインから出力するときは、利用日の期間を数か月先（例：来年3月）まで含めてください。` }),
+    h("div", { class: "td-cards" }, ...cards.map(cardEl)),
+    ...(() => { const c = cards.find((x) => x.id === tdView.open); return c ? [tdDetailEl(c, { all, ytd, ytdL, book, bookL, Y, asOf, ly, Hd, act, actL, yAgo, weak, base, mY })] : []; })(),
+    h("div", { class: "td-two" },
+      h("div", { class: "panel", id: "td-pace" }, h("h3", { text: "今年の売上の積み上がり（予約登録日ベース）" }), h("div", { class: "small muted", style: "margin-bottom:4px", text: `${Y}年に利用する予約の売上が、いつ登録されて積み上がったか。前年（オレンジ）は1年ずらして重ねています。` }),
+        h("div", { class: "row small muted", style: "gap:12px" }, h("span", { class: "row", style: "gap:5px" }, h("i", { class: "td-sw line", style: "background:var(--td-y0)" }), `${Y}年`), h("span", { class: "row", style: "gap:5px" }, h("i", { class: "td-sw line", style: "background:var(--td-y1)" }), `${Y - 1}年`)), paceChart),
+      h("div", { class: "panel", id: "td-monthbar" }, h("h3", { text: "月ごとの売上（▼は例年より少ない月）" }), h("div", { class: "small muted", style: "margin-bottom:4px", text: `${M}月以降の今年（青・薄い色）は、今入っている予約の分です。` }),
+        h("div", { class: "row small muted", style: "gap:12px" }, ...[[Y, "--td-y0"], [Y - 1, "--td-y1"], ...(has2 ? [[Y - 2, "--td-y2"]] : [])].map(([y, c]) => h("span", { class: "row", style: "gap:5px" }, h("i", { class: "td-sw", style: `background:var(${c})` }), `${y}年`))), barChart)),
+    h("div", { class: "panel", id: "td-ahead-p" }, h("h3", { text: "これからの月の予約状況" }), h("div", { class: "small muted", style: "margin-bottom:6px", text: "前年の同じ日と比べて少ない月は、今のうちに旅行会社へ案内しましょう。" }),
+      ahead.length > 1 ? h("div", { class: "scroll" }, aheadTbl) : h("div", { class: "small", style: "color:var(--warn)", text: "これから先の月の予約がデータに入っていません。利用日の期間を先まで含めて出力したExcelを取り込むと、ここに月ごとの状況が出ます。" })),
+  ].filter(Boolean);
+}
+
+/* ---------- カードを押したときの詳細：数字の内訳（表）と、AIによる分析 ----------
+   内訳の数字はデータから計算し、その数字だけをAIに渡して「何が起きているか・原因・考えられること・やること」を書いてもらう。
+   同じ条件で一度分析した結果は覚えておき、押し直しても費用がかからないようにする（「分析し直す」で作り直せる）。 */
+const tdAiCache = new Map();
+const tdGrp = (rows, f) => { const m = new Map(); for (const r of rows) { const k = f(r); if (k == null || k === "") continue; const x = m.get(k) || { n: 0, p: 0, y: 0, yc: 0, yx: 0 }; x.n++; x.p += r.p; x.y += r.y; x.yc += r.yc || 0; x.yx += r.yx || 0; m.set(k, x); } return m; };
+const tdTimeOf = (r) => (!r.t ? "時刻なし" : r.t < "15:00" ? "ランチ（15時前）" : "夜（15時以降）");
+const tdSizeOf = (r) => (r.p >= 100 ? "100名以上" : r.p >= 30 ? "30〜99名" : r.p >= 10 ? "10〜29名" : "1〜9名");
+/** 単価の差を「構成の変化（割合が変わった分）」と「単価そのものの変化」に分ける。 */
+function tdMix(prev, cur, f) {
+  const a = tdGrp(prev, f), b = tdGrp(cur, f), Pa = [...a.values()].reduce((s, x) => s + x.p, 0), Pb = [...b.values()].reduce((s, x) => s + x.p, 0);
+  if (!Pa || !Pb) return null;
+  let mix = 0, rate = 0; const rows = [];
+  for (const k of new Set([...a.keys(), ...b.keys()])) {
+    const x = a.get(k) || { p: 0, y: 0, n: 0 }, z = b.get(k) || { p: 0, y: 0, n: 0 }, s0 = x.p / Pa, s1 = z.p / Pb, p0 = x.p ? x.y / x.p : 0, p1 = z.p ? z.y / z.p : 0;
+    mix += (s1 - s0) * (p0 || p1); rate += s1 * (p1 - (p0 || p1));
+    rows.push({ 区分: k, 前年の人数割合: +(s0 * 100).toFixed(1), 今年の人数割合: +(s1 * 100).toFixed(1), 前年の1人あたり: Math.round(p0), 今年の1人あたり: Math.round(p1), 前年の件数: x.n, 今年の件数: z.n });
+  }
+  return { 割合が変わったことによる差: Math.round(mix), 単価そのものの変化による差: Math.round(rate), 内訳: rows.sort((p, q) => q.今年の人数割合 - p.今年の人数割合) };
+}
+/** 2期間の比較の表（件数・人数・売上と差）。 */
+function tdCmp(prev, cur, f, top) {
+  const a = tdGrp(prev, f), b = tdGrp(cur, f);
+  let rows = [...new Set([...a.keys(), ...b.keys()])].map((k) => { const x = a.get(k) || { n: 0, p: 0, y: 0 }, z = b.get(k) || { n: 0, p: 0, y: 0 }; return { 区分: k, 前年の件数: x.n, 今年の件数: z.n, 前年の人数: x.p, 今年の人数: z.p, 前年の売上: Math.round(x.y), 今年の売上: Math.round(z.y), 売上の差: Math.round(z.y - x.y) }; });
+  rows.sort((p, q) => Math.abs(q.売上の差) - Math.abs(p.売上の差));
+  return top ? rows.slice(0, top) : rows;
+}
+/** 詳細の表を画面に出す（列は渡したオブジェクトのキーのまま）。 */
+function tdDetailTable(title, rows, note) {
+  if (!rows || !rows.length) return null;
+  const cols = Object.keys(rows[0]), money = (c) => /売上|1人あたり|差/.test(c) && !/割合/.test(c);
+  const fmt = (c, v) => (typeof v !== "number" ? v : money(c) ? (Math.abs(v) >= 1e4 ? (v / 1e4).toLocaleString(undefined, { maximumFractionDigits: 0 }) + "万円" : (v < 0 ? "-¥" : "¥") + Math.abs(v).toLocaleString()) : /割合/.test(c) ? v.toFixed(1) + "%" : v.toLocaleString());
+  return h("div", { class: "td-dt" }, h("div", { class: "td-dt-t", text: title }), note ? h("div", { class: "small muted", text: note }) : null,
+    h("div", { class: "scroll" }, h("table", { class: "td-tbl" }, h("thead", {}, h("tr", {}, ...cols.map((c) => h("th", { class: typeof rows[0][c] === "number" ? "num" : "", text: c })))),
+      h("tbody", {}, ...rows.map((r) => h("tr", {}, ...cols.map((c) => h("td", { class: typeof r[c] === "number" ? "num" : "lab", text: fmt(c, r[c]) }))))))));
+}
+/** カードごとの内訳を作る。返すのは { tables:[{title, rows, note}], facts:{} }（facts はAIに渡す要点）。 */
+function tdDetailData(id, X) {
+  const { ytd, ytdL, book, bookL, all, Y, asOf, ly, Hd } = X, sumY = (rows) => rows.reduce((s, r) => s + r.y, 0), sumP = (rows) => rows.reduce((s, r) => s + r.p, 0);
+  const T = [], F = {};
+  if (id === "unit") {
+    const hasSplit = ytd.some((r) => r.yc != null) && ytdL.some((r) => r.yc != null);
+    const per = (rows, k) => { const p = sumP(rows); return p ? Math.round(rows.reduce((s, r) => s + (r[k] || 0), 0) / p) : 0; };
+    if (hasSplit) { F.コースと追加の1人あたり = { 前年: { コース: per(ytdL, "yc"), 追加: per(ytdL, "yx") }, 今年: { コース: per(ytd, "yc"), 追加: per(ytd, "yx") } }; T.push({ title: "1人あたりの売上の内訳（コース・追加）", rows: [{ 区分: "コース", 前年の1人あたり: per(ytdL, "yc"), 今年の1人あたり: per(ytd, "yc"), 差: per(ytd, "yc") - per(ytdL, "yc") }, { 区分: "追加（コース以外）", 前年の1人あたり: per(ytdL, "yx"), 今年の1人あたり: per(ytd, "yx"), 差: per(ytd, "yx") - per(ytdL, "yx") }] }); }
+    else F.注意 = "コースと追加の売上の内訳はまだ保存されていない（Excelの取り込み直しが必要）";
+    for (const [k, f] of [["時間帯", tdTimeOf], ["団体の種類", tdType], ["団体の規模", tdSizeOf]]) { const m = tdMix(ytdL, ytd, f); if (m) { F[k + "で分けた単価の差"] = m; T.push({ title: `${k}ごとの割合と1人あたり（構成の変化 ${m.割合が変わったことによる差 >= 0 ? "+" : ""}¥${m.割合が変わったことによる差.toLocaleString()}／単価そのもの ${m.単価そのものの変化による差 >= 0 ? "+" : ""}¥${m.単価そのものの変化による差.toLocaleString()}）`, rows: m.内訳 }); } }
+    const co = (rows) => tdGrp(rows.filter((r) => r.co && !/未定/.test(r.co)), (r) => r.co), ca = co(ytdL), cb = co(ytd);
+    const cr = [...cb.entries()].sort((a, b) => b[1].p - a[1].p).slice(0, 10).map(([k, z]) => { const x = ca.get(k); return { コース: k, 前年の人数: x ? x.p : 0, 今年の人数: z.p, 前年の1人あたり: x && x.p ? Math.round(x.y / x.p) : 0, 今年の1人あたり: z.p ? Math.round(z.y / z.p) : 0 }; });
+    F.よく出ているコース = cr; T.push({ title: "よく出ているコース（今年の人数の多い順）", rows: cr });
+  } else if (id === "pace") {
+    const m = (rows) => (r) => r.d.slice(5, 7) + "月";
+    F.月ごとの差 = tdCmp(bookL, book, m()); T.push({ title: "利用月ごとの売上の差（前年の同じ日まで に入っていた予約との比較）", rows: F.月ごとの差.sort((a, b) => a.区分.localeCompare(b.区分)) });
+    F.団体の種類ごとの差 = tdCmp(bookL, book, tdType); T.push({ title: "団体の種類ごとの差", rows: F.団体の種類ごとの差 });
+    F.旅行会社ごとの差 = tdCmp(bookL, book, (r) => r.ag, 12); T.push({ title: "差の大きい旅行会社（上位12）", rows: F.旅行会社ごとの差 });
+    F.店舗ごとの差 = tdCmp(bookL, book, (r) => r.st, 10); T.push({ title: "差の大きい店舗（上位10）", rows: F.店舗ごとの差 });
+  } else if (id === "agency") {
+    const { act, actL, yAgo } = X, main = (ag, from, to) => { const m = tdGrp(all.filter((r) => r.ag === ag && r.d > from && r.d <= to), (r) => r.st); const t = [...m.entries()].sort((a, b) => b[1].y - a[1].y)[0]; return t ? t[0] : ""; };
+    const y2 = new Date(Date.parse(yAgo) - 365 * 864e5).toISOString().slice(0, 10);
+    const lost = [...actL.entries()].filter(([a]) => !act.has(a)).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([a, v]) => ({ 旅行会社: a, 前の1年の売上: Math.round(v), 直近1年の売上: 0, 前の1年の主な店舗: main(a, y2, yAgo) }));
+    const down = [...actL.entries()].filter(([a]) => act.has(a)).map(([a, v]) => ({ 旅行会社: a, 前の1年の売上: Math.round(v), 直近1年の売上: Math.round(act.get(a)), 売上の差: Math.round(act.get(a) - v) })).sort((a, b) => a.売上の差 - b.売上の差).slice(0, 12);
+    const up = [...act.entries()].map(([a, v]) => ({ 旅行会社: a, 前の1年の売上: Math.round(actL.get(a) || 0), 直近1年の売上: Math.round(v), 売上の差: Math.round(v - (actL.get(a) || 0)) })).sort((a, b) => b.売上の差 - a.売上の差).slice(0, 10);
+    F.利用が止まった会社 = lost; F.大きく減った会社 = down; F.増えた会社 = up; F.会社数 = { 直近1年: act.size, その前の1年: actL.size };
+    T.push({ title: "直近1年に利用がない会社（前の1年の売上が大きい順）", rows: lost }, { title: "売上が減った会社", rows: down }, { title: "売上が増えた会社", rows: up });
+  } else if (id === "size") {
+    F.規模ごと = tdCmp(ytdL, ytd, tdSizeOf); T.push({ title: "団体の規模ごとの比較", rows: F.規模ごと });
+    const bigAg = tdCmp(ytdL.filter((r) => r.p >= 30), ytd.filter((r) => r.p >= 30), (r) => r.ag, 12); F["30名以上の団体の旅行会社ごとの差"] = bigAg; T.push({ title: "30名以上の団体：差の大きい旅行会社", rows: bigAg });
+    const bigTy = tdCmp(ytdL.filter((r) => r.p >= 30), ytd.filter((r) => r.p >= 30), tdType); F["30名以上の団体の種類ごとの差"] = bigTy; T.push({ title: "30名以上の団体：団体の種類ごと", rows: bigTy });
+  } else if (id === "inbound") {
+    const ib = (r) => r.k === "インバウンド" || (r.n && r.n !== "日本"), a = ytdL.filter(ib), b = ytd.filter(ib);
+    F.国ごと = tdCmp(a, b, (r) => r.n || "国籍なし", 15); T.push({ title: "国ごとの比較（差の大きい順）", rows: F.国ごと });
+    F.訪日の旅行会社ごと = tdCmp(a, b, (r) => r.ag, 12); T.push({ title: "訪日：差の大きい旅行会社", rows: F.訪日の旅行会社ごと });
+    F.国内と訪日 = tdCmp(ytdL, ytd, (r) => (ib(r) ? "訪日" : "国内")); T.push({ title: "国内と訪日", rows: F.国内と訪日 });
+  } else if (id === "months") {
+    const { weak, base, mY } = X;
+    F.例年より少ない月 = weak.map((i) => ({ 月: i + 1 + "月", 例年: Math.round(base[i]), 今年: Math.round(mY[i]) }));
+    for (const i of weak.slice(0, 3)) { const mm = String(i + 1).padStart(2, "0"), a = all.filter((r) => r.d.slice(0, 7) === `${Y - 1}-${mm}`), b = all.filter((r) => r.d.slice(0, 7) === `${Y}-${mm}`);
+      F[`${i + 1}月の団体の種類ごと`] = tdCmp(a, b, tdType); F[`${i + 1}月の旅行会社ごと`] = tdCmp(a, b, (r) => r.ag, 8);
+      T.push({ title: `${i + 1}月：団体の種類ごと（前年と比較）`, rows: F[`${i + 1}月の団体の種類ごと`] }, { title: `${i + 1}月：差の大きい旅行会社`, rows: F[`${i + 1}月の旅行会社ごと`] }); }
+  } else if (id === "lead") {
+    const lb = (r) => { if (!r.r) return null; const d = (Date.parse(r.d) - Date.parse(r.r)) / 864e5; return d <= 7 ? "7日前以内" : d <= 30 ? "8〜30日前" : d <= 90 ? "31〜90日前" : "91日以上前"; };
+    F.予約の早さ = tdCmp(ytdL, ytd, lb); T.push({ title: "予約の早さごとの比較", rows: F.予約の早さ.sort((a, b) => a.区分.localeCompare(b.区分)) });
+    for (const t of TD_TYPES) { const x = ytd.filter((r) => tdType(r) === t && r.r), z = ytdL.filter((r) => tdType(r) === t && r.r); if (x.length + z.length < 20) continue; (F.団体の種類ごとの30日以内の割合 ||= []).push({ 種類: t, 前年: z.length ? +((z.filter((r) => (Date.parse(r.d) - Date.parse(r.r)) / 864e5 <= 30).length / z.length) * 100).toFixed(1) : 0, 今年: x.length ? +((x.filter((r) => (Date.parse(r.d) - Date.parse(r.r)) / 864e5 <= 30).length / x.length) * 100).toFixed(1) : 0 }); }
+    if (F.団体の種類ごとの30日以内の割合) T.push({ title: "団体の種類ごと：30日以内に入った予約の割合（%）", rows: F.団体の種類ごとの30日以内の割合 });
+  } else if (id === "depend") {
+    F.旅行会社の売上上位 = tdCmp(ytdL, ytd, (r) => r.ag).sort((a, b) => b.今年の売上 - a.今年の売上).slice(0, 10); T.push({ title: "売上の多い旅行会社（今年）", rows: F.旅行会社の売上上位 });
+  }
+  return { tables: T, facts: F };
+}
+/** 詳細の欄。AIの分析は、まだなら頼み、終わったらこの欄だけを書き換える。 */
+function tdDetailEl(c, X) {
+  const { tables, facts } = tdDetailData(c.id, X);
+  const key = [c.id, X.asOf, tdView.corps.join(","), tdView.store].join("|");
+  const box = h("div", { class: "td-ai2", id: "td-ai2" });
+  const showAi = (res) => {
+    if (!res) return box.replaceChildren(h("div", { class: "small muted", text: "AIが分析しています…（10〜30秒ほどかかります）" }));
+    if (res.error) return box.replaceChildren(h("div", { class: "small", style: "color:var(--bad)", text: res.error }), retry());
+    const sec = (t, list) => (list && list.length ? h("div", { class: "td-ai-sec" }, h("div", { class: "td-ai-h", text: t }), h("ul", {}, ...list.map((x) => h("li", { text: String(x) })))) : null);
+    box.replaceChildren(h("div", { class: "td-ai-sum", text: res.summary || "" }), sec("原因（数字から言えること）", res.causes), sec("考えられること（推測）", res.hypotheses), sec("やること", res.actions),
+      h("div", { class: "row small muted", style: "gap:8px;margin-top:6px" }, h("span", { text: "AIによる分析です。数字は下の表で確認してください。" }), retry("分析し直す")));
+  };
+  const retry = (label = "もう一度試す") => h("button", { type: "button", class: "btn sm", id: "td-ai2-re", text: label, onclick: () => { tdAiCache.delete(key); run(); } });
+  const run = async () => {
+    if (!sample) return showAi({ error: "この表示環境ではAIを使えません。" });
+    showAi(null);
+    const ctx = { 会社: "株式会社HASSIN 観光事業部（旅行会社から団体の飲食予約を受ける。予約はトラベルダインで管理）", 基準日: X.asOf, 比べる相手: `前年の同じ日（${X.ly}）`, 絞り込み: { 飲食法人: tdView.corps.length ? tdView.corps : "すべて", 店舗: tdView.store || "すべて" }, データの範囲: `利用日 ${X.Hd} まで`, カード: { 項目: c.title, 数字: c.big, 比較: c.sub, 説明: c.text } };
+    const prompt = `あなたは飲食店の団体予約（旅行会社経由）の売上分析を担当しています。読み手は分析に慣れていない一般スタッフです。目的は売上を伸ばすことです。
+次の集計（金額は円、割合は%）をもとに、このカードの項目について「何が起きているか」「なぜか」を分析してください。
+・数字の根拠を必ず添える（例：ランチの割合が69%→82%）。データにないことは書かない。
+・原因は、集計から言えることだけを書く。推測は「考えられること」に分けて書く。
+・やることは、スタッフが明日から行える具体的な行動にする（誰に・何を）。
+・やさしい言葉で、1項目は1〜2文。専門用語は使わない。
+JSONだけで {"summary":"一言でいうと（2文以内）","causes":["…"],"hypotheses":["…"],"actions":["…"]} の形で返してください（各3〜5項目）。
+前提：${JSON.stringify(ctx)}
+集計：${JSON.stringify(facts)}`;
+    try {
+      const res = await sample.json(prompt);
+      const out = { summary: String((res && res.summary) || ""), causes: (res && res.causes) || [], hypotheses: (res && res.hypotheses) || [], actions: (res && res.actions) || [] };
+      tdAiCache.set(key, out); if (document.body.contains(box)) showAi(out);
+    } catch (e) { const err = { error: (typeof AI_ERR !== "undefined" && AI_ERR[e && e.code]) || "AIの分析ができませんでした。時間をおいてもう一度お試しください。" }; if (document.body.contains(box)) showAi(err); }
+  };
+  if (tdAiCache.has(key)) showAi(tdAiCache.get(key)); else queueMicrotask(run);
+  return h("div", { class: "panel td-detail", id: "td-detail" },
+    h("div", { class: "row", style: "gap:8px" }, tdBadge(c.lv), h("h3", { text: `${c.title}：詳しく見る` }), h("span", { style: "margin-left:auto" }), h("button", { type: "button", class: "btn sm", id: "td-detail-close", text: "閉じる", onclick: () => { tdView.open = ""; render(); } })),
+    box, h("div", { class: "td-dts" }, ...tables.map((t) => tdDetailTable(t.title, t.rows, t.note)).filter(Boolean)));
 }
 
 /* ---------- 起動 ---------- */
