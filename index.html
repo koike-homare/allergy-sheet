@@ -700,7 +700,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 187</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 188</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -831,7 +831,7 @@ const DEFAULT_TPL = {
   tplNone: "コース内容に「{食材}」の現物は使用しておりません。",
   tplUsed: "コース内容に「{食材}」を使用しております。",
   tplSeibun: "調味料、ソース、調理油等に「{分類}」の成分が含まれております。",
-  tplSeibunNone: "調味料、ソース、調理油等に「{食材}」の成分は含まれておりません。",
+  tplSeibunNone: "調味料、ソース、調理油等の原材料表示において、「{食材}」の使用は確認されておりません。",
   tplExt: "", // 成分表にない食材は「現物は使用しておりません」の案内だけにする（必要なら共通設定で一文を足せる）
   tplFruit: "調味料、ソース、調理油等に「果物」の成分が含まれており、「{食材}」が含まれる可能性があります。",
 };
@@ -1045,7 +1045,9 @@ function genElement(row, store) {
   if (exts.length && T.tplExt) L.push(T.tplExt.replace("{食材}", exts.join("、")));
   L.push(...notes);
   // 厨房での微量混入の注意は、食品のアレルギーが1つでもあるときだけ書く（食品以外だけの人には書かない）
-  if (store?.commonNote && items.some((it) => it.kind !== "nonfood")) L.push(store.commonNote);
+  // 注意文の「{食材}」は、その人の申告（食品のもの）に置き換える（例：「いくら、魚卵」の微量混入…）
+  const foods = [...new Set(items.filter((it) => it.kind !== "nonfood").map((it) => it.label))];
+  if (store?.commonNote && items.some((it) => it.kind !== "nonfood")) L.push(store.commonNote.split("{食材}").join(foods.join("、")));
   if (todo.length) L.push(`【要確認】「${todo.join("、")}」は使用状況を確認できていません。`);
   return L.join("\n");
 }
@@ -2097,7 +2099,7 @@ function viewCase() {
     const reTa = h("textarea", { id: r.id + "-re", rows: 3, oninput: (e) => { r.response = e.target.value; r.responseAuto = false; ch(); }, onchange: () => drawResp() });
     const elMark = h("div", {}), reMark = h("div", {}), sbBox = h("div", {});
     // 黄色にする言葉：その人のアレルギー名（辞書で置き換えた品目・分類を含む）と、成分に関わる言い回し
-    const elWrap = hlWrap(elTa, () => { const a = analyse(r, store), out = ["成分が含まれて", "成分は含まれて", "含まれる可能性", "微量混入"]; for (const i of a.items) { out.push(i.tag, i.ja || ""); for (const p of i.parts || []) out.push(p.name, (p.entry && p.entry.group) || ""); } return out; });
+    const elWrap = hlWrap(elTa, () => { const a = analyse(r, store), out = ["成分が含まれて", "成分は含まれて", "使用は確認されて", "含まれる可能性", "微量混入"]; for (const i of a.items) { out.push(i.tag, i.ja || ""); for (const p of i.parts || []) out.push(p.name, (p.entry && p.entry.group) || ""); } return out; });
     // 対応は選択式：どちらのパターンの文章を使うか（初期値は自動の判定）と、最終的にどの内容で対応するか
     const patSel = h("select", { id: r.id + "-pat", "aria-label": "対応の選択肢", onchange: (e) => {
       const v = e.target.value;
@@ -3652,7 +3654,7 @@ function viewSettings() {
   return [
     h("h2", { text: "共通設定" }),
     h("div", { class: "panel stack" }, h("h3", { text: "注意文と対応の定型文（全店舗共通）" }),
-      field("全員に付ける注意文（厨房内の混入など）", ta("commonNote", 2)),
+      field("全員に付ける注意文（厨房内の混入など）　※「{食材}」と書くと、その人のアレルギー名に置き換わります", ta("commonNote", 3)),
       h("div", { class: "fields" }, field("対応（現物・成分のいずれかに該当する場合、判定できない場合、成分可否が「不可」「不明」の場合）", ta("response", 7)), field("対応（現物・成分のどちらにも該当せず、成分可否が「可」または空欄の場合）", ta("responseOk", 7)))),
     entriesPanel(s, ch),
     dictPanel(s, ch),
