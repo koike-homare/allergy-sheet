@@ -283,6 +283,8 @@ tr.pj-inv-pj td{background:var(--sunken)} tr.pj-inv-pj input:not([type=checkbox]
 table.list{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
 table.list th{text-align:left;font-size:12px;color:var(--muted);font-weight:400;padding:6px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
 table.list td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.lay-st{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin-top:4px;font-size:12px}
+.lay-st-pill{font-weight:700;border-radius:99px;padding:1px 8px;font-size:11.5px} .lay-st-pill.ok{color:var(--ok);background:var(--ok-soft)} .lay-st-pill.warn{color:var(--warn);background:var(--warn-soft)}
 table.list tr.click{cursor:pointer} table.list tr.click:hover td{background:var(--accent-soft)}
 :root{--urg1:#f5c2bd;--urg1-l:#c62f25;--urg2:#fde9e7;--urg2-l:#ec9a93}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--urg1:#5a2420;--urg1-l:#ff6d61;--urg2:#35201e;--urg2-l:#9c4a43}}
@@ -580,6 +582,11 @@ tr.rv-dup>td{background:#fff8e6} tr.rv-old>td{background:#fff8e6;padding:2px 8px
 .pt-c input[inputmode=numeric]{width:44px!important;height:30px;padding:2px 6px}
 .pt-c .pt-row input:not([inputmode]){height:30px;width:140px!important}
 .pt-sep{width:1px;height:22px;background:var(--line)}
+.pt-list{display:flex!important;flex-direction:column;align-items:flex-start;gap:8px;width:100%}
+.pt-cls{flex-wrap:wrap;gap:4px 6px;padding:4px 0;border-bottom:1px dashed var(--line);width:100%}
+.pt-cls:last-child{border-bottom:0}
+.pt-cls>label{margin-left:6px}
+.pt-add-row{width:100%;display:flex;justify-content:flex-start} .pt-add-row [hidden]{display:none}
 .pt-body.noprev{grid-template-columns:1fr}
 .pt-c .pt-body{grid-template-columns:minmax(380px,1fr) minmax(0,1fr)}
 .pt-c .pt-body.noprev{grid-template-columns:1fr}
@@ -692,7 +699,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 180</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 183</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1638,6 +1645,14 @@ const caseLast = (c) => caseDates(c).slice(-1)[0] || "";
 const caseNext = (c) => caseDates(c).find((d) => d >= today()) || "";
 /** 今日からの日数（今日＝0） */
 const daysTo = (d) => Math.round((Date.parse(d + "T00:00:00") - Date.parse(today() + "T00:00:00")) / 864e5);
+/** 店舗のレイアウトが取り込まれているか（案件の店舗名の下に出す） */
+function layStatus(storeId) {
+  const lay = storeId ? S.layouts.get(storeId) : null, fl = (lay && lay.floors) || [];
+  if (!storeId) return h("div", { class: "lay-st muted", text: "レイアウト：店舗マスタに登録すると取り込めます" });
+  const open = h("button", { type: "button", class: "linkbtn", text: fl.length ? "レイアウトを開く" : "レイアウトを取り込む", onclick: () => go({ name: "layout", id: storeId }) });
+  return fl.length ? h("div", { class: "lay-st ok" }, h("span", { class: "lay-st-pill ok", text: "✓ レイアウト取込済み" }), h("span", { class: "muted", text: fl.map((f, i) => f.name || `${i + 1}階`).join("・") }), open)
+    : h("div", { class: "lay-st warn" }, h("span", { class: "lay-st-pill warn", text: "レイアウト未取込" }), open);
+}
 const caseTabOf = (c) => (c.deletedAt ? "deleted" : caseLast(c) && caseLast(c) < today() ? "done" : "active");
 /** 削除は「削除」へ移すだけ（元に戻せる）。完全に消すのは「削除」の一覧から。 */
 async function caseSoftDelete(c, restore) {
@@ -2044,8 +2059,10 @@ function viewCase() {
         dl ? (shopGroups(c).filter((g) => g.rows.length).length > 1
           ? h("span", { class: "row", style: "gap:6px" },
               h("button", { type: "button", class: "btn primary", id: "btn-pdf", text: "まとめてPDF出力", title: "すべての店舗を1つのPDFにまとめて保存します（店舗ごとにページが分かれます）", disabled: !done, onclick: () => exportCasePdf(c, "all") }),
-              h("button", { type: "button", class: "btn primary", id: "btn-pdf-each", text: "店舗別でPDF出力", title: "店舗ごとに別のPDFファイルで保存します", disabled: !done, onclick: () => exportCasePdf(c, "each") }))
-          : h("button", { type: "button", class: "btn primary", id: "btn-pdf", text: "PDFで出力", disabled: !done, onclick: () => exportCasePdf(c, "all") })) : h("span", { class: "muted small", text: "この表示環境ではPDF出力が使えません。" }),
+              h("button", { type: "button", class: "btn primary", id: "btn-pdf-each", text: "店舗別でPDF出力", title: "店舗ごとに別のPDFファイルで保存します", disabled: !done, onclick: () => exportCasePdf(c, "each") }),
+              h("button", { type: "button", class: "btn primary", id: "btn-pdf-person", text: "個別でPDFを出力", title: "1名ずつページを分けてPDFで保存します（1ファイルにまとめる／1名ずつ別ファイル を選べます）", disabled: !done, onclick: () => exportCasePdf(c, "person") }))
+          : h("span", { class: "row", style: "gap:6px" }, h("button", { type: "button", class: "btn primary", id: "btn-pdf", text: "一覧をPDFで出力", title: "全員を一覧表にしてPDFで保存します", disabled: !done, onclick: () => exportCasePdf(c, "all") }),
+          h("button", { type: "button", class: "btn primary", id: "btn-pdf-person", text: "個別でPDFを出力", title: "1名ずつページを分けてPDFで保存します（1ファイルにまとめる／1名ずつ別ファイル を選べます）", disabled: !done, onclick: () => exportCasePdf(c, "person") }))) : h("span", { class: "muted small", text: "この表示環境ではPDF出力が使えません。" }),
         db && !done ? h("button", { type: "button", class: "btn", id: "btn-approve", text: "承認", onclick: approve }) : null,
         ...aps.map((a) => h("span", { class: "row", style: "gap:4px" }, h("span", { class: "pill ok", text: `${a.name} 承認済` }), h("button", { type: "button", class: "linkbtn", text: "取り消す", onclick: () => revoke(a.name) }))),
         h("span", { id: "export-msg", class: "small" }),
@@ -2284,7 +2301,7 @@ function viewCase() {
         else { ch(); drawSug(); drawNote(); }
       } });
     const noteBox = h("div", {});
-    const drawNote = () => noteBox.replaceChildren(storeRec ? h("span", { style: "color:var(--ok)", text: "店舗マスタに登録済みの店舗です。" })
+    const drawNote = () => noteBox.replaceChildren(storeRec ? h("span", { style: "color:var(--ok)", text: "店舗マスタに登録済みの店舗です。" }) : "", storeRec ? ""
       : c.storeName ? h("span", {}, "店舗マスタにない店舗名です。このままでも使えます。 ",
           h("button", { type: "button", class: "linkbtn", id: "c-store-add", text: "この店舗名をマスタに登録する", onclick: async () => {
             const n = { id: uid("s"), name: c.storeName, updatedAt: new Date().toISOString(), editedBy: clientId };
@@ -2292,7 +2309,7 @@ function viewCase() {
             try { if (db) { const body = clone(n); delete body.id; await db.doc("stores/" + n.id).set(body); } } catch (_) { toast("店舗マスタに登録できませんでした"); }
             setStore(n.id, n.name); toast("店舗マスタに登録しました");
           } }))
-      : h("span", { text: "入力すると、名前の一部が一致する店舗が下に表示されます。" }));
+      : h("span", { text: "入力すると、名前の一部が一致する店舗が下に表示されます。" }), c.storeId || c.storeName ? layStatus(c.storeId) : "");
     drawNote();
     return h("div", { class: "f" }, (c.subs || []).length ? h("label", { for: "c-store", class: "shop-tag" }, shopNo(0), "店舗（1件目）") : h("label", { for: "c-store", text: "店舗" }), sIn, sug, noteBox);
   }
@@ -2312,14 +2329,14 @@ function viewCase() {
     const regenMine = () => c.rows.forEach((r) => { if (r.storeKey === sb.id) regen(r, stOf(r)); });
     const hit = sb.storeId && S.stores.get(sb.storeId), sid0 = sb.storeId || "";
     const sIn = h("input", { id: sb.id + "-store", list: "c-stores-dl", value: sb.storeName || (hit && hit.name) || "", placeholder: "店舗名を入力、または候補から選択", autocomplete: "off",
-      oninput: (e) => { const v = e.target.value.trim(), m = storeList.find((x) => norm(x.name) === norm(v)); sb.storeName = m ? m.name : v; sb.storeId = m ? m.id : ""; note.textContent = !v ? "" : m ? "店舗マスタに登録済みの店舗です。" : "店舗マスタにない店舗名です。"; note.style.color = m ? "var(--ok,#1e7f45)" : "var(--warn)"; ch(); },
+      oninput: (e) => { const v = e.target.value.trim(), m = storeList.find((x) => norm(x.name) === norm(v)); sb.storeName = m ? m.name : v; sb.storeId = m ? m.id : ""; note.textContent = !v ? "" : m ? "店舗マスタに登録済みの店舗です。" : "店舗マスタにない店舗名です。"; note.style.color = m ? "var(--ok,#1e7f45)" : "var(--warn)"; layBox.replaceChildren(v ? layStatus(sb.storeId) : ""); ch(); },
       onchange: () => { if ((sb.storeId || "") !== sid0) setTimeout(render, 0); } }); // 店舗が変わったら、利用人数欄のレイアウトのボタンなども作り直す
-    const note = h("div", { class: "small", style: "margin-top:4px;color:var(--ok,#1e7f45)", text: hit ? "店舗マスタに登録済みの店舗です。" : "" });
+    const note = h("div", { class: "small", style: "margin-top:4px;color:var(--ok,#1e7f45)", text: hit ? "店舗マスタに登録済みの店舗です。" : "" }), layBox = h("div", {}, sb.storeId || sb.storeName ? layStatus(sb.storeId) : "");
     const n = c.rows.filter((r) => r.storeKey === sb.id).length;
     return h("div", { class: "panel fields c-head", id: "c-sub-" + i },
       field("団体名", h("input", { id: sb.id + "-group", value: sb.groupName || "", oninput: (e) => { sb.groupName = e.target.value; ch(); } })),
       field("ご利用日", h("input", { id: sb.id + "-visit", type: "date", value: sb.visitDate || "", oninput: (e) => { sb.visitDate = e.target.value; ch(); } })),
-      h("div", { class: "f" }, h("label", { for: sb.id + "-store", class: "shop-tag" }, shopNo(i + 1), `店舗（${i + 2}件目）`), sIn, note, i === 0 ? h("datalist", { id: "c-stores-dl" }, ...storeList.map((x) => h("option", { value: x.name }))) : null),
+      h("div", { class: "f" }, h("label", { for: sb.id + "-store", class: "shop-tag" }, shopNo(i + 1), `店舗（${i + 2}件目）`), sIn, note, layBox, i === 0 ? h("datalist", { id: "c-stores-dl" }, ...storeList.map((x) => h("option", { value: x.name }))) : null),
       field("コース", sel([["", "指定なし（共通設定の内容で作成）"], ...[...S.courses.values()].sort((a, b) => (a.name || "").localeCompare(b.name || "", "ja")).map((x) => [x.id, (x.name || "（名称未入力）") + (x.approved ? "【上長承認済】" : "")])], S.courses.has(sb.courseId) ? sb.courseId : "", (v) => { sb.courseId = v; regenMine(); ch(); render(); }, { id: sb.id + "-course" })),
       field("作成日", h("input", { id: sb.id + "-created", type: "date", value: sb.createdDate || "", oninput: (e) => { sb.createdDate = e.target.value; ch(); } })),
       h("div", { class: "f", style: "display:flex;flex-direction:row;justify-content:flex-end;align-items:flex-end;gap:10px;padding-bottom:4px" },
@@ -3461,7 +3478,7 @@ async function exportCoursePdf(co) {
 
 /* ---------- 案件（対応シート）のPDF出力 ---------- */
 async function exportCasePdf(c, mode) {
-  const each = mode === "each", msg = $("#export-msg"), btn = $(each ? "#btn-pdf-each" : "#btn-pdf"), st = { ...SET_DEFAULTS(), ...S.settings }, aps = validApprovals(c);
+  const each = mode === "each", person = mode === "person", msg = $("#export-msg"), btn = $(person ? "#btn-pdf-person" : each ? "#btn-pdf-each" : "#btn-pdf"), st = { ...SET_DEFAULTS(), ...S.settings }, aps = validApprovals(c);
   if (aps.length < NEED_APPROVALS) return;
   msg.style.color = ""; msg.textContent = "プレビューを作成中…"; btn.disabled = true;
   let G = c, course = null, storeName = ""; // 店舗が複数あるときは、店舗ごとにページを分ける（G＝今のページの店舗）
@@ -3480,7 +3497,7 @@ async function exportCasePdf(c, mode) {
     ...[r.element, respOut(r, M(G.courseId)), r.symptom, r.remark].map((v) => el("td", `border:${B};padding:4px 5px;vertical-align:middle;font-size:10.5px;${pre}`, v || "")));
   const table = (rows) => el("table", "border-collapse:collapse;width:100%;table-layout:fixed;font-size:11.5px", colgroup(), head(), el("tbody", "", ...rows.map(rowEl)));
   const title = () => el("div", "display:flex;gap:70px;margin-bottom:8px;align-items:stretch",
-    el("div", `border:${B};padding:3px 14px;font-weight:700;font-size:11px;display:flex;align-items:center`, "【アレルギー対応　一覧表】"),
+    el("div", `border:${B};padding:3px 14px;font-weight:700;font-size:11px;display:flex;align-items:center`, person ? "【アレルギー対応　個別表】" : "【アレルギー対応　一覧表】"),
     el("div", "flex:1;display:flex", el("div", `border:${B};border-right:0;padding:3px 22px;display:flex;align-items:center`, "団体名"),
       el("div", `border:${B};flex:1;text-align:left;font-size:14px;font-weight:700;padding:3px 12px`, (G.groupName || "") + "　御一行様")));
   const sub = () => el("div", "display:flex;justify-content:space-between;font-size:10.5px;margin-bottom:3px", el("span", "", G.visitDate ? "ご利用日：" + jpDate(G.visitDate) : ""), el("span", "", course ? "コース：" + (course.name || "") : ""));
@@ -3499,9 +3516,16 @@ async function exportCasePdf(c, mode) {
     await loadScript(LIB.h2c); await loadScript(LIB.jspdf);
     try { await document.fonts.ready; } catch (_) {}
     // まず全体を1枚に組んで各行の高さを測り、A4横に収まるようページに分ける
-    const canvases = [], cvGroup = [], all = shopGroups(c), groups = all.filter((g, k) => g.rows.length || (k === 0 && !c.rows.length)); let total = 0;
+    const canvases = [], cvGroup = [], cvRow = [], all = shopGroups(c), groups = all.filter((g, k) => g.rows.length || (k === 0 && !c.rows.length)); let total = 0;
     for (const g of groups) {
       setG(g);
+      if (person) { // 個別：1名ずつ1ページ（見出し・注意事項・検印は毎ページに入れる）
+        for (const r of g.rows.filter((x) => (x.name || "").trim() || (x.allergy || "").trim())) {
+          const pg = sheet([title(), sub(), table([r]), footer()]); pg.style.minHeight = PAGE_H + "px"; document.body.append(pg); made.push(pg);
+          canvases.push(await html2canvas(pg, { scale: 2.5, backgroundColor: "#ffffff", logging: false, windowWidth: W })); cvGroup.push(g); cvRow.push(r); pg.remove();
+        }
+        continue;
+      }
       const rows = g.rows.length ? g.rows : [newRow()];
       const probe = sheet([title(), sub(), table(rows), footer()]); document.body.append(probe); made.push(probe);
       const tb = probe.querySelector("tbody"), rowH = [...tb.children].map((tr) => tr.getBoundingClientRect().height);
@@ -3521,32 +3545,50 @@ async function exportCasePdf(c, mode) {
       }
     }
     total = canvases.length;
+    if (!total) { msg.style.color = "var(--bad)"; msg.textContent = "出力する人がいません（氏名またはアレルギーが入っている人を1名ずつ出力します）。"; return; }
     const imgs = canvases.map((cv) => cv.toDataURL("image/jpeg", 0.92)), dlg = $("#dlg"), dmsg = h("span", { class: "small" });
-    const save = h("button", { type: "button", class: "btn primary", id: "pv-save", text: each ? `店舗別に保存（${groups.length}ファイル）` : "PDFで保存", onclick: async () => {
-      save.disabled = true; dmsg.style.color = ""; dmsg.textContent = "保存中…";
+    const fname = (x) => String(x || "").replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "");
+    let buildPdf = null;
+    buildPdf = (idx) => { const pdf = new jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape", compress: true }); idx.forEach((i, k) => { const cv = canvases[i]; if (k) pdf.addPage("a4", "landscape"); let w = 297, hh = (cv.height / cv.width) * 297; if (hh > 210) { w = (210 / hh) * 297; hh = 210; } pdf.addImage(imgs[i], "JPEG", (297 - w) / 2, 0, w, hh); }); return pdf.output("blob"); };
+    const saveFiles = async () => { // 個別：1名ずつ別のファイル
+      saveSep.disabled = save.disabled = true; dmsg.style.color = "";
+      try {
+        const base = `【アレルギー対応シート】${(c.visitDate || "").replace(/-/g, "")}${fname(c.groupName || "団体名未入力")}さま`;
+        for (let i = 0; i < canvases.length; i++) {
+          dmsg.textContent = `保存中…（${i + 1}/${canvases.length}）`;
+          const r = cvRow[i], cls = r.year ? `${half(r.year)}年${/^\d+$/.test(half(r.kumi)) ? half(r.kumi) + "組" : r.kumi || ""}` : r.kumi || "";
+          await dl.save({ filename: `${base}_${String(i + 1).padStart(2, "0")}_${fname(cls)}${fname(r.name) || "氏名なし"}.pdf`, data: buildPdf([i]) });
+        }
+        caseAct(c, "PDFで出力", `対応シート（個別・1名ずつ ${canvases.length}ファイル）`, "out"); if (draft === c) caseSaver.touch();
+        dlg.close(); msg.textContent = "出力しました。";
+      } catch (e) { dmsg.style.color = "var(--bad)"; dmsg.textContent = e && e.code === "declined" ? "" : e && e.code ? "この表示環境では保存できませんでした。" : "PDFを作成できませんでした。"; saveSep.disabled = save.disabled = false; }
+    };
+    const saveSep = person ? h("button", { type: "button", class: "btn", id: "pv-save-sep", text: `1名ずつ別ファイルで保存（${canvases.length}ファイル）`, onclick: saveFiles }) : null;
+    const save = h("button", { type: "button", class: "btn primary", id: "pv-save", text: each ? `店舗別に保存（${groups.length}ファイル）` : person ? "1ファイルで保存（1名1ページ）" : "PDFで保存", onclick: async () => {
+      save.disabled = true; if (saveSep) saveSep.disabled = true; dmsg.style.color = ""; dmsg.textContent = "保存中…";
       try {
         const base = `【アレルギー対応シート】${(c.visitDate || "").replace(/-/g, "")}${(c.groupName || "団体名未入力").replace(/[\\/:*?"<>|]/g, "")}さま`;
-        const build = (idx) => { const pdf = new jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape", compress: true }); idx.forEach((i, k) => { const cv = canvases[i]; if (k) pdf.addPage("a4", "landscape"); let w = 297, hh = (cv.height / cv.width) * 297; if (hh > 210) { w = (210 / hh) * 297; hh = 210; } pdf.addImage(imgs[i], "JPEG", (297 - w) / 2, 0, w, hh); }); return pdf.output("blob"); };
-        if (!each) await dl.save({ filename: base + ".pdf", data: build(canvases.map((_, i) => i)) });
+        const build = buildPdf;
+        if (!each) await dl.save({ filename: base + (person ? "_個別" : "") + ".pdf", data: build(canvases.map((_, i) => i)) });
         else for (const [k, g] of groups.entries()) { // 店舗ごとに1ファイル
           dmsg.textContent = `保存中…（${k + 1}/${groups.length}）`;
           const sn = (shopName(g) || `店舗${k + 1}`).replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, "");
           await dl.save({ filename: `${base}_${sn}.pdf`, data: build(canvases.map((_, i) => i).filter((i) => cvGroup[i] === g)) });
         }
-        caseAct(c, "PDFで出力", `対応シート（${(c.rows || []).length}名${each ? `・店舗別 ${groups.length}ファイル` : ""}）`, "out"); if (draft === c) caseSaver.touch();
+        caseAct(c, "PDFで出力", `対応シート（${(c.rows || []).length}名${each ? `・店舗別 ${groups.length}ファイル` : person ? `・個別 1名1ページ` : ""}）`, "out"); if (draft === c) caseSaver.touch();
         dlg.close(); msg.textContent = "出力しました。";
-      } catch (e) { dmsg.style.color = "var(--bad)"; dmsg.textContent = e && e.code === "declined" ? "" : e && e.code ? "この表示環境では保存できませんでした。" : "PDFを作成できませんでした。"; save.disabled = false; }
+      } catch (e) { dmsg.style.color = "var(--bad)"; dmsg.textContent = e && e.code === "declined" ? "" : e && e.code ? "この表示環境では保存できませんでした。" : "PDFを作成できませんでした。"; save.disabled = false; if (saveSep) saveSep.disabled = false; }
     } });
     const as = c.rows.map((r) => analyse(r, rowM(c, r))), un = as.filter((x) => x.ask).length, pd = as.filter((x) => x.pending).length;
     dlg.replaceChildren(h("div", { class: "dlg" },
-      h("div", { class: "row" }, h("h3", { text: "PDFのプレビュー" }), h("span", { class: "muted small", text: `A4横・${total}ページ` + (each ? `・店舗別に${groups.length}ファイルで保存` : groups.length > 1 ? `・${groups.length}店舗を1ファイルで保存` : "") }), h("span", { style: "margin-left:auto" }), dmsg,
-        h("button", { type: "button", class: "btn", text: "閉じる", onclick: () => dlg.close() }), save),
+      h("div", { class: "row" }, h("h3", { text: "PDFのプレビュー" }), h("span", { class: "muted small", text: `A4横・${total}ページ` + (person ? `・個別（1名1ページ）` : each ? `・店舗別に${groups.length}ファイルで保存` : groups.length > 1 ? `・${groups.length}店舗を1ファイルで保存` : "") }), h("span", { style: "margin-left:auto" }), dmsg,
+        h("button", { type: "button", class: "btn", text: "閉じる", onclick: () => dlg.close() }), saveSep, save),
       un || pd ? h("div", { class: "banner warn", text: `確認が残っています：${[un ? `原本未照合 ${un}件` : "", pd ? `判定保留・未登録 ${pd}件` : ""].filter(Boolean).join("、")}` }) : null,
       h("div", { class: "pv" }, ...imgs.map((src, i) => h("img", { src, alt: `対応シートの印刷プレビュー ${i + 1}ページ`, id: "pv-img" + i, style: "width:100%;max-width:1000px;margin-bottom:10px" })))));
     dlg.showModal(); msg.textContent = "";
   } catch (e) {
     msg.textContent = "プレビューを作成できませんでした。";
-  } finally { made.forEach((m) => m.remove()); for (const id of ["#btn-pdf", "#btn-pdf-each"]) { const bb = $(id); if (bb) bb.disabled = validApprovals(c).length < NEED_APPROVALS; } }
+  } finally { made.forEach((m) => m.remove()); for (const id of ["#btn-pdf", "#btn-pdf-each", "#btn-pdf-person"]) { const bb = $(id); if (bb) bb.disabled = validApprovals(c).length < NEED_APPROVALS; } }
 }
 
 /* ---------- 特定原材料 ---------- */
@@ -5377,7 +5419,15 @@ function partyGroups(party) {
     if (num(k.m)) out.push({ key: `c${i + 1}m`, label: `${name} 男子`, lines: [name, "男子"], n: num(k.m), color: SEAT_COLORS[(i * 2) % SEAT_COLORS.length], year: half(k.year), kumi: half(k.kumi), sex: "男" });
     if (num(k.f)) out.push({ key: `c${i + 1}f`, label: `${name} 女子`, lines: [name, "女子"], n: num(k.f), color: SEAT_COLORS[(i * 2 + 1) % SEAT_COLORS.length], year: half(k.year), kumi: half(k.kumi), sex: "女" });
   });
-  for (const [id, , short] of STAFF) if (num((party.staff || {})[id])) out.push({ key: id, label: short, n: num(party.staff[id]), color: STAFF_COLORS[id], staff: true });
+  // 引率・看護師などは、クラスの行ごとに入れられる（1行目は party.staff、2行目以降は各クラスの staff）。
+  // 2つ以上の行に入っているときだけ、レイアウトの区分名に「2年3組 引率」のようにクラス名を付けて分ける。
+  const cls = mode === "class" ? party.classes || [] : [], stOf = (i) => (i === 0 ? party.staff || {} : (cls[i] && cls[i].staff) || {});
+  const rowsWithStaff = mode === "class" ? cls.map((_, i) => i).filter((i) => STAFF.some(([id]) => num(stOf(i)[id]))) : [0];
+  const split = rowsWithStaff.length > 1 || rowsWithStaff.some((i) => i > 0);
+  for (const i of mode === "class" ? rowsWithStaff : [0]) {
+    const k = cls[i] || {}, name = (half(k.year) ? half(k.year) + "年" : "") + (half(k.kumi) ? half(k.kumi) + "組" : "") || "クラス" + (i + 1), st = mode === "class" ? stOf(i) : party.staff || {};
+    for (const [id, , short] of STAFF) if (num(st[id])) out.push({ key: split ? `c${i + 1}-${id}` : id, label: split ? `${name} ${short}` : short, lines: split ? [name, short] : undefined, n: num(st[id]), color: STAFF_COLORS[id], staff: true });
+  }
   (party.others || []).forEach((o, i) => { if (num(o.n)) out.push({ key: `o${i + 1}`, label: (o.name || "その他").trim(), n: num(o.n), color: SEAT_COLORS[(SEAT_COLORS.length - 1 - i + SEAT_COLORS.length * 4) % SEAT_COLORS.length], staff: true }); });
   return out;
 }
@@ -5798,20 +5848,25 @@ function partyPanel(c, ch, subId) {
   const modeBar = h("div", { class: "row pt-mode", id: PF + "mode", role: "group", "aria-label": "人数の入れ方" });
   const drawMode = () => { const m = partyMode(p); modeBar.replaceChildren(h("span", { class: "small muted", text: "人数の入れ方" }), ...MODES.map(([k, t]) => h("button", { type: "button", class: "btn sm" + (m === k ? " primary" : ""), id: PF + "mode-" + k, "aria-pressed": m === k ? "true" : "false", text: t, onclick: () => { p.mode = k === "class" ? undefined : k; if (k === "class") delete p.mode; drawC(); drawMode(); upd(); ch(); } })),
     m !== "class" ? h("span", { class: "small", style: "color:var(--warn)", id: PF + "mode-note", text: "内訳が決まっていないときの仮組用です。内訳が決まったら「クラス・男女別」に入れ直して、配席を作り直してください。" }) : ""); };
-  const drawC = () => { const m = partyMode(p); addBtn.hidden = m !== "class"; if (m === "sex") return list.replaceChildren(h("div", { class: "row pt-row" }, h("span", { class: "muted small", text: "男子" }), n(p, "sexM", PF + "sm", "男子の合計人数"), h("span", { text: "人" }), h("span", { class: "muted small", style: "margin-left:8px", text: "女子" }), n(p, "sexF", PF + "sf", "女子の合計人数"), h("span", { text: "人" })));
+  const drawC = () => { const m = partyMode(p); addBtn.hidden = m !== "class"; staffBox.hidden = m === "class"; list.classList.toggle("pt-list", m === "class"); if (m === "sex") return list.replaceChildren(h("div", { class: "row pt-row" }, h("span", { class: "muted small", text: "男子" }), n(p, "sexM", PF + "sm", "男子の合計人数"), h("span", { text: "人" }), h("span", { class: "muted small", style: "margin-left:8px", text: "女子" }), n(p, "sexF", PF + "sf", "女子の合計人数"), h("span", { text: "人" })));
     if (m === "total") return list.replaceChildren(h("div", { class: "row pt-row" }, h("span", { class: "muted small", text: "参加者の合計" }), n(p, "all", PF + "all", "参加者の合計人数"), h("span", { text: "人" }), h("span", { class: "small muted", style: "margin-left:8px", text: "（引率・添乗員などは下の欄に入れます）" })));
     drawCls(); };
-  const drawCls = () => list.replaceChildren(...p.classes.map((k, i) => h("div", { class: "row pt-row" },
-    n(k, "year", `${PF}${i}-y`, "年"), h("span", { text: "年" }), n(k, "kumi", `${PF}${i}-k`, "組"), h("span", { text: "組" }),
-    h("span", { class: "muted small", style: "margin-left:8px", text: "男子" }), n(k, "m", `${PF}${i}-m`, "男子の人数"), h("span", { text: "人" }),
-    h("span", { class: "muted small", style: "margin-left:8px", text: "女子" }), n(k, "f", `${PF}${i}-f`, "女子の人数"), h("span", { text: "人" }),
-    p.classes.length > 1 ? trash(`${PF}${i}-del`, () => { p.classes.splice(i, 1); drawCls(); upd(); ch(); }) : null,
-    h("span", { class: "pill", id: `${PF}${i}-st`, style: "margin-left:8px", hidden: true }))));
+  // クラスは1行ずつ下に並べ、引率・看護師なども行ごとに入れる（1行目の分は p.staff に入れる＝今までのデータと同じ）
+  const staffIns = (st, pre) => STAFF.map(([id, label]) => h("label", { class: "row small", style: "gap:4px" }, label, n(st, id, pre + id, label), "人"));
+  const drawCls = () => list.replaceChildren(...p.classes.map((k, i) => { const st = i === 0 ? p.staff : (k.staff = k.staff || {});
+    return h("div", { class: "row pt-row pt-cls" },
+      n(k, "year", `${PF}${i}-y`, "年"), h("span", { text: "年" }), n(k, "kumi", `${PF}${i}-k`, "組"), h("span", { text: "組" }),
+      h("span", { class: "muted small", style: "margin-left:8px", text: "男子" }), n(k, "m", `${PF}${i}-m`, "男子の人数"), h("span", { text: "人" }),
+      h("span", { class: "muted small", style: "margin-left:8px", text: "女子" }), n(k, "f", `${PF}${i}-f`, "女子の人数"), h("span", { text: "人" }),
+      h("span", { class: "pt-sep" }), ...staffIns(st, i === 0 ? PF : `${PF}${i}-`),
+      p.classes.length > 1 ? trash(`${PF}${i}-del`, () => { if (i === 0) { const nx = p.classes[1]; p.staff = nx.staff || {}; delete nx.staff; } p.classes.splice(i, 1); drawCls(); upd(); ch(); }) : null,
+      h("span", { class: "pill", id: `${PF}${i}-st`, style: "margin-left:8px", hidden: true })); }));
   const drawO = () => others.replaceChildren(...p.others.map((o, i) => h("div", { class: "row pt-row" },
     h("input", { id: `${PF}o${i}-n`, value: o.name || "", placeholder: "区分名（例：保護者）", "aria-label": "その他の区分名", style: "width:180px", oninput: (e) => { o.name = e.target.value; ch(); } }),
     n(o, "n", `${PF}o${i}-c`, "人数"), h("span", { text: "人" }),
     trash(`${PF}o${i}-del`, () => { p.others.splice(i, 1); drawO(); upd(); ch(); }))));
-  const addBtn = h("button", { type: "button", class: "btn sm", id: PF + "add", text: "＋ クラスを追加", onclick: () => { p.classes.push({ id: uid("k"), year: "", kumi: "", m: "", f: "" }); drawCls(); upd(); ch(); } });
+  const addBtn = h("button", { type: "button", class: "btn sm", id: PF + "add", text: "＋ クラスを追加", title: "下にクラスの行を追加します", onclick: () => { p.classes.push({ id: uid("k"), year: "", kumi: "", m: "", f: "", staff: {} }); drawCls(); upd(); ch(); } });
+  const staffBox = h("div", { class: "pt-flow pt-staff" }, h("span", { class: "pt-sep" }), ...staffIns(p.staff, PF));
   drawC(); drawMode(); drawO(); queueMicrotask(upd);
   const lay = S.layouts.get(c.storeId), has = !!(lay && (lay.floors || []).length) || !!c.layout;
   const open = () => go({ name: "clayout", id: c.id, ...(subId ? { sub: subId } : {}) });
@@ -5827,8 +5882,7 @@ function partyPanel(c, ch, subId) {
       h("button", { type: "button", class: "btn primary sm", id: subId ? subId + "-btn-layout" : "btn-layout", disabled: !has, text: c.layout ? "レイアウトを開く" : "レイアウト作成", onclick: open })),
     has ? null : h("div", { class: "small muted", style: "margin-top:-4px", text: c.storeId ? "この店舗にはレイアウトが登録されていません。店舗マスタの「レイアウト」で登録すると、ここから配席を作成できます。" : "店舗マスタに登録済みの店舗を選ぶと、その店舗のレイアウトで配席を作成できます。" }),
     ((x) => { x.append(...[h("div", { class: "pt-flow" },
-      list, addBtn, h("span", { class: "pt-sep" }),
-      ...STAFF.map(([id, label]) => h("label", { class: "row small", style: "gap:4px" }, label, n(p.staff, id, PF + id, label), "人")),
+      list, staffBox, h("div", { class: "pt-add-row" }, addBtn),
       others, h("button", { type: "button", class: "btn sm", id: PF + "other", text: "＋ その他", title: "その他の区分（保護者など）を追加", onclick: () => { p.others.push({ id: uid("o"), name: "", n: "" }); drawO(); ch(); } })),
       prev].filter(Boolean)); pvSet(); if (!prev) x.classList.add("noprev"); return x; })(body),
     c.layout ? layUpdatePop(c, ch, () => render()) : null);
