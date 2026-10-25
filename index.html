@@ -699,7 +699,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 184</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 185</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -5775,7 +5775,7 @@ function seatCards(lay) {
     for (const x of cells) {
       const segs = []; let buf = [];
       for (const line of x.v.split("\n").map((t) => half(t).replace(/\s+/g, "").trim()).filter(Boolean)) { const m = /^(.*?)(\d+)名$/.exec(line); if (!m) { buf.push(line); continue; } segs.push([...buf, m[1], m[2] + "名"].join("")); buf = []; }
-      if (segs.length) out.push({ floor: fl.name || "", text: segs.join("・") });
+      if (segs.length) out.push({ floor: fl.name || "", segs });
     }
   }
   return out;
@@ -5788,22 +5788,29 @@ async function exportSeatCards(c, say) {
   say("席札を作成中…");
   try {
     await loadScript(LIB.exceljs);
-    const wb = new ExcelJS.Workbook(), ROWS = 26, RH = 20.5, multi = new Set(cards.map((x) => x.floor)).size > 1;
+    // 1面＝6列。卓に区分が2つ以上あるときは、面の中を列に分けて、1つ目を右から縦書きで並べる（4つ以上は3列にまとめる）
+    const wb = new ExcelJS.Workbook(), ROWS = 26, RH = 20.5, SC = 6, CW = 5.6, multi = new Set(cards.map((x) => x.floor)).size > 1;
     const ws = wb.addWorksheet("席札", { pageSetup: { paperSize: 9, orientation: "landscape", scale: 100, horizontalCentered: true, verticalCentered: true, margins: { left: 0.25, right: 0.25, top: 0.25, bottom: 0.25, header: 0, footer: 0 } }, views: [{ showGridLines: false }] });
-    ws.columns = Array.from({ length: 12 }, () => ({ width: 11.9 }));
-    const fold = { style: "dashed", color: { argb: "FFBFBFBF" } };
+    ws.columns = Array.from({ length: SC * 4 }, () => ({ width: CW }));
+    const fold = { style: "dashed", color: { argb: "FFBFBFBF" } }, faceW = (SC * (CW * 7 + 5)) * 0.75; // 1面の幅（pt）
     cards.forEach((cd, i) => {
       const top = i * ROWS + 1;
-      for (let r = top; r < top + ROWS; r++) { ws.getRow(r).height = RH; for (const col of [3, 6, 9]) ws.getCell(r, col).border = { right: fold }; }
-      const n = [...cd.text].length, size = Math.max(20, Math.min(96, Math.floor((RH * (ROWS - 2)) / (n * 1.25))));
+      for (let r = top; r < top + ROWS; r++) { ws.getRow(r).height = RH; for (const col of [SC, SC * 2, SC * 3]) ws.getCell(r, col).border = { right: fold }; }
+      let segs = cd.segs.slice(); if (segs.length > 3) { const k = Math.ceil(segs.length / 3), g = []; for (let x = 0; x < segs.length; x += k) g.push(segs.slice(x, x + k).join("・")); segs = g; }
+      const n = segs.length, span = n === 1 ? [SC] : n === 2 ? [3, 3] : [2, 2, 2], longest = Math.max(...segs.map((t) => [...t].length));
+      const size = Math.max(16, Math.min(96, Math.floor((RH * (ROWS - 2)) / (longest * 1.6)), Math.floor((faceW / n) * 0.78)));
       for (let k = 0; k < 3; k++) { // 3面に同じ文字
-        ws.mergeCells(top + 1, k * 3 + 1, top + ROWS - 2, k * 3 + 3);
-        const cell = ws.getCell(top + 1, k * 3 + 1); cell.value = cd.text;
-        cell.font = { name: "BIZ UDPゴシック", size, bold: false }; cell.alignment = { textRotation: "vertical", vertical: "middle", horizontal: "center" };
-        for (let r = top + 1; r <= top + ROWS - 2; r++) ws.getCell(r, k * 3 + 3).border = { right: fold };
+        let col = k * SC + SC + 1; // 面の右端から左へ
+        segs.forEach((t, q) => {
+          const w = span[q]; col -= w;
+          ws.mergeCells(top + 1, col, top + ROWS - 2, col + w - 1);
+          const cell = ws.getCell(top + 1, col); cell.value = t;
+          cell.font = { name: "BIZ UDPゴシック", size }; cell.alignment = { textRotation: "vertical", vertical: "middle", horizontal: "center" };
+        });
+        for (let r = top + 1; r <= top + ROWS - 2; r++) ws.getCell(r, k * SC + SC).border = { right: fold };
       }
       // 4面目（のりしろ）：内側に隠れるので、仕分け用の番号だけ小さく入れる
-      const tag = ws.getCell(top + ROWS - 2, 10); tag.value = `${i + 1}/${cards.length}${multi && cd.floor ? "　" + cd.floor : ""}　のりしろ`; tag.font = { size: 8, color: { argb: "FFA6A6A6" } };
+      const tag = ws.getCell(top + ROWS - 2, SC * 3 + 1); tag.value = `${i + 1}/${cards.length}${multi && cd.floor ? "　" + cd.floor : ""}　のりしろ`; tag.font = { size: 8, color: { argb: "FFA6A6A6" } };
       if (i < cards.length - 1) ws.getRow(top + ROWS - 1).addPageBreak();
     });
     await dl.save({ filename: `【席札】${layoutTitle(c).replace(/[\\/:*?"<>|]/g, "").replace(/　/g, "_")}.xlsx`, data: new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }) });
