@@ -692,7 +692,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 179</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 180</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1670,7 +1670,10 @@ function renderListBody() {
   if (lg) lg.replaceChildren(...(listTab === "active" ? [h("span", { class: "lg-sw urg1" }), "ご利用日まで3日以内", h("span", { class: "lg-sw urg2" }), "7日以内", h("span", { text: "・今日のご利用分も進行中に表示します。" })]
     : listTab === "done" ? ["ご利用日が過ぎた案件です（追加の店舗がある場合は、いちばん遅いご利用日で判断します）。"] : ["削除した案件です。「元に戻す」で進行中・完了に戻せます。"]));
   const list = mine.filter((c) => caseTabOf(c) === listTab).filter((c) => !q || norm(c.groupName + (S.stores.get(c.storeId)?.name || "") + (c.storeName || "") + (c.subs || []).map((x) => shopName(x) || "").join("")).includes(q))
-    .sort(listTab === "deleted" ? (a, b) => (b.deletedAt || "").localeCompare(a.deletedAt || "") : (a, b) => (b.visitDate || "9").localeCompare(a.visitDate || "9") || (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+    // 並び順：進行中＝ご利用日が近い順（日付なしは最後）／完了＝最近終わった順／削除＝最近削除した順
+    .sort(listTab === "deleted" ? (a, b) => (b.deletedAt || "").localeCompare(a.deletedAt || "")
+      : listTab === "active" ? (a, b) => (caseNext(a) || "9").localeCompare(caseNext(b) || "9") || (a.groupName || "").localeCompare(b.groupName || "", "ja")
+      : (a, b) => caseLast(b).localeCompare(caseLast(a)) || (b.updatedAt || "").localeCompare(a.updatedAt || ""));
   if (!list.length) {
     box.replaceChildren(h("div", { class: "empty" }, !mine.length ? "まだ案件がありません。「新しい案件を作る」から、団体ごとの対応シートを作成します。" : q ? "該当する案件がありません。" : listTab === "active" ? "進行中の案件はありません。" : listTab === "done" ? "完了した案件はありません。" : "削除した案件はありません。"));
     return;
