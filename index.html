@@ -700,7 +700,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 188</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 192</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -3896,57 +3896,56 @@ function pjParseGrid(grid) {
   }
   return { top, rows, foot: foot.join("\n") };
 }
-async function pjImport(files) {
-  if (!sample) return toast("この表示環境ではAIの読み取りが使えません。「空の案件を作る」から手で入力できます");
-  const dlg = $("#dlg"), msg = h("div", { style: "white-space:pre-wrap", text: "ファイルを準備しています…" }); aiCtl = new AbortController();
-  dlg.replaceChildren(h("div", { class: "dlg" }, h("h3", { text: "依頼を読み取っています" }), msg, h("div", { class: "row" }, h("button", { type: "button", class: "btn", text: "中止", onclick: () => { aiCtl.abort(); dlg.close(); } }))));
-  if (!dlg.open) dlg.showModal();
-  const say = (t) => { msg.textContent = t; }, opt = () => ({ signal: aiCtl.signal });
-  try {
-    let top = "", rows = [], foot = ""; const texts = [], imgs = [];
-    for (const f of files) {
-      if (/\.(xlsx|xls)$/i.test(f.name)) {
-        await loadScript(LIB.xlsx); const wb = XLSX.read(await f.arrayBuffer(), { type: "array" });
-        const g = pjParseGrid(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: "" }));
-        if (g.rows.length) { top += g.top + "\n"; rows.push(...g.rows); foot += g.foot; } else texts.push(await tableText(f));
-      } else if (isTable(f)) texts.push(await tableText(f));
-      else if (isPdf(f)) {
-        await loadScript(LIB.pdf); await loadScript(LIB.pdfw);
-        const pdf = await pdfjsLib.getDocument({ data: await f.arrayBuffer(), isEvalSupported: false }).promise; let t = "";
-        for (let n = 1; n <= pdf.numPages; n++) { const tc = await (await pdf.getPage(n)).getTextContent(); t += tc.items.map((it) => it.str + (it.hasEOL ? "\n" : " ")).join("") + "\n"; }
-        if (t.replace(/\s/g, "").length > 40 * pdf.numPages) texts.push(t.slice(0, 60000));
-        else for (let n = 1; n <= Math.min(pdf.numPages, 4); n++) { const page = await pdf.getPage(n), base = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: Math.min(3, 2000 / Math.max(base.width, base.height)) }); const cv = h("canvas", { width: Math.round(vp.width), height: Math.round(vp.height) }); await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise; imgs.push(await new Promise((ok) => cv.toBlob(ok, "image/jpeg", 0.9))); }
-      } else if (/^image\//.test(f.type)) imgs.push(f);
-    }
-    // 表の形で読めなかった資料は、まずAIに品目の行へ整理させる（英語は原文のまま）
-    if (!rows.length) {
-      if (!texts.length && !imgs.length) { say("読み取れるファイルがありませんでした。Excel・PDF・画像を選んでください。"); return; }
-      say("AIが依頼の内容を整理しています…（1分ほどかかることがあります）");
-      const r = await sample.json(`プライベートジェットのケータリング依頼です。資料の内容を、見出し部分と品目の行に整理してください。原文の英語は訳さず、そのまま書き写します（日本語が併記されていても英語だけを書く）。
+/** 依頼の資料1つを、見出し部分（top）・品目の行（rows）・表の下（foot）に分ける。表（Excel）はそのまま読み、PDF・画像はAIに整理させる。
+    品目が多くてAIの返事が長くなりすぎる（JSONが途中で切れる）ときは、ページごとに分けて読み直す。 */
+async function pjReadFile(f, say, opt) {
+  if (/\.(xlsx|xls)$/i.test(f.name)) {
+    await loadScript(LIB.xlsx); const wb = XLSX.read(await f.arrayBuffer(), { type: "array" });
+    const g = pjParseGrid(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: "" }));
+    if (g.rows.length) return { top: g.top, rows: g.rows, foot: g.foot || "" };
+    return pjAiRows([await tableText(f)], [], say, opt);
+  }
+  if (isTable(f)) return pjAiRows([await tableText(f)], [], say, opt);
+  if (isPdf(f)) {
+    await loadScript(LIB.pdf); await loadScript(LIB.pdfw);
+    const pdf = await pdfjsLib.getDocument({ data: await f.arrayBuffer(), isEvalSupported: false }).promise, pages = [];
+    for (let n = 1; n <= pdf.numPages; n++) { const tc = await (await pdf.getPage(n)).getTextContent(); pages.push(tc.items.map((it) => it.str + (it.hasEOL ? "\n" : " ")).join("")); }
+    if (pages.join("").replace(/\s/g, "").length > 40 * pdf.numPages) return pjAiRows(pages, [], say, opt);
+    const imgs = [];
+    for (let n = 1; n <= Math.min(pdf.numPages, 4); n++) { const page = await pdf.getPage(n), base = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: Math.min(3, 2000 / Math.max(base.width, base.height)) }); const cv = h("canvas", { width: Math.round(vp.width), height: Math.round(vp.height) }); await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise; imgs.push(await new Promise((ok) => cv.toBlob(ok, "image/jpeg", 0.9))); }
+    return pjAiRows([], imgs, say, opt);
+  }
+  if (/^image\//.test(f.type)) return pjAiRows([], [f], say, opt);
+  return { top: "", rows: [], foot: "" };
+}
+/** AIで品目の行に整理する。texts はページごとの文章。まとめて読めなければ、ページごとに読み直してつなぐ。 */
+async function pjAiRows(texts, imgs, say, opt) {
+  const one = async (text, imgs) => {
+  const r = await sample.json(`プライベートジェットのケータリング依頼です。資料の内容を、見出し部分と品目の行に整理してください。原文の英語は訳さず、そのまま書き写します（日本語が併記されていても英語だけを書く）。
 返答はJSONだけ。形式：{"top":"日付・フライトナンバー・オーダーナンバー・配達先・配達時間・特記事項（SPECIAL NOTES）など、品目の表より上に書かれていること（原文のまま、改行区切り）","rows":[{"sec":true,"en":"区切りの見出し（例：BREAKFAST）"},{"en":"品目と、その品目に付いた説明（改行は \\n）","qty":"数量","instr":"Special Instructions や単位の欄の記載"}]}
-${texts.length ? "資料：\n" + texts.join("\n\n").slice(0, 60000) : "添付の画像が資料です。"}`, { ...opt(), ...(imgs.length ? { images: imgs.slice(0, 4) } : {}) });
-      top = String(r.top || ""); rows = (Array.isArray(r.rows) ? r.rows : []).map((x) => (x && x.sec ? { sec: true, en: String(x.en || "") } : { en: String((x && x.en) || ""), qty: String((x && x.qty) || ""), instr: String((x && x.instr) || "") })).filter((x) => x.en);
-    }
-    if (!rows.length) { say("品目を読み取れませんでした。"); return; }
-    say("AIが見出し（利用日・フライトナンバーなど）と特記事項を読み取っています…");
-    let hd = {};
+${text ? "資料：\n" + text.slice(0, 60000) : "添付の画像が資料です。"}`, { ...opt, ...(imgs.length ? { images: imgs.slice(0, 4) } : {}) });
+    return { top: String(r.top || ""), rows: (Array.isArray(r.rows) ? r.rows : []).map((x) => (x && x.sec ? { sec: true, en: String(x.en || "") } : { en: String((x && x.en) || ""), qty: String((x && x.qty) || ""), instr: String((x && x.instr) || "") })).filter((x) => x.en), foot: "" };
+  };
+  const all = texts.join("\n");
+  if (!texts.length || texts.length === 1 || all.length < 12000) {
+    try { return await one(all, imgs); } catch (e) { if (!(e && e.code === "invalid_json") || texts.length < 2) throw e; }
+  }
+  // ページごとに読み、見出し部分は最初のページのものを使う
+  const out = { top: "", rows: [], foot: "" };
+  for (let k = 0; k < texts.length; k++) {
+    if (say) say(`AIが依頼の内容を整理しています…（${k + 1}/${texts.length}ページ）`);
+    const r = await one(texts[k], []); if (!out.top) out.top = r.top; out.rows.push(...r.rows);
+  }
+  return out;
+}
+/** 品目の行に日本語・梱包容器・数量の変更を付けて、案件の品目にする。 */
+async function pjTranslate(rows, say, opt) {
+  const N = 14, out = new Map(); let failed = 0;
+  for (let i = 0; i < rows.length; i += N) {
+    if (say) say(`AIが品目を和訳しています…（${Math.min(rows.length, i + N)}/${rows.length}行）`);
+    const part = rows.slice(i, i + N).map((x, k) => ({ i: i + k, ...(x.sec ? { heading: x.en } : { item: x.en, qty: x.qty, instr: x.instr }) }));
     try {
-      hd = await sample.json(`プライベートジェットのケータリング依頼の、見出し部分と品目の一部です。次の項目を読み取ってください。書かれていない項目は空文字にし、推測で補わない。
-返答はJSONだけ。形式：{"date":"利用日を YYYY-MM-DD で","flight":"フライトナンバー（機体記号を含む。例：HRT389 (C-FGGH)）","orderNo":"オーダーナンバー（例：JAPAN- IAJ1）","area":"配達エリア（例：KANSAI）","time":"配達時間（例：11:30）","place":"受け渡し場所","contact":"担当者氏名","phone":"電話番号","notesEn":"特記事項の原文。SPECIAL NOTES の記載に加えて、品目の見出しなどに書かれたアレルギー・食べられないもの・NO PORK・NO ALCOHOL などの注意も、原文のまま改行区切りで入れる","notesJa":"notesEn の日本語訳（厨房の担当者に伝わる、簡潔で正確な日本語。1文ずつ改行）","extra":"乗客・乗員の人数など、料理を用意するうえで必要な補足を日本語で。なければ空（「記載なし」などの説明は書かない。梱包容器のことも書かない）"}
-見出し部分：
-${top.slice(0, 6000)}
-品目の見出し：
-${rows.filter((x) => x.sec).map((x) => x.en).join("\n").slice(0, 3000)}
-表の下の記載：
-${foot.slice(0, 2000)}`, opt());
-    } catch (e) { if (e && e.code === "cancelled") return; }
-    // 和訳・梱包容器・数量の変更は、行をいくつかずつに分けてAIに頼む（返事が長くなりすぎないように）
-    const N = 14, out = new Map(); let failed = 0;
-    for (let i = 0; i < rows.length; i += N) {
-      say(`AIが品目を和訳しています…（${Math.min(rows.length, i + N)}/${rows.length}行）`);
-      const part = rows.slice(i, i + N).map((x, k) => ({ i: i + k, ...(x.sec ? { heading: x.en } : { item: x.en, qty: x.qty, instr: x.instr }) }));
-      try {
-        const r = await sample.json(`プライベートジェットのケータリング依頼の品目です。日本の厨房の担当者が読むために、各行に日本語を付けてください。
+      const r = await sample.json(`プライベートジェットのケータリング依頼の品目です。日本の厨房の担当者が読むために、各行に日本語を付けてください。
 規則：
 ・ja は item（または heading）の日本語訳。料理名は日本で通じる言い方にし、材料・調理法・盛り付け・容器の指示も省かずに訳す。原文が複数行なら、訳も同じ順で改行する。
 ・instrJa は instr の日本語訳。instr が NOS・PCS・PTN・KG・LTR などの単位だけ、または空のときは空文字。
@@ -3955,13 +3954,56 @@ ${foot.slice(0, 2000)}`, opt());
 ・pj は、その品目を機内食会社ではなく依頼主側（PJ）が自分で用意すると書かれているときだけ true。
 ・推測で内容を足さない。数量・固有名詞・アレルギーの注意は正確に。
 返答はJSONだけ。形式：{"rows":[{"i":0,"ja":"","instrJa":"","qty":"","pack":"","pj":false}]}
-行：${JSON.stringify(part)}`, opt());
-        for (const x of Array.isArray(r.rows) ? r.rows : []) if (x && Number.isInteger(x.i)) out.set(x.i, x);
-      } catch (e) { if (e && e.code === "cancelled") return; if (AI_ERR[e && e.code] && !out.size) { say(AI_ERR[e.code]); return; } failed++; }
+行：${JSON.stringify(part)}`, opt);
+      for (const x of Array.isArray(r.rows) ? r.rows : []) if (x && Number.isInteger(x.i)) out.set(x.i, x);
+    } catch (e) { if (e && e.code === "cancelled") throw e; if (AI_ERR[e && e.code] && !out.size && e.code !== "invalid_json") throw e; failed++; }
+  }
+  const items = rows.map((x, i) => { const t = out.get(i) || {}, qty = String(t.qty != null && String(t.qty).trim() !== "" ? t.qty : x.qty || "");
+    // 依頼の表に日本語が併記されているときは、その日本語をそのまま使う（AIの訳で置き換えない）
+    return x.sec ? { id: uid("i"), sec: true, en: x.en, ja: String(x.jaSrc || t.ja || "") } : { id: uid("i"), en: x.en, ja: String(x.jaSrc || t.ja || ""), qty, qty0: String(x.qty || ""), instr: x.instr || "", instrJa: String(x.instrJaSrc || t.instrJa || ""), pack: PJ_PACKS.includes(t.pack) ? t.pack : String(t.pack || ""), ...(t.pj || x.pj ? { pj: true } : {}) }; });
+  return { items, failed };
+}
+/** 依頼の見出し部分から、区切りに使う名前（VIP・CREW など）とフライト・オーダーを拾う。 */
+function pjLabel(top, fname) {
+  const t = String(top || ""), it = /Catering\s*Item\s*[：:]?\s*([A-Za-z][A-Za-z ]{1,20}?)(?:\s{2,}|\n|Quantity|$)/i.exec(t), fl = /Flight\s*Number\s*[：:]?\s*([A-Z0-9-]{3,12})/i.exec(t), od = /Order\s*Number\s*[：:]?\s*((?:JAPAN-?\s*)?[A-Za-z0-9][A-Za-z0-9-]*)/i.exec(t);
+  const name = it ? it[1].trim().toUpperCase() : (/\b(VIP|CREW|PAX|PASSENGER)\b/i.exec(fname || "") || [])[1] || String(fname || "").replace(/\.[^.]+$/, "").slice(0, 30);
+  return { name: String(name).toUpperCase(), flight: fl ? fl[1] : "", order: od ? od[1].replace(/\s+/g, " ") : "" };
+}
+async function pjImport(files) {
+  if (!sample) return toast("この表示環境ではAIの読み取りが使えません。「空の案件を作る」から手で入力できます");
+  const dlg = $("#dlg"), msg = h("div", { style: "white-space:pre-wrap", text: "ファイルを準備しています…" }); aiCtl = new AbortController();
+  dlg.replaceChildren(h("div", { class: "dlg" }, h("h3", { text: "依頼を読み取っています" }), msg, h("div", { class: "row" }, h("button", { type: "button", class: "btn", text: "中止", onclick: () => { aiCtl.abort(); dlg.close(); } }))));
+  if (!dlg.open) dlg.showModal();
+  const say = (t) => { msg.textContent = t; }, opt = { signal: aiCtl.signal };
+  try {
+    // 資料は1つずつ読む（VIP用・CREW用など、複数の依頼をまとめて取り込めるように。依頼ごとに区切りの見出しを付ける）
+    const parts = [], usable = files.filter((f) => /\.(xlsx|xls|pdf)$/i.test(f.name) || isTable(f) || isPdf(f) || /^image\//.test(f.type));
+    if (!usable.length) { say("読み取れるファイルがありませんでした。Excel・PDF・画像を選んでください。"); return; }
+    for (const [k, f] of usable.entries()) {
+      say(`AIが依頼の内容を整理しています…${usable.length > 1 ? `（${k + 1}/${usable.length}件目：${f.name}）` : "（1分ほどかかることがあります）"}`);
+      const r = await pjReadFile(f, usable.length > 1 ? null : say, opt); if (r.rows.length) parts.push({ f, ...r });
     }
-    const items = rows.map((x, i) => { const t = out.get(i) || {}, qty = String(t.qty != null && String(t.qty).trim() !== "" ? t.qty : x.qty || "");
-      // 依頼の表に日本語が併記されているときは、その日本語をそのまま使う（AIの訳で置き換えない）
-      return x.sec ? { id: uid("i"), sec: true, en: x.en, ja: String(x.jaSrc || t.ja || "") } : { id: uid("i"), en: x.en, ja: String(x.jaSrc || t.ja || ""), qty, qty0: String(x.qty || ""), instr: x.instr || "", instrJa: String(x.instrJaSrc || t.instrJa || ""), pack: PJ_PACKS.includes(t.pack) ? t.pack : String(t.pack || ""), ...(t.pj || x.pj ? { pj: true } : {}) }; });
+    if (!parts.length) { say("品目を読み取れませんでした。"); return; }
+    const multi = parts.length > 1;
+    let top = "", rows = [], foot = "";
+    for (const pt of parts) {
+      const lb = pjLabel(pt.top, pt.f.name);
+      if (multi) { top += `【${lb.name}】\n`; rows.push({ sec: true, en: [lb.name, [lb.flight, lb.order].filter(Boolean).join(" / ")].filter(Boolean).join("　") }); }
+      top += pt.top + "\n"; rows.push(...pt.rows); foot += pt.foot ? (multi ? `【${lb.name}】` : "") + pt.foot + "\n" : "";
+    }
+    say("AIが見出し（利用日・フライトナンバーなど）と特記事項を読み取っています…");
+    let hd = {};
+    try {
+    hd = await sample.json(`プライベートジェットのケータリング依頼の、見出し部分と品目の一部です。次の項目を読み取ってください。書かれていない項目は空文字にし、推測で補わない。
+${multi ? "複数の依頼（VIP用・CREW用など）がまとめて渡されています。flight と orderNo は、依頼ごとの値を「 / 」でつなぐ。notesEn・notesJa は、依頼ごとに先頭へ【VIP】などの見出しを付ける。\n" : ""}返答はJSONだけ。形式：{"date":"利用日を YYYY-MM-DD で","flight":"フライトナンバー（機体記号を含む。例：HRT389 (C-FGGH)）","orderNo":"オーダーナンバー（例：JAPAN- IAJ1）","area":"配達エリア（例：KANSAI）","time":"配達時間（例：11:30）","place":"受け渡し場所","contact":"担当者氏名","phone":"電話番号","notesEn":"特記事項の原文。SPECIAL NOTES の記載に加えて、品目の見出しなどに書かれたアレルギー・食べられないもの・NO PORK・NO ALCOHOL などの注意も、原文のまま改行区切りで入れる","notesJa":"notesEn の日本語訳（厨房の担当者に伝わる、簡潔で正確な日本語。1文ずつ改行）","extra":"乗客・乗員の人数など、料理を用意するうえで必要な補足を日本語で。なければ空（「記載なし」などの説明は書かない。梱包容器のことも書かない）"}
+見出し部分：
+${top.slice(0, 6000)}
+品目の見出し：
+${rows.filter((x) => x.sec).map((x) => x.en).join("\n").slice(0, 3000)}
+表の下の記載：
+${foot.slice(0, 2000)}`, opt);
+    } catch (e) { if (e && e.code === "cancelled") return; }
+    const { items, failed } = await pjTranslate(rows, say, opt);
     // 梱包容器：依頼全体への指定（表の下・見出し部分・特記事項）があれば特記事項に追記し、なければ「梱包容器未定」と書く
     const packs = pjPackNote([foot, top, hd.notesEn].join("\n")), packSrc = foot.split("\n").filter((l) => pjPackNote(l).length), footRest = foot.split("\n").filter((l) => l.trim() && !pjPackNote(l).length).join("\n");
     hd.notesEn = [String(hd.notesEn || "").trim(), ...packSrc.filter((l) => !String(hd.notesEn || "").includes(l))].filter(Boolean).join("\n");
@@ -3969,8 +4011,8 @@ ${foot.slice(0, 2000)}`, opt());
     const s = (v) => String(v == null ? "" : v).trim(), dm = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s(hd.date)) || /(\d{4})[./-](\d{1,2})[./-](\d{1,2})/.exec(top);
     dlg.close();
     pjOpen({ visitDate: dm ? `${dm[1]}-${String(dm[2]).padStart(2, "0")}-${String(dm[3]).padStart(2, "0")}` : "", flight: s(hd.flight), orderNo: s(hd.orderNo), area: s(hd.area), time: s(hd.time), place: s(hd.place), contact: s(hd.contact), phone: s(hd.phone),
-      notesEn: s(hd.notesEn), notesJa: s(hd.notesJa), extra: [s(hd.extra), footRest ? "表の下の記載：" + footRest : ""].filter(Boolean).join("\n"), items, srcName: files.map((f) => f.name).join("、"), ai: true });
-    toast(failed ? "一部の行は和訳できませんでした。空欄の行を確認してください" : `${items.filter((x) => !x.sec).length}品目を読み取りました。内容を原本と照合してください`);
+      notesEn: s(hd.notesEn), notesJa: s(hd.notesJa), extra: [s(hd.extra), footRest ? "表の下の記載：" + footRest : ""].filter(Boolean).join("\n"), items, srcName: parts.map((x) => x.f.name).join("、"), ai: true });
+    toast(failed ? "一部の行は和訳できませんでした。空欄の行を確認してください" : `${items.filter((x) => !x.sec).length}品目を読み取りました${multi ? `（${parts.length}件の依頼）` : ""}。内容を原本と照合してください`);
   } catch (e) {
     if (e && e.code === "cancelled") return;
     say(AI_ERR[e && e.code] || "読み取りに失敗しました。もう一度お試しください。");
@@ -4649,6 +4691,22 @@ async function pjChange(c, src, say, done) {
       else if (/^image\//.test(f.type)) imgs.push(f);
     }
     if (!texts.length && !imgs.length) return say("読み取れる資料がありませんでした。", true);
+    // 別の依頼（フライトナンバーが違う）なら、変更として比べず、この案件に追加するかを確かめる
+    // オーダーナンバー（JAPAN- を除いて比べる）が違えば別の依頼。オーダーが読めなければフライトナンバーで比べる
+    const on = (v) => String(v || "").replace(/JAPAN-?/gi, "").replace(/\s+/g, "").toLowerCase(), all = texts.join("\n");
+    const ods = [...new Set((all.match(/Order\s*Number\s*[：:]?\s*(?:JAPAN-?\s*)?[A-Za-z0-9][A-Za-z0-9-]*/gi) || []).map((m) => on(m.replace(/^Order\s*Number\s*[：:]?\s*/i, ""))))].filter(Boolean), curO = on(sh.head.orderNo);
+    const fls = [...new Set((all.match(/Flight\s*Number\s*[：:]?\s*[A-Z0-9-]{3,12}/gi) || []).map((m) => m.replace(/^Flight\s*Number\s*[：:]?\s*/i, "").toUpperCase()))], curF = String(sh.head.flight || "").toUpperCase();
+    const other = ods.length && curO ? ods.every((o) => !curO.split("/").some((x) => x && x === o) && !curO.includes(o)) : fls.length && curF && fls.every((f) => !curF.includes(f));
+    if (other && (src.files || []).length && !src.asChange) {
+      const dlg = $("#dlg");
+      dlg.replaceChildren(h("div", { class: "dlg", style: "max-width:620px" }, h("h3", { text: "別の依頼のようです" }),
+        h("div", { text: ods.length && curO ? `取り込んだ資料のオーダーナンバー（${[...new Set((all.match(/Order\s*Number\s*[：:]?\s*(?:JAPAN-?\s*)?[A-Za-z0-9][A-Za-z0-9-]*/gi) || []).map((m) => m.replace(/^Order\s*Number\s*[：:]?\s*/i, "")))].join("・")}）が、この案件（${sh.head.orderNo}）と違います。` : `取り込んだ資料のフライトナンバー（${fls.join("・")}）が、この案件（${sh.head.flight}）と違います。` }),
+        h("div", { class: "small muted", text: "VIP用とCREW用のように、同じ配達で別の依頼が届いた場合は「この案件に追加」を選んでください。区切りの見出しを付けて、表の最後に品目を足します。" }),
+        h("div", { class: "row" }, h("button", { type: "button", class: "btn", text: "やめる", onclick: () => { dlg.close(); say(""); } }), h("span", { style: "margin-left:auto" }),
+          h("button", { type: "button", class: "btn", id: "pj-chg-as", text: "変更として比べる", onclick: () => { dlg.close(); pjChange(c, { ...src, asChange: true }, say, done); } }),
+          h("button", { type: "button", class: "btn primary", id: "pj-chg-addorder", text: "この案件に追加", onclick: () => { dlg.close(); pjAddOrder(c, sh, src.files, say, done); } }))));
+      say(""); dlg.showModal(); return;
+    }
     say("AIが、今のスプレッドシートと変更の依頼を比べています…（1分ほどかかることがあります）");
     const cur = sh.rows.map((x) => (x.sec ? { row: x.r + 1, heading: pjEn(x.a) } : { row: x.r + 1, item: pjEn(x.a), qty: x.b, instr: pjEn(x.c), pack: x.d }));
     const r = await sample.json(`プライベートジェットのケータリングの注文表（今のスプレッドシート）と、クライアントから届いた変更の依頼を比べて、注文表に加える変更点を挙げてください。
@@ -4682,7 +4740,32 @@ ${texts.length ? texts.join("\n\n").slice(0, 60000) : "添付の画像が変更�
     }
     if (!list.length) return say("変更点は見つかりませんでした。" + (r.summary ? "（AIから：" + String(r.summary).slice(0, 200) + "）" : ""));
     say(""); pjChangeDialog(c, sh, list, String(r.summary || ""), say, done);
-  } catch (e) { if (e && e.code === "cancelled") return; say(AI_ERR[e && e.code] || String((e && e.message) || "変更を読み取れませんでした。"), true); }
+  } catch (e) { if (e && e.code === "cancelled") return; say(e && e.code === "invalid_json" ? "変更点が多く、AIの返事が途中で切れました。別の依頼（VIP用・CREW用など）を取り込む場合は、フライトナンバーが入った資料を選ぶと「この案件に追加」を選べます。変更の場合は、資料を分けて取り込んでください。" : AI_ERR[e && e.code] || String((e && e.message) || "変更を読み取れませんでした。"), true); }
+}
+/** 別の依頼（VIP用・CREW用など）を、今の案件のスプレッドシートの最後に、区切りの見出しを付けて足す。 */
+async function pjAddOrder(c, sh, files, say, done) {
+  try {
+    const list = [], last = sh.rows.length ? sh.rows[sh.rows.length - 1].r : sh.hi;
+    for (const [k, f] of (files || []).entries()) {
+      say(`AIが依頼の内容を整理しています…（${k + 1}/${files.length}件目：${f.name}）`);
+      const pt = await pjReadFile(f, say, {}); if (!pt.rows.length) continue;
+      const lb = pjLabel(pt.top, f.name), { items } = await pjTranslate(pt.rows, say, {});
+      const head = [lb.name, [lb.flight, lb.order].filter(Boolean).join(" / ")].filter(Boolean).join("　");
+      list.push({ type: "add", r: last, sec: true, a: head, b: "", c: "", d: "", reason: `${f.name}（別の依頼）の区切り` });
+      for (const it of items) list.push(it.sec ? { type: "add", r: last, sec: true, a: it.en + (it.ja ? "　" + it.ja : ""), b: "", c: "", d: "", reason: f.name } : { type: "add", r: last, a: it.en + (it.ja ? "\n" + it.ja : ""), b: it.qty || "", c: [it.instr, it.instrJa].filter(Boolean).join("\n"), d: it.pack || "", reason: f.name });
+      if (lb.flight && !String(sh.head.flight || "").includes(lb.flight)) list.push({ type: "header", field: "flight", value: [sh.head.flight, lb.flight].filter(Boolean).join(" / "), valueJa: "", reason: "フライトナンバーを併記" });
+      if (lb.order && !String(sh.head.orderNo || "").includes(lb.order)) list.push({ type: "header", field: "orderNo", value: [sh.head.orderNo, lb.order].filter(Boolean).join(" / "), valueJa: "", reason: "オーダーナンバーを併記" });
+      try { // 特記事項（アレルギーなど）も、依頼の見出しを付けて足す
+        const n = await sample.json(`プライベートジェットのケータリング依頼の見出し部分です。特記事項（SPECIAL NOTES、アレルギー・食べられないものなど）を読み取ってください。書かれていなければ空文字。推測で補わない。
+返答はJSONだけ。形式：{"notesEn":"原文のまま改行区切り","notesJa":"日本語訳（1文ずつ改行）"}
+見出し部分：
+${pt.top.slice(0, 6000)}`);
+        if (String(n.notesEn || "").trim()) list.push({ type: "header", field: "notes", value: `【${lb.name}】\n` + String(n.notesEn).trim(), valueJa: String(n.notesJa || "").trim(), reason: "取り込んだ依頼の特記事項" });
+      } catch (_) {}
+    }
+    if (!list.length) return say("品目を読み取れませんでした。", true);
+    say(""); pjChangeDialog(c, sh, list, `別の依頼として、${list.filter((x) => x.type === "add" && !x.sec).length}品目を表の最後に追加します。`, say, done);
+  } catch (e) { if (e && e.code === "cancelled") return; say(AI_ERR[e && e.code] || "依頼を読み取れませんでした。", true); }
 }
 function pjChangeDialog(c, sh, list, summary, say, done) {
   const dlg = $("#dlg"), on = list.map(() => true), HN = { date: "利用日", flight: "フライトナンバー", orderNo: "オーダーナンバー", area: "配達エリア", time: "配達時間", notes: "特記事項に追記" };
@@ -4722,7 +4805,9 @@ async function pjApply(c, sh, sel) {
     else if (x.field === "notes" && sh.notesRow >= 0) req.push(put(sh.notesRow, 0, [cellOf(sh.notes + "\n" + x.value + (x.valueJa ? "\n" + x.valueJa : ""))]));
   }
   // 行の変更・取り消し・追加（下の行から）
-  for (const x of sel.filter((x) => x.type !== "header").sort((a, b) => b.r - a.r || (a.type === "add") - (b.type === "add"))) {
+  // 同じ行の下に続けて足す行は、後ろのものから入れる（入れ終わったときに、資料と同じ順に並ぶように）
+  const ord = new Map(sel.map((x, i) => [x, i]));
+  for (const x of sel.filter((x) => x.type !== "header").sort((a, b) => b.r - a.r || (a.type === "add") - (b.type === "add") || ord.get(b) - ord.get(a))) {
     if (x.type === "update") { for (const [k, col] of [["a", 0], ["b", 1], ["c", 2], ["d", 3]]) if (x[k] != null) req.push(put(x.r, col, [cellOf(x[k])])); }
     else if (x.type === "remove") req.push({ repeatCell: { range: { sheetId: sid, startRowIndex: x.r, endRowIndex: x.r + 1, startColumnIndex: 0, endColumnIndex: 4 }, cell: { userEnteredFormat: { backgroundColor: PJ_CHG, textFormat: { strikethrough: true } } }, fields: "userEnteredFormat.backgroundColor,userEnteredFormat.textFormat.strikethrough" } });
     else if (x.type === "add") {
