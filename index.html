@@ -699,7 +699,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 183</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 184</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -5414,10 +5414,13 @@ function partyGroups(party) {
   const mode = partyMode(party);
   if (mode === "sex") { if (num(party.sexM)) out.push({ key: "sm", label: "男子", lines: ["男子"], n: num(party.sexM), color: SEAT_COLORS[0], year: "", kumi: "", sex: "男" }); if (num(party.sexF)) out.push({ key: "sf", label: "女子", lines: ["女子"], n: num(party.sexF), color: SEAT_COLORS[1], year: "", kumi: "", sex: "女" }); }
   else if (mode === "total") { if (num(party.all)) out.push({ key: "all", label: "参加者", lines: ["参加者"], n: num(party.all), color: SEAT_COLORS[0], year: "", kumi: "", sex: "" }); }
-  else (party.classes || []).forEach((k, i) => {
-    const name = (half(k.year) ? half(k.year) + "年" : "") + (half(k.kumi) ? half(k.kumi) + "組" : "") || "クラス" + (i + 1);
-    if (num(k.m)) out.push({ key: `c${i + 1}m`, label: `${name} 男子`, lines: [name, "男子"], n: num(k.m), color: SEAT_COLORS[(i * 2) % SEAT_COLORS.length], year: half(k.year), kumi: half(k.kumi), sex: "男" });
-    if (num(k.f)) out.push({ key: `c${i + 1}f`, label: `${name} 女子`, lines: [name, "女子"], n: num(k.f), color: SEAT_COLORS[(i * 2 + 1) % SEAT_COLORS.length], year: half(k.year), kumi: half(k.kumi), sex: "女" });
+  // 年・組が空のクラスは「男子」「女子」だけにする（空のクラスが2つ以上あるときは、区別のため「クラス1」などを付ける）
+  const blankN = mode === "class" ? (party.classes || []).filter((k) => !half(k.year) && !half(k.kumi) && (num(k.m) || num(k.f))).length : 0;
+  const clsName = (k, i) => (half(k.year) ? half(k.year) + "年" : "") + (half(k.kumi) ? half(k.kumi) + "組" : "") || (blankN > 1 ? "クラス" + (i + 1) : "");
+  if (mode === "class") (party.classes || []).forEach((k, i) => {
+    const name = clsName(k, i), lab = (x) => (name ? `${name} ${x}` : x), ln = (x) => (name ? [name, x] : [x]);
+    if (num(k.m)) out.push({ key: `c${i + 1}m`, label: lab("男子"), lines: ln("男子"), n: num(k.m), color: SEAT_COLORS[(i * 2) % SEAT_COLORS.length], year: half(k.year), kumi: half(k.kumi), sex: "男" });
+    if (num(k.f)) out.push({ key: `c${i + 1}f`, label: lab("女子"), lines: ln("女子"), n: num(k.f), color: SEAT_COLORS[(i * 2 + 1) % SEAT_COLORS.length], year: half(k.year), kumi: half(k.kumi), sex: "女" });
   });
   // 引率・看護師などは、クラスの行ごとに入れられる（1行目は party.staff、2行目以降は各クラスの staff）。
   // 2つ以上の行に入っているときだけ、レイアウトの区分名に「2年3組 引率」のようにクラス名を付けて分ける。
@@ -5425,7 +5428,7 @@ function partyGroups(party) {
   const rowsWithStaff = mode === "class" ? cls.map((_, i) => i).filter((i) => STAFF.some(([id]) => num(stOf(i)[id]))) : [0];
   const split = rowsWithStaff.length > 1 || rowsWithStaff.some((i) => i > 0);
   for (const i of mode === "class" ? rowsWithStaff : [0]) {
-    const k = cls[i] || {}, name = (half(k.year) ? half(k.year) + "年" : "") + (half(k.kumi) ? half(k.kumi) + "組" : "") || "クラス" + (i + 1), st = mode === "class" ? stOf(i) : party.staff || {};
+    const k = cls[i] || {}, name = clsName(k, i) || "クラス" + (i + 1), st = mode === "class" ? stOf(i) : party.staff || {};
     for (const [id, , short] of STAFF) if (num(st[id])) out.push({ key: split ? `c${i + 1}-${id}` : id, label: split ? `${name} ${short}` : short, lines: split ? [name, short] : undefined, n: num(st[id]), color: STAFF_COLORS[id], staff: true });
   }
   (party.others || []).forEach((o, i) => { if (num(o.n)) out.push({ key: `o${i + 1}`, label: (o.name || "その他").trim(), n: num(o.n), color: SEAT_COLORS[(SEAT_COLORS.length - 1 - i + SEAT_COLORS.length * 4) % SEAT_COLORS.length], staff: true }); });
@@ -5764,6 +5767,49 @@ function layForPrint(lay, floors) {
   }
   return { ...lay, floors: outF, notes: outN };
 }
+/** 席札（三角柱）：卓ごとに A4横1ページ。縦に4つ折りにして、3面に同じ文字（縦書き）、4面目はのりしろ。 */
+function seatCards(lay) {
+  const out = [];
+  for (const fl of (lay && lay.floors) || []) {
+    const cells = Object.entries(fl.cells || {}).filter(([, x]) => x && x.v && /\d\s*名/.test(x.v)).map(([k, x]) => { const [r, c] = k.split(",").map(Number); return { r, c, v: String(x.v) }; }).sort((a, b) => a.r - b.r || a.c - b.c);
+    for (const x of cells) {
+      const segs = []; let buf = [];
+      for (const line of x.v.split("\n").map((t) => half(t).replace(/\s+/g, "").trim()).filter(Boolean)) { const m = /^(.*?)(\d+)名$/.exec(line); if (!m) { buf.push(line); continue; } segs.push([...buf, m[1], m[2] + "名"].join("")); buf = []; }
+      if (segs.length) out.push({ floor: fl.name || "", text: segs.join("・") });
+    }
+  }
+  return out;
+}
+async function exportSeatCards(c, say) {
+  const fls = layOutFloors(c.layout); if (c.layout && !fls.length) return say("出力する階にチェックを入れてください。", true);
+  const cards = seatCards(layForPrint(c.layout || {}, fls));
+  if (!cards.length) return say("席札にする卓がありません。先に「配席を作成」で配席してください。", true);
+  if (!dl) return say("この表示環境では保存できません。", true);
+  say("席札を作成中…");
+  try {
+    await loadScript(LIB.exceljs);
+    const wb = new ExcelJS.Workbook(), ROWS = 26, RH = 20.5, multi = new Set(cards.map((x) => x.floor)).size > 1;
+    const ws = wb.addWorksheet("席札", { pageSetup: { paperSize: 9, orientation: "landscape", scale: 100, horizontalCentered: true, verticalCentered: true, margins: { left: 0.25, right: 0.25, top: 0.25, bottom: 0.25, header: 0, footer: 0 } }, views: [{ showGridLines: false }] });
+    ws.columns = Array.from({ length: 12 }, () => ({ width: 11.9 }));
+    const fold = { style: "dashed", color: { argb: "FFBFBFBF" } };
+    cards.forEach((cd, i) => {
+      const top = i * ROWS + 1;
+      for (let r = top; r < top + ROWS; r++) { ws.getRow(r).height = RH; for (const col of [3, 6, 9]) ws.getCell(r, col).border = { right: fold }; }
+      const n = [...cd.text].length, size = Math.max(20, Math.min(96, Math.floor((RH * (ROWS - 2)) / (n * 1.25))));
+      for (let k = 0; k < 3; k++) { // 3面に同じ文字
+        ws.mergeCells(top + 1, k * 3 + 1, top + ROWS - 2, k * 3 + 3);
+        const cell = ws.getCell(top + 1, k * 3 + 1); cell.value = cd.text;
+        cell.font = { name: "BIZ UDPゴシック", size, bold: false }; cell.alignment = { textRotation: "vertical", vertical: "middle", horizontal: "center" };
+        for (let r = top + 1; r <= top + ROWS - 2; r++) ws.getCell(r, k * 3 + 3).border = { right: fold };
+      }
+      // 4面目（のりしろ）：内側に隠れるので、仕分け用の番号だけ小さく入れる
+      const tag = ws.getCell(top + ROWS - 2, 10); tag.value = `${i + 1}/${cards.length}${multi && cd.floor ? "　" + cd.floor : ""}　のりしろ`; tag.font = { size: 8, color: { argb: "FFA6A6A6" } };
+      if (i < cards.length - 1) ws.getRow(top + ROWS - 1).addPageBreak();
+    });
+    await dl.save({ filename: `【席札】${layoutTitle(c).replace(/[\\/:*?"<>|]/g, "").replace(/　/g, "_")}.xlsx`, data: new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }) });
+    say(`席札を作成しました（${cards.length}枚・A4横）。点線で4つ折りにし、右端の面をのりしろにして三角柱にしてください。`);
+  } catch (e) { say(e && e.code === "declined" ? "" : e && e.code ? "この表示環境では保存できませんでした。" : "席札を作成できませんでした。", true); }
+}
 async function exportLayoutXlsx(c, say) { const fl = layOutFloors(c.layout); if (c.layout && !fl.length) return say("出力する階にチェックを入れてください。", true); return layExportXlsx(layForPrint(c.layout || {}, fl), layoutTitle(c), layFileName(c, "xlsx"), say); }
 async function exportLayoutPdf(c, say) { const fl = layOutFloors(c.layout); if (c.layout && !fl.length) return say("出力する階にチェックを入れてください。", true); return layExportPdf(layForPrint(c.layout || {}, fl), layoutTitle(c), layFileName(c, "pdf"), say); }
 async function layExportXlsx(lay, title, fname, say) {
@@ -6066,7 +6112,8 @@ ${text}
       tb("seat-xlsx", "Excel出力", "この配席レイアウトを Excel で保存する", async (e) => { e.target.disabled = true; await exportLayoutXlsx(c, say); e.target.disabled = false; }),
       tb("seat-pdf", "PDF出力", "この配席レイアウトを PDF（A4横）で保存する", async (e) => { e.target.disabled = true; await exportLayoutPdf(c, say); e.target.disabled = false; }),
       tb("seat-clear", "配席を消す", "配席を消して、店舗のレイアウトに戻す", () => { ed.api.snapshot(); clearSeating(lay); ch(); ed.api.redraw(); info(); say("配席を消して、店舗のレイアウトに戻しました。"); }),
-      tb("seat-run", "配席を作成", "条件に従って配席を作成する（前回の配席は作り直されます）", (e) => run(e.target), "primary")),
+      tb("seat-run", "配席を作成", "条件に従って配席を作成する（前回の配席は作り直されます）", (e) => run(e.target), "primary"),
+      tb("seat-cards", "席札を作成", "卓ごとの席札（三角柱・4つ折り）を Excel で作成する", async (e) => { e.target.disabled = true; await exportSeatCards(c, say); e.target.disabled = false; })),
     outRow,
     groups.length ? null : h("div", { class: "small", style: "color:var(--warn)", text: "利用人数が未入力です。案件画面の「利用人数」に入力してください。" }),
     cond, msg);
