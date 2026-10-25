@@ -284,6 +284,21 @@ table.list{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums
 table.list th{text-align:left;font-size:12px;color:var(--muted);font-weight:400;padding:6px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
 table.list td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
 table.list tr.click{cursor:pointer} table.list tr.click:hover td{background:var(--accent-soft)}
+:root{--urg1:#f5c2bd;--urg1-l:#c62f25;--urg2:#fde9e7;--urg2-l:#ec9a93}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--urg1:#5a2420;--urg1-l:#ff6d61;--urg2:#35201e;--urg2-l:#9c4a43}}
+:root[data-theme="dark"]{--urg1:#5a2420;--urg1-l:#ff6d61;--urg2:#35201e;--urg2-l:#9c4a43}
+table.list tr.urg1 td{background:var(--urg1)} table.list tr.urg1 td:first-child{box-shadow:inset 4px 0 0 var(--urg1-l)}
+table.list tr.urg2 td{background:var(--urg2)} table.list tr.urg2 td:first-child{box-shadow:inset 4px 0 0 var(--urg2-l)}
+table.list tr.urg1:hover td,table.list tr.urg2:hover td{filter:brightness(.97)}
+.days-left{display:inline-block;margin-left:8px;font-size:11px;font-weight:700;color:var(--bad);white-space:nowrap}
+.list-tabs{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.list-tabs .list-tab{border:0;border-radius:0;border-right:1px solid var(--line);background:var(--surface);gap:6px;display:inline-flex;align-items:center}
+.list-tabs .list-tab:last-child{border-right:0}
+.list-tabs .list-tab.on{background:var(--accent);color:#fff}
+.list-tab-n{font-size:11px;font-weight:700;opacity:.75}
+.list-legend{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:6px 2px}
+.lg-sw{display:inline-block;width:14px;height:14px;border-radius:3px;margin-left:8px} .lg-sw:first-child{margin-left:0}
+.lg-sw.urg1{background:var(--urg1);box-shadow:inset 3px 0 0 var(--urg1-l)} .lg-sw.urg2{background:var(--urg2);box-shadow:inset 3px 0 0 var(--urg2-l)}
 .scroll{overflow-x:auto}
 .empty{padding:36px 16px;text-align:center;color:var(--muted)}
 /* 編集表 */
@@ -677,7 +692,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 177</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 179</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1616,43 +1631,71 @@ function fitAll(root = document) { if (needsFit) root.querySelectorAll("textarea
 document.addEventListener("input", (e) => { if (e.target.tagName === "TEXTAREA") fit(e.target); });
 
 /* ---------- 案件一覧 ---------- */
-let listQuery = "";
+let listQuery = "", listTab = "active";
+/** 案件のご利用日（追加の店舗の日付も含む）。進行中・完了の振り分けと色分けに使う。 */
+const caseDates = (c) => [c.visitDate, ...(c.subs || []).map((x) => x.visitDate)].filter(Boolean).sort();
+const caseLast = (c) => caseDates(c).slice(-1)[0] || "";
+const caseNext = (c) => caseDates(c).find((d) => d >= today()) || "";
+/** 今日からの日数（今日＝0） */
+const daysTo = (d) => Math.round((Date.parse(d + "T00:00:00") - Date.parse(today() + "T00:00:00")) / 864e5);
+const caseTabOf = (c) => (c.deletedAt ? "deleted" : caseLast(c) && caseLast(c) < today() ? "done" : "active");
+/** 削除は「削除」へ移すだけ（元に戻せる）。完全に消すのは「削除」の一覧から。 */
+async function caseSoftDelete(c, restore) {
+  const cur = clone(S.cases.get(c.id) || c), id = cur.id;
+  if (restore) delete cur.deletedAt; else cur.deletedAt = new Date().toISOString();
+  cur.acts = [...(cur.acts || []), { at: new Date().toISOString(), t: restore ? "削除から元に戻す" : "削除（「削除」へ移動）", d: "" }].slice(-ACT_MAX);
+  cur.updatedAt = new Date().toISOString(); cur.editedBy = clientId;
+  S.cases.set(id, cur); if (draft && draft.id === id) draft = clone(cur);
+  try { const body = clone(cur); delete body.id; if (db) await db.doc("cases/" + id).set(dataKey ? await seal(body) : body); toast(restore ? "元に戻しました" : "「削除」へ移しました（元に戻せます）"); } catch (_) { toast("保存できませんでした"); }
+}
 function viewList() {
+  const tabBtn = (k, t) => h("button", { type: "button", class: "btn sm list-tab" + (listTab === k ? " on" : ""), id: "lt-" + k, "aria-pressed": listTab === k ? "true" : "false", onclick: () => { listTab = k; document.querySelectorAll(".list-tab").forEach((b) => { const on = b.id === "lt-" + k; b.classList.toggle("on", on); b.setAttribute("aria-pressed", on ? "true" : "false"); }); renderListBody(); } }, t, h("span", { class: "list-tab-n", id: "ltn-" + k }));
   return [
     h("div", { class: "row" },
       h("h2", { text: "案件" }),
       h("input", { id: "q", type: "search", placeholder: "団体名・店舗名で絞り込み", style: "max-width:280px", value: listQuery, oninput: (e) => { listQuery = e.target.value; renderListBody(); } }),
+      h("div", { class: "list-tabs", role: "group", "aria-label": "表示する案件" }, tabBtn("active", "進行中"), tabBtn("done", "完了"), tabBtn("deleted", "削除")),
       h("button", { type: "button", class: "btn primary", style: "margin-left:auto", text: "新しい案件を作る", onclick: newCase })),
+    h("div", { class: "small muted list-legend", id: "list-legend" }),
     h("div", { class: "panel scroll", id: "listbody", style: "padding:4px 8px" }),
   ];
 }
 function caseNeeds(c) { return (c.rows || []).filter((r) => analyse(r, rowM(c, r)).needs).length; }
 function renderListBody() {
   const box = $("#listbody"); if (!box) return;
-  const q = norm(listQuery);
-  const list = [...S.cases.values()].filter((c) => !c.kind).filter((c) => !q || norm(c.groupName + (S.stores.get(c.storeId)?.name || "") + (c.storeName || "")).includes(q))
-    .sort((a, b) => (b.visitDate || "9").localeCompare(a.visitDate || "9") || (b.updatedAt || "").localeCompare(a.updatedAt || ""));
+  const q = norm(listQuery), mine = [...S.cases.values()].filter((c) => !c.kind);
+  const cnt = { active: 0, done: 0, deleted: 0 }; for (const c of mine) cnt[caseTabOf(c)]++;
+  for (const k of Object.keys(cnt)) { const e = $("#ltn-" + k); if (e) e.textContent = cnt[k]; }
+  const lg = $("#list-legend");
+  if (lg) lg.replaceChildren(...(listTab === "active" ? [h("span", { class: "lg-sw urg1" }), "ご利用日まで3日以内", h("span", { class: "lg-sw urg2" }), "7日以内", h("span", { text: "・今日のご利用分も進行中に表示します。" })]
+    : listTab === "done" ? ["ご利用日が過ぎた案件です（追加の店舗がある場合は、いちばん遅いご利用日で判断します）。"] : ["削除した案件です。「元に戻す」で進行中・完了に戻せます。"]));
+  const list = mine.filter((c) => caseTabOf(c) === listTab).filter((c) => !q || norm(c.groupName + (S.stores.get(c.storeId)?.name || "") + (c.storeName || "") + (c.subs || []).map((x) => shopName(x) || "").join("")).includes(q))
+    .sort(listTab === "deleted" ? (a, b) => (b.deletedAt || "").localeCompare(a.deletedAt || "") : (a, b) => (b.visitDate || "9").localeCompare(a.visitDate || "9") || (b.updatedAt || "").localeCompare(a.updatedAt || ""));
   if (!list.length) {
-    box.replaceChildren(h("div", { class: "empty" }, [...S.cases.values()].some((c) => !c.kind) ? "該当する案件がありません。" : "まだ案件がありません。「新しい案件を作る」から、団体ごとの対応シートを作成します。"));
+    box.replaceChildren(h("div", { class: "empty" }, !mine.length ? "まだ案件がありません。「新しい案件を作る」から、団体ごとの対応シートを作成します。" : q ? "該当する案件がありません。" : listTab === "active" ? "進行中の案件はありません。" : listTab === "done" ? "完了した案件はありません。" : "削除した案件はありません。"));
     return;
   }
-  const tb = h("tbody");
+  const tb = h("tbody"), del = listTab === "deleted";
   for (const c of list) {
-    const n = caseNeeds(c);
-    tb.append(h("tr", { class: "click", onclick: () => go({ name: "case", id: c.id }) },
-      h("td", { text: c.visitDate ? c.visitDate.replace(/-/g, "/") : "—" }),
+    const n = caseNeeds(c), nx = listTab === "active" ? caseNext(c) : "", dd = nx ? daysTo(nx) : null, urg = dd == null ? "" : dd <= 3 ? " urg1" : dd <= 7 ? " urg2" : "";
+    tb.append(h("tr", { class: "click" + urg, onclick: () => go({ name: "case", id: c.id }), title: dd == null ? "" : dd === 0 ? "本日ご利用" : `ご利用日まであと${dd}日` },
+      h("td", {}, c.visitDate ? c.visitDate.replace(/-/g, "/") : "—", dd != null && dd <= 7 ? h("span", { class: "days-left", text: (nx !== c.visitDate ? `${+nx.slice(5, 7)}/${+nx.slice(8, 10)} ` : "") + (dd === 0 ? "本日" : `あと${dd}日`) }) : null),
       h("td", {}, h("strong", { text: c.groupName || "（団体名未入力）" })),
       h("td", { text: [S.stores.get(c.storeId)?.name || c.storeName || "—", ...(c.subs || []).map((x) => shopName(x) || "（店舗未選択）")].join("\n"), style: "white-space:pre-line" }),
       h("td", { text: (c.rows || []).length + "名" }),
       h("td", {}, n ? h("span", { class: "pill warn", text: "要確認 " + n }) : h("span", { class: "pill ok", text: "確認済み" }),
         ...approvalPills(c), signPill(c)),
-      h("td", { class: "muted small", text: c.updatedAt ? c.updatedAt.slice(0, 10).replace(/-/g, "/") : "" }),
-      h("td", { style: "text-align:right;white-space:nowrap" }, confirmBtn("削除", "本当に削除する", async () => {
-        S.cases.delete(c.id); renderListBody();
-        try { if (db) await db.doc("cases/" + c.id).delete(); toast("案件を削除しました"); } catch (_) { toast("削除できませんでした"); }
-      }, "btn sm danger"))));
+      h("td", { class: "muted small", text: del ? "削除 " + (c.deletedAt || "").slice(0, 10).replace(/-/g, "/") : c.updatedAt ? c.updatedAt.slice(0, 10).replace(/-/g, "/") : "" }),
+      h("td", { style: "text-align:right;white-space:nowrap", onclick: (e) => e.stopPropagation() },
+        del ? h("span", { class: "row", style: "gap:6px;justify-content:flex-end" },
+            h("button", { type: "button", class: "btn sm", text: "元に戻す", onclick: async () => { await caseSoftDelete(c, true); renderListBody(); } }),
+            confirmBtn("完全に削除", "元に戻せません。完全に削除する", async () => {
+              S.cases.delete(c.id); renderListBody();
+              try { if (db) await db.doc("cases/" + c.id).delete(); toast("完全に削除しました"); } catch (_) { toast("削除できませんでした"); }
+            }, "btn sm danger"))
+          : confirmBtn("削除", "「削除」へ移す", async () => { await caseSoftDelete(c); renderListBody(); }, "btn sm danger"))));
   }
-  box.replaceChildren(h("table", { class: "list" }, h("thead", {}, h("tr", {}, ...["ご利用日", "団体名", "店舗", "対象", "状態", "更新", ""].map((t) => h("th", { text: t })))), tb));
+  box.replaceChildren(h("table", { class: "list" }, h("thead", {}, h("tr", {}, ...["ご利用日", "団体名", "店舗", "対象", "状態", del ? "削除日" : "更新", ""].map((t) => h("th", { text: t })))), tb));
 }
 function newCase() {
   const id = uid("c");
@@ -2005,7 +2048,8 @@ function viewCase() {
         h("span", { id: "export-msg", class: "small" }),
         h("span", { style: "margin-left:auto" }),
         h("button", { type: "button", class: "btn", text: "複製", onclick: () => { const n = clone(c); n.id = uid("c"); n.groupName += "（複製）"; n.createdDate = today(); delete n.approvals; delete n.imps; delete n.hist; delete n.impFolderId; n.acts = [{ at: new Date().toISOString(), t: "複製して作成", d: "元の案件：" + (c.groupName || "団体名未入力") }]; caseSaver.flush().then(() => { S.cases.set(n.id, n); view = { name: "case", id: n.id }; draft = n; caseSaver.touch(); render(); toast("複製しました"); }); } }),
-        confirmBtn("この案件を削除", "本当に削除する", async () => { const id = c.id; draft = null; S.cases.delete(id); try { if (db) await db.doc("cases/" + id).delete(); } catch (_) { toast("削除できませんでした"); } go({ name: "list" }); })),
+        c.deletedAt ? h("button", { type: "button", class: "btn", text: "削除から元に戻す", onclick: async () => { await caseSaver.flush(); await caseSoftDelete(c, true); render(); } })
+          : confirmBtn("この案件を削除", "「削除」へ移す", async () => { await caseSaver.flush(); const cur = clone(draft || c); draft = null; await caseSoftDelete(cur); listTab = "deleted"; go({ name: "list" }); })),
       done ? h("div", { class: "small", style: "color:var(--ok)", text: "上長2名が承認済みです。" })
         : h("div", { class: "small", id: "ap-note", style: "color:var(--bad);font-weight:700", text: "※上長が承認していません。" + (aps.length ? `（あと${NEED_APPROVALS - aps.length}名）` : "") }));
   }
@@ -6254,10 +6298,10 @@ function viewTd() {
    （旅行会社×店舗・シーズン動向・団体特性を1画面にまとめる）
    年の色：今年＝青、前年＝オレンジ、前々年＝緑（色だけに頼らず、凡例・線の端のラベル・ツールチップで年を示す） */
 const TD_YC = ["var(--td-y0)", "var(--td-y1)", "var(--td-y2)"]; // 0=今年 1=前年 2=前々年
-const TD_TYPES = ["国内一般", "教育", "学生", "国内募集型", "訪日"];
+const TD_TYPES = ["国内一般", "学生", "国内募集型", "訪日"]; // 「教育」は「学生」と同じ扱い
 /** 団体の種類：訪日（区分がインバウンド、または国籍が日本以外）／教育／学生（コース名に「学生」）／国内募集型／国内一般 */
 const tdIb = (r) => !!r.n && r.n !== "日本"; // 訪日＝国籍が日本以外（トラベルダインの集計と同じ）
-const tdType = (r) => (tdIb(r) ? "訪日" : r.k === "教育" ? "教育" : /学生/.test(r.co || "") ? "学生" : r.k === "国内募集型" ? "国内募集型" : "国内一般");
+const tdType = (r) => (tdIb(r) ? "訪日" : r.k === "教育" || /学生/.test(r.co || "") ? "学生" : r.k === "国内募集型" ? "国内募集型" : "国内一般");
 const TD_SIZES = [[1, 5, "個人（1〜5名）"], [6, 10, "少人数団体（6〜10名）"], [11, 29, "小型団体（11〜29名）"], [30, 99, "中型団体（30〜99名）"], [100, 1e9, "大型団体（100名以上）"]];
 const TD_SOLO = 5; // 5名以下は「個人」（チケット・体験・下見など）。団体の分析からは分けて見る
 const tdSolo = (r) => r.p <= TD_SOLO;
@@ -6536,7 +6580,7 @@ function viewTdHome() {
   card({ id: "agency", lv: actL.size ? tdLvl(pA) : "flat", title: "アクティブ旅行会社", big: `${act.size}社`, cmp: { a: actL.size, b: act.size, fmt: (v) => v + "社", la: "前の1年", lb: "直近1年" }, sub: `直近1年に利用があった会社・新規 ${fresh}社`,
     text: `その前の1年は ${actL.size}社 でした。新しく ${fresh}社 増え、${lost.length}社 が利用なしになりました（下段の「ノンアクティブ旅行会社」）。`,
     todo: "売上が増えている会社・新しく増えた会社には、利用後のお礼と次回の案内を送りましょう。" });
-  const MIXK = ["国内一般", "訪日", "学生"], mixOf = (r) => { const t = tdType(r); return t === "訪日" ? "訪日" : t === "教育" || t === "学生" ? "学生" : "国内一般"; };
+  const MIXK = ["国内一般", "訪日", "学生"], mixOf = (r) => { const t = tdType(r); return t === "訪日" ? "訪日" : t === "学生" ? "学生" : "国内一般"; };
   const shareP = (rows, f) => { const m = new Map(), P = sumP(rows); for (const r of rows) { const k = f(r); if (k) m.set(k, (m.get(k) || 0) + r.p); } for (const [k, v] of m) m.set(k, P ? (v / P) * 100 : 0); return m; };
   const mxA = shareP(ytdL, mixOf), mxB = shareP(ytd, mixOf), ibD = (mxB.get("訪日") || 0) - (mxA.get("訪日") || 0);
   card({ id: "mix", lv: "flat", title: "国内一般・訪日・学生", big: `訪日 ${Math.round(mxB.get("訪日") || 0)}%`, sub: `人数の割合・国内一般 ${Math.round(mxB.get("国内一般") || 0)}%・学生 ${Math.round(mxB.get("学生") || 0)}%`,
