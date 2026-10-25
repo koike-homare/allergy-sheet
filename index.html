@@ -700,7 +700,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 186</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 187</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -5785,7 +5785,7 @@ function seatCards(lay) {
 function specialCards(c) {
   return (c.rows || []).filter((r) => (r.final || "").trim() && !/通常/.test(r.final)).map((r) => {
     const f = noPrice(String(r.final).trim()), m = /^(.*?)[（(](.+)[)）]\s*$/.exec(f), cls = r.year ? `${half(r.year)}年${/^\d+$/.test(half(r.kumi)) ? half(r.kumi) + "組" : r.kumi || ""}` : r.kumi || "";
-    return { floor: "", special: true, segs: [(r.name || "").trim() || (cls ? cls + "の方" : "お名前未記入"), ...(m ? [m[1].trim(), m[2].trim()] : [f])].filter(Boolean) };
+    return { floor: "", special: true, segs: [(r.name || "").trim() ? (r.name || "").trim().replace(/\s*(様|さま|さん)$/, "") + "様" : cls ? cls + "の方" : "お名前未記入", ...(m ? [m[1].trim(), m[2].trim()] : [f])].filter(Boolean) };
   });
 }
 /** 席札1枚を描く（A4横・実寸）。紙の幅をちょうど4等分した位置に折り目を引く。 */
@@ -5871,7 +5871,7 @@ async function layExportXlsx(lay, title, fname, say) {
   try {
     await loadScript(LIB.exceljs);
     const wb = new ExcelJS.Workbook(), argb = (hex) => "FF" + String(hex).replace("#", "").toUpperCase().padEnd(6, "0").slice(0, 6), BS = [null, { style: "thin" }, { style: "medium" }];
-    const used = new Set();
+    const used = new Set(), shapes = []; // 吹き出し：シートごとに、あとで Excel の図形（吹き出し＋線）として入れる
     for (const fl of lay.floors) {
       let name = String(fl.name || "レイアウト").replace(/[\\/?*\[\]:]/g, "").slice(0, 28) || "レイアウト"; while (used.has(name)) name += "_"; used.add(name);
       const ws = wb.addWorksheet(name, { pageSetup: { paperSize: 9, orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 1, horizontalCentered: true, margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.3, header: 0.2, footer: 0.2 } }, views: [{ showGridLines: false }] });
@@ -5888,14 +5888,58 @@ async function layExportXlsx(lay, title, fname, say) {
         cell.style = style; // 結合したマスは同じ書式を共有するので、マスごとに新しい書式を入れる
         if (x.v && !(cell.isMerged && cell.master !== cell)) cell.value = x.v;
       }
-      // 吹き出しは、マス目の上に重ねる画像にする（Excel では図として動かせる）
-      const { W, H } = layFloorPx(fl), cv = document.createElement("canvas"), k = 2; cv.width = W * k; cv.height = H * k;
-      const ctx = cv.getContext("2d"); ctx.scale(k, k); const boxes = layNoteBoxes(lay, fl, ctx);
-      if (boxes.length) { layDrawNotes(ctx, boxes); const id = wb.addImage({ base64: cv.toDataURL("image/png"), extension: "png" }); ws.addImage(id, { tl: { col: 0, row: 1 }, ext: { width: W, height: H }, editAs: "oneCell" }); }
+      // 吹き出しは、Excel の図形（角丸の四角）と線（コネクタ）にする。線の端は吹き出しにつながっているので、吹き出しを動かすと線もついてくる
+      const ctx = document.createElement("canvas").getContext("2d"), boxes = layNoteBoxes(lay, fl, ctx);
+      if (boxes.length) shapes.push({ sheet: used.size, fl, boxes });
     }
-    await dl.save({ filename: fname, data: new Blob([await wb.xlsx.writeBuffer()], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }) });
+    let buf = await wb.xlsx.writeBuffer();
+    if (shapes.length) buf = await layXlsxShapes(buf, shapes);
+    await dl.save({ filename: fname, data: new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }) });
     say("Excelを出力しました。");
   } catch (e) { say(e && e.code === "declined" ? "" : e && e.code ? "この表示環境では保存できませんでした。" : "Excelを作成できませんでした。", true); }
+}
+/** Excel のファイル（zip）に、吹き出しの図形と線を書き足す。座標はマス目のどこにあるか（列・行＋はみ出し分）で指定するので、Excel の列幅の丸めでずれない。 */
+async function layXlsxShapes(buf, shapes) {
+  await loadScript(LIB.jszip);
+  const zip = await JSZip.loadAsync(buf), EMU = 9525, TITLE_PX = 32; // 1行目（題名）は 24pt
+  const esc = (t) => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  let ct = await zip.file("[Content_Types].xml").async("string");
+  for (const sh of shapes) {
+    const { fl, boxes } = sh, n = sh.sheet;
+    // px → （列, 列の中の位置, 行, 行の中の位置）
+    const at = (x, y) => {
+      let c = 0, xx = Math.max(0, x); while (c < fl.cols - 1 && xx >= fl.cw[c]) { xx -= fl.cw[c]; c++; }
+      let r = 0, yy = Math.max(0, y); while (r < fl.rows - 1 && yy >= fl.rh[r]) { yy -= fl.rh[r]; r++; }
+      return `<xdr:col>${c}</xdr:col><xdr:colOff>${Math.round(Math.min(xx, fl.cw[c]) * EMU)}</xdr:colOff><xdr:row>${r + 1}</xdr:row><xdr:rowOff>${Math.round(Math.min(yy, fl.rh[r]) * EMU)}</xdr:rowOff>`;
+    };
+    let id = 2, body = "";
+    boxes.forEach((b, i) => {
+      const w = Math.ceil(b.w * 1.12 + 6), hh = Math.ceil(b.h * 1.1 + 4), red = !b.loose, ln = red ? "C00000" : "6B7684", fill = red ? "FFFBE6" : "EEF1F5", dash = red ? "" : '<a:prstDash val="dash"/>';
+      const bid = id++, cid = id++;
+      if (b.tip) { // 線（吹き出しの中心 → 席）。開始側を吹き出しにつなぐ
+        const sx = b.x + w / 2, sy = b.y + hh / 2, ex = b.tip.x, ey = b.tip.y, x1 = Math.min(sx, ex), y1 = Math.min(sy, ey), x2 = Math.max(sx, ex), y2 = Math.max(sy, ey);
+        const site = Math.abs(ex - sx) > Math.abs(ey - sy) ? (ex > sx ? 3 : 1) : ey > sy ? 2 : 0; // つなぐ辺：0上 1左 2下 3右
+        body += `<xdr:twoCellAnchor editAs="absolute"><xdr:from>${at(x1, y1)}</xdr:from><xdr:to>${at(x2, y2)}</xdr:to><xdr:cxnSp macro=""><xdr:nvCxnSpPr><xdr:cNvPr id="${cid}" name="線 ${i + 1}"/><xdr:cNvCxnSpPr><a:stCxn id="${bid}" idx="${site}"/></xdr:cNvCxnSpPr></xdr:nvCxnSpPr><xdr:spPr><a:xfrm${ex < sx ? ' flipH="1"' : ""}${ey < sy ? ' flipV="1"' : ""}><a:off x="${Math.round(x1 * EMU)}" y="${Math.round((y1 + TITLE_PX) * EMU)}"/><a:ext cx="${Math.round(Math.max(1, x2 - x1) * EMU)}" cy="${Math.round(Math.max(1, y2 - y1) * EMU)}"/></a:xfrm><a:prstGeom prst="straightConnector1"><a:avLst/></a:prstGeom><a:ln w="19050"><a:solidFill><a:srgbClr val="${ln}"/></a:solidFill>${dash}<a:tailEnd type="oval" w="sm" len="sm"/></a:ln></xdr:spPr></xdr:cxnSp><xdr:clientData/></xdr:twoCellAnchor>`;
+      }
+      const paras = b.lines.map((l) => `<a:p><a:r><a:rPr lang="ja-JP" sz="900"><a:solidFill><a:srgbClr val="${red ? "000000" : "39424E"}"/></a:solidFill><a:latin typeface="BIZ UDPゴシック"/><a:ea typeface="BIZ UDPゴシック"/></a:rPr><a:t>${esc(l)}</a:t></a:r></a:p>`).join("");
+      b.xml = `<xdr:twoCellAnchor editAs="absolute"><xdr:from>${at(b.x, b.y)}</xdr:from><xdr:to>${at(b.x + w, b.y + hh)}</xdr:to><xdr:sp macro="" textlink=""><xdr:nvSpPr><xdr:cNvPr id="${bid}" name="吹き出し ${i + 1}"/><xdr:cNvSpPr/></xdr:nvSpPr><xdr:spPr><a:xfrm><a:off x="${Math.round(b.x * EMU)}" y="${Math.round((b.y + TITLE_PX) * EMU)}"/><a:ext cx="${Math.round(w * EMU)}" cy="${Math.round(hh * EMU)}"/></a:xfrm><a:prstGeom prst="roundRect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="${fill}"/></a:solidFill><a:ln w="19050"><a:solidFill><a:srgbClr val="${ln}"/></a:solidFill>${dash}</a:ln></xdr:spPr><xdr:txBody><a:bodyPr wrap="none" lIns="72000" tIns="36000" rIns="72000" bIns="36000" anchor="ctr"><a:spAutoFit/></a:bodyPr><a:lstStyle/>${paras}</xdr:txBody></xdr:sp><xdr:clientData/></xdr:twoCellAnchor>`;
+    });
+    body += boxes.map((b) => b.xml).join(""); // 吹き出しを線の上に重ねる
+    const dname = `drawingT${n}.xml`;
+    zip.file(`xl/drawings/${dname}`, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">${body}</xdr:wsDr>`);
+    ct = ct.replace("</Types>", `<Override PartName="/xl/drawings/${dname}" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/></Types>`);
+    const relPath = `xl/worksheets/_rels/sheet${n}.xml.rels`, rf = zip.file(relPath);
+    let rels = rf ? await rf.async("string") : `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
+    rels = rels.replace("</Relationships>", `<Relationship Id="rIdTcoreDr" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/${dname}"/></Relationships>`);
+    zip.file(relPath, rels);
+    let sx = await zip.file(`xl/worksheets/sheet${n}.xml`).async("string");
+    if (!/xmlns:r=/.test(sx)) sx = sx.replace("<worksheet ", '<worksheet xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ');
+    const tag = '<drawing r:id="rIdTcoreDr"/>', at2 = ["<legacyDrawing", "<legacyDrawingHF", "<picture", "<oleObjects", "<controls", "<webPublishItems", "<tableParts", "<extLst", "</worksheet>"].map((t) => sx.indexOf(t)).filter((v) => v >= 0);
+    const pos = Math.min(...at2); sx = sx.slice(0, pos) + tag + sx.slice(pos);
+    zip.file(`xl/worksheets/sheet${n}.xml`, sx);
+  }
+  zip.file("[Content_Types].xml", ct);
+  return zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" });
 }
 async function layExportPdf(lay, title, fname, say) {
   if (!lay || !(lay.floors || []).length) return say("出力するレイアウトがありません。", true);
