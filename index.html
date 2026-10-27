@@ -703,7 +703,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 197</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 199</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -6425,7 +6425,16 @@ function tdParse(rows) {
   return [...byId.values()];
 }
 /* ---------- シリーズ判定：同じ旅行会社から、同じ（または番号違いの）団体名で繰り返し入る予約 ---------- */
-let tdsView = { min: 3, sort: "y", q: "", open: "", status: "" };
+let tdsView = { tab: "active", sort: "y1", sort2: "", co: "", q: "", open: "" };
+/* 並び順：1つ目で並べ、同じものは2つ目で並べる。「最近の利用」は利用月で比べる（同じ月の中を2つ目の順で並べられるように） */
+const TDS_SORT = [["y1", "1年の売上の多い順"], ["n", "回数の多い順"], ["last", "最近の利用順（月）"], ["fut", "先の予約の多い順"]];
+const tdsCmp = (k) => (a, b) => (k === "n" ? b.n - a.n : k === "last" ? b.lastPast.slice(0, 7).localeCompare(a.lastPast.slice(0, 7)) : k === "fut" ? b.fut - a.fut : b.y1 - a.y1);
+/* タブ：進行中＝先の予約がある、または直近3か月に利用がある（今失敗できない）／最近終わった＝最後の利用が3〜6か月前／過去＝6か月以上止まっている */
+const TDS_TABS = { active: ["進行中シリーズ", "先の予約がある、または直近3か月に利用があるシリーズです。今、失敗できない案件です。売上は直近1年の額です。"],
+  recent: ["最近終わった", "最後の利用が3〜6か月前で、先の予約がないシリーズです。売上は止まる前の1年の額で、取り戻すセールスの対象です。"],
+  past: ["過去シリーズ", "6か月以上止まっているシリーズです。シリーズだけが止まったのか、その会社からの予約自体が止まった（減った）のかを分けて表示します。"] };
+/* 過去シリーズの会社の状況：会社全体の直近6か月の売上を、前年の同じ6か月と比べる */
+const TDS_CO = { only: ["シリーズだけ停止", "ok", "会社からの予約は続いています（別の団体名など）"], down: ["会社の予約も減少", "warn", "会社全体の予約が前年の同じ時期の半分未満です"], none: ["会社の予約なし", "bad", "直近6か月も先の予約も、この会社からの予約がありません"] };
 /** 団体名からシリーズのまとまりを作る：全角・半角をそろえ、空白を除き、数字（日付・便名・番号）を「#」にまとめる。
     例：ATI-VTV260312-2 → ATI-VTV#-#、【T-No1434】イルミネーションクルーズ → 【T-No#】イルミネーションクルーズ */
 const tdSeriesKey = (g) => String(g || "").normalize("NFKC").toUpperCase().replace(/\s+/g, "").replace(/[0-9]+/g, "#").replace(/#(?:[\/.\-~_]#)+/g, "#").replace(/#+/g, "#");
@@ -6433,67 +6442,78 @@ const tdSeriesShow = (k) => k.replace(/#/g, "○");
 function tdSeries(rows, min) {
   const m = new Map();
   for (const r of rows) { if (!r.g || !r.ag) continue; const key = r.ag + "\u0000" + tdSeriesKey(r.g); const x = m.get(key) || { ag: r.ag, key: tdSeriesKey(r.g), rows: [] }; x.rows.push(r); m.set(key, x); }
-  const today = new Date().toISOString().slice(0, 10), dms = (a, b) => (Date.parse(b) - Date.parse(a)) / 864e5;
+  const T = new Date().toISOString().slice(0, 10), DAY = 864e5, back = (d, n) => new Date(Date.parse(d) - n * DAY).toISOString().slice(0, 10), dms = (a, b) => (Date.parse(b) - Date.parse(a)) / DAY;
+  const d3 = back(T, 91), d6 = back(T, 182), sum = (rs) => rs.reduce((a, r) => a + r.y, 0);
+  // 会社全体の動き（シリーズ以外の予約も含む）
+  const co = new Map();
+  for (const r of rows) { if (!r.ag) continue; const c = co.get(r.ag) || { y6: 0, y6L: 0, fut: 0, last: "" }; if (r.d > T) c.fut++; else { if (r.d > d6) c.y6 += r.y; if (r.d > back(T, 547) && r.d <= back(T, 365)) c.y6L += r.y; if (r.d > c.last) c.last = r.d; } co.set(r.ag, c); }
   const out = [];
   for (const x of m.values()) {
     // 回数は利用日の数で数える（同じ日に店舗を分けた予約は1回）
     const days = [...new Set(x.rows.map((r) => r.d))].sort(); if (days.length < min) continue;
-    const rs = x.rows.sort((a, b) => a.d.localeCompare(b.d)), past = rs.filter((r) => r.d <= today), fut = rs.filter((r) => r.d > today);
+    const rs = x.rows.sort((a, b) => a.d.localeCompare(b.d)), past = rs.filter((r) => r.d <= T), fut = rs.filter((r) => r.d > T);
     const gaps = []; for (let i = 1; i < days.length; i++) gaps.push(dms(days[i - 1], days[i]));
-    const gap = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 0, last = past.length ? past[past.length - 1].d : "", sinceLast = last ? dms(last, today) : null;
-    const st = new Map(); for (const r of rs) st.set(r.st, (st.get(r.st) || 0) + 1);
+    const gap = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 0, lastPast = past.length ? past[past.length - 1].d : "";
+    const tab = fut.length || lastPast > d3 ? "active" : lastPast > d6 ? "recent" : "past";
+    const base = tab === "active" ? T : lastPast, from = back(base, 365), r1 = rs.filter((r) => r.d > from && r.d <= base);
+    const st = new Map(); for (const r of rs) st.set(r.st, (st.get(r.st) || 0) + (r.d > from && r.d <= base ? r.y : 0) + 1e-6);
     const names = new Map(); for (const r of rs) names.set(r.g, (names.get(r.g) || 0) + 1);
-    const Y = +today.slice(0, 4), yr = (r) => +r.d.slice(0, 4);
-    // 状態：先の予約がある＝継続中、最後の利用から「平均の間隔の2倍（最低90日）」を過ぎた＝途切れ、ほか＝様子見
-    const status = fut.length ? "active" : sinceLast != null && sinceLast > Math.max(90, gap * 2) ? "stopped" : "watch";
-    const dY = (y) => new Set(rs.filter((r) => yr(r) === y).map((r) => r.d)).size;
-    out.push({ ...x, n: days.length, k: rs.length, p: rs.reduce((a, r) => a + r.p, 0), y: rs.reduce((a, r) => a + r.y, 0), first: rs[0].d, last: rs[rs.length - 1].d, gap, fut: new Set(fut.map((r) => r.d)).size, sinceLast, status,
-      nY: dY(Y), nL: dY(Y - 1), yY: rs.filter((r) => yr(r) === Y).reduce((a, r) => a + r.y, 0), yL: rs.filter((r) => yr(r) === Y - 1).reduce((a, r) => a + r.y, 0),
+    // もうすぐ季節：先の予約がなく、昨年の「今日から2か月」の間に利用があった
+    const lyFrom = back(T, 365), lyTo = back(T, 305), season = !fut.length && tab !== "active" ? (rs.find((r) => r.d > lyFrom && r.d <= lyTo) || {}).d || "" : "";
+    const c = co.get(x.ag) || { y6: 0, y6L: 0, fut: 0, last: "" }, coSt = !c.y6 && !c.fut ? "none" : c.y6 < c.y6L * 0.5 ? "down" : "only";
+    out.push({ ...x, n: days.length, n1: new Set(r1.map((r) => r.d)).size, k: rs.length, y: sum(rs), y1: sum(r1), first: rs[0].d, last: rs[rs.length - 1].d, lastPast, gap, tab,
+      fut: new Set(fut.map((r) => r.d)).size, futY: sum(fut), next: fut.length ? fut[0].d : "", season, co: c, coSt,
       stores: [...st.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k), sample: [...names.entries()].sort((a, b) => b[1] - a[1])[0][0], nameN: names.size });
   }
   return out;
 }
-const TDS_ST = { active: ["継続中", "ok", "先の予約が入っています"], watch: ["様子見", "warn", "先の予約はまだありませんが、いつもの間隔の範囲内です"], stopped: ["途切れ", "bad", "いつもの間隔を大きく過ぎても、次の予約がありません"] };
 function viewTdSeries() {
   const all = [...S.td.values()].flatMap((d) => d.rows || []);
   const head = [h("div", { class: "row" }, h("h2", { text: "シリーズ判定" })),
-    h("div", { class: "muted small", style: "max-width:100ch", text: "同じ旅行会社から、同じ団体名（日付や番号だけが違う名前も同じものとして扱います）で繰り返し入っている予約を「シリーズ」としてまとめます。団体名は、ツアー分析に取り込んだ予約一覧のものを使います。個人（5名以下）は含みません。" })];
+    h("div", { class: "muted small", style: "max-width:100ch", text: "同じ旅行会社から、同じ団体名（日付や番号だけが違う名前も同じものとして扱います）で3回以上入っている予約を「シリーズ」としてまとめます。個人（5名以下）は含みません。" })];
   if (!all.length) return [...head, h("div", { class: "panel empty", text: "まだデータがありません。「ツアー分析」から予約一覧のExcelを取り込んでください。" })];
   if (!all.some((r) => r.g !== undefined)) return [...head, h("div", { class: "banner warn", id: "tds-old", text: "取り込み済みのデータには団体名が入っていません。「ツアー分析」から、同じ予約一覧のExcelをもう一度取り込むと、シリーズ判定が使えます。" })];
   const re = () => render();
   const rows = all.filter((r) => tdPass(r) && !tdIsCancel(r));
-  const list0 = tdSeries(rows, tdsView.min), q = norm(tdsView.q);
-  const list = list0.filter((x) => (!tdsView.status || x.status === tdsView.status) && (!q || norm(x.ag + x.key + x.sample).includes(q)))
-    .sort((a, b) => (tdsView.sort === "n" ? b.n - a.n : tdsView.sort === "last" ? b.last.localeCompare(a.last) : tdsView.sort === "chg" ? (b.yY - b.yL) - (a.yY - a.yL) : b.y - a.y));
-  const totY = rows.reduce((a, r) => a + r.y, 0), serY = list0.reduce((a, x) => a + x.y, 0), Y = new Date().getFullYear();
-  const cnt = (k) => list0.filter((x) => x.status === k).length;
-  const tiles = h("div", { class: "td-tiles" },
-    h("div", { class: "td-tile" }, h("span", { class: "small muted", text: "シリーズ数" }), h("span", { class: "td-big", text: `${list0.length}件` }), h("span", { class: "small muted", text: `${tdsView.min}回以上の予約があるもの` })),
-    h("div", { class: "td-tile" }, h("span", { class: "small muted", text: "シリーズの売上" }), h("span", { class: "td-big", text: tdMan(serY) }), h("span", { class: "small muted", text: `取り込んだ期間の売上の ${totY ? Math.round((serY / totY) * 100) : 0}%` })),
-    ...["active", "watch", "stopped"].map((k) => h("div", { class: "td-tile tds-tile " + k, role: "button", tabindex: "0", title: "押すと、この状態のシリーズだけを表示します", onclick: () => { tdsView.status = tdsView.status === k ? "" : k; re(); } },
-      h("span", { class: "small muted", text: TDS_ST[k][0] + (tdsView.status === k ? "（表示中）" : "") }), h("span", { class: "td-big", text: `${cnt(k)}件` }), h("span", { class: "small muted", text: TDS_ST[k][2] }))));
+  const list0 = tdSeries(rows, 3), q = norm(tdsView.q), tab = tdsView.tab;
+  const inTab = list0.filter((x) => x.tab === tab), cnt = (k) => list0.filter((x) => x.tab === k), yOf = (xs) => xs.reduce((a, x) => a + x.y1, 0);
+  const list = inTab.filter((x) => (tab !== "past" || !tdsView.co || x.coSt === tdsView.co) && (!q || norm(x.ag + x.key + x.sample).includes(q)))
+    .sort((a, b) => tdsCmp(tdsView.sort)(a, b) || (tdsView.sort2 ? tdsCmp(tdsView.sort2)(a, b) : 0) || b.lastPast.localeCompare(a.lastPast) || b.y1 - a.y1);
+  const ds = (d) => (d ? d.replace(/-/g, "/") : "—"), ago = (d) => { const mo = Math.round((Date.now() - Date.parse(d)) / (864e5 * 30.4)); return mo >= 12 ? `${Math.floor(mo / 12)}年${mo % 12 ? (mo % 12) + "か月" : ""}前` : `${mo}か月前`; };
+  const tabBtn = (k) => h("button", { type: "button", class: "btn sm list-tab" + (tab === k ? " on" : ""), id: "tds-tab-" + k, "aria-pressed": tab === k ? "true" : "false", onclick: () => { tdsView.tab = k; tdsView.open = ""; tdsView.co = ""; re(); } },
+    TDS_TABS[k][0], h("span", { class: "list-tab-n", text: `${cnt(k).length}件` }));
+  const tabs = h("div", { class: "row", style: "gap:10px 14px" }, h("div", { class: "list-tabs", role: "group", "aria-label": "表示するシリーズ" }, ...["active", "recent", "past"].map(tabBtn)),
+    h("span", { class: "small", id: "tds-sum" }, tab === "active" ? "直近1年の売上 " : "止まる前の1年の売上 ", h("strong", { text: tdMan(yOf(inTab)) }), tab === "active" ? `（先の予約 ${inTab.some((x) => x.futY) ? tdMan(inTab.reduce((a, x) => a + x.futY, 0)) : "0円"}）` : ""));
+  const coChips = tab === "past" ? h("div", { class: "row", style: "gap:6px" }, h("span", { class: "small muted", text: "会社の状況" }),
+    ...[["", "すべて"], ...Object.entries(TDS_CO).map(([k, v]) => [k, v[0]])].map(([k, t]) => { const xs = k ? inTab.filter((x) => x.coSt === k) : inTab;
+      return h("button", { type: "button", class: "btn sm" + (tdsView.co === k ? " primary" : ""), id: "tds-co-" + (k || "all"), title: k ? TDS_CO[k][2] : "", onclick: () => { tdsView.co = k; re(); } }, `${t}（${xs.length}件・${tdMan(yOf(xs))}）`); })) : null;
   const filt = h("div", { class: "panel row", style: "gap:8px 18px" }, ...tdFilterEls("tds", re),
-    h("label", { class: "row small", style: "gap:6px" }, "シリーズとみなす回数", sel([["2", "2回以上"], ["3", "3回以上"], ["4", "4回以上"], ["5", "5回以上"]], String(tdsView.min), (v) => { tdsView.min = +v; re(); }, { id: "tds-min" })),
-    h("label", { class: "row small", style: "gap:6px" }, "並び順", sel([["y", "売上の多い順"], ["n", "回数の多い順"], ["chg", "前年からの増減"], ["last", "最近の利用順"]], tdsView.sort, (v) => { tdsView.sort = v; re(); }, { id: "tds-sort" })),
+    h("label", { class: "row small", style: "gap:6px;flex-wrap:nowrap;white-space:nowrap" }, "並び順", sel(TDS_SORT, tdsView.sort, (v) => { tdsView.sort = v; if (tdsView.sort2 === v) tdsView.sort2 = ""; re(); }, { id: "tds-sort", style: "width:auto" }),
+      "→ 同じときは", sel([["", "指定なし"], ...TDS_SORT.filter(([k]) => k !== tdsView.sort)], tdsView.sort2, (v) => { tdsView.sort2 = v; re(); }, { id: "tds-sort2", style: "width:auto" })),
     h("input", { type: "search", id: "tds-q", placeholder: "旅行会社・団体名で絞り込み", value: tdsView.q, style: "max-width:260px", oninput: (e) => { tdsView.q = e.target.value; clearTimeout(tdsView.t); tdsView.t = setTimeout(() => { re(); const el = $("#tds-q"); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 300); } }));
+  const seasonEl = (x) => (x.season ? h("span", { class: "pill warn", title: `昨年は ${ds(x.season)} に利用がありました`, text: `もうすぐ季節（昨年${+x.season.slice(5, 7)}/${+x.season.slice(8)}）` }) : null);
+  const cols = tab === "active" ? ["旅行会社", "団体名（シリーズ）", "直近1年の売上", "回数（直近1年）", "先の予約", "最後の利用", "間隔", "主な店舗"]
+    : tab === "recent" ? ["旅行会社", "団体名（シリーズ）", "止まる前の1年の売上", "回数", "最後の利用", "いつもの間隔", "主な店舗"]
+    : ["旅行会社", "団体名（シリーズ）", "止まる前の1年の売上", "最後の利用", "会社の状況", "主な店舗"];
   const tb = h("tbody");
   for (const x of list.slice(0, 300)) {
-    const id = x.ag + "|" + x.key, on = tdsView.open === id, ds = (d) => d.replace(/-/g, "/");
-    tb.append(h("tr", { class: "click" + (on ? " on" : ""), onclick: () => { tdsView.open = on ? "" : id; re(); } },
-      h("td", {}, h("span", { class: "pill " + TDS_ST[x.status][1], title: TDS_ST[x.status][2], text: TDS_ST[x.status][0] })),
-      h("td", { class: "lab", text: x.ag }),
-      h("td", { class: "lab" }, h("strong", { text: x.sample }), x.nameN > 1 ? h("div", { class: "small muted", text: `ほか${x.nameN - 1}件の名前（${tdSeriesShow(x.key)}）` }) : null),
-      h("td", { class: "num", text: `${x.n}回`, title: x.k !== x.n ? `予約は${x.k}件（同じ日に店舗を分けた予約を含む）` : "" }), h("td", { class: "num", text: `${x.nL}回 → ${x.nY}回` }),
-      h("td", { class: "num", text: x.p.toLocaleString() + "名" }), h("td", { class: "num", text: tdMan(x.y) }),
-      h("td", { class: "num", text: `${ds(x.first)}〜${ds(x.last)}` }), h("td", { class: "num", text: x.gap ? `約${Math.round(x.gap)}日ごと` : "—" }),
-      h("td", { class: "num", text: x.fut ? `${x.fut}件` : "なし" }), h("td", { class: "lab small", text: x.stores.slice(0, 2).join("、") + (x.stores.length > 2 ? ` ほか${x.stores.length - 2}店` : "") })));
-    if (on) tb.append(h("tr", { class: "tds-detail" }, h("td", { colspan: "11" },
+    const id = x.ag + "|" + x.key, on = tdsView.open === id;
+    const name = h("td", { class: "lab" }, h("strong", { text: x.sample }), x.nameN > 1 ? h("div", { class: "small muted", text: `ほか${x.nameN - 1}件の名前（${tdSeriesShow(x.key)}）` }) : null, tab !== "active" && x.season ? h("div", {}, seasonEl(x)) : null);
+    const store = h("td", { class: "lab small", text: x.stores.slice(0, 2).join("、") + (x.stores.length > 2 ? ` ほか${x.stores.length - 2}店` : "") });
+    const last = h("td", { class: "num" }, ds(x.lastPast), x.lastPast && tab !== "active" ? h("div", { class: "small muted", text: ago(x.lastPast) }) : null);
+    const gapTd = h("td", { class: "num", text: x.gap ? `約${Math.round(x.gap)}日ごと` : "—" });
+    const cells = tab === "active" ? [h("td", { class: "lab", text: x.ag }), name, h("td", { class: "num", text: tdMan(x.y1) }), h("td", { class: "num", text: `${x.n1}回`, title: `全体では${x.n}回` }),
+        h("td", { class: "num" }, x.fut ? `${x.fut}件` : "なし", x.next ? h("div", { class: "small muted", text: `次 ${ds(x.next)}` }) : null), last, gapTd, store]
+      : tab === "recent" ? [h("td", { class: "lab", text: x.ag }), name, h("td", { class: "num", text: tdMan(x.y1) }), h("td", { class: "num", text: `${x.n}回` }), last, gapTd, store]
+      : [h("td", { class: "lab", text: x.ag }), name, h("td", { class: "num", text: tdMan(x.y1) }), last,
+        h("td", { class: "lab" }, h("span", { class: "pill " + TDS_CO[x.coSt][1], title: TDS_CO[x.coSt][2], text: TDS_CO[x.coSt][0] }), h("div", { class: "small muted", text: `会社全体 直近6か月 ${x.co.y6 ? tdMan(x.co.y6) : "0円"}（前年同期 ${x.co.y6L ? tdMan(x.co.y6L) : "0円"}）` })), store];
+    tb.append(h("tr", { class: "click" + (on ? " on" : ""), onclick: () => { tdsView.open = on ? "" : id; re(); } }, ...cells));
+    if (on) tb.append(h("tr", { class: "tds-detail" }, h("td", { colspan: String(cols.length) },
       h("table", { class: "td-tbl" }, h("thead", {}, h("tr", {}, ...["利用日", "時間", "団体名", "人数", "店舗", "コース", "売上"].map((t) => h("th", { class: /人数|売上/.test(t) ? "num" : "", text: t })))),
-        h("tbody", {}, ...x.rows.slice().reverse().map((r) => h("tr", { class: r.d > new Date().toISOString().slice(0, 10) ? "tds-fut" : "" }, h("td", { text: ds(r.d) }), h("td", { text: r.t || "" }), h("td", { class: "lab", text: r.g }), h("td", { class: "num", text: r.p + "名" }), h("td", { class: "lab", text: r.st }), h("td", { class: "lab small", text: r.co || "" }), h("td", { class: "num", text: tdMan(r.y) }))))))));
+        h("tbody", {}, ...x.rows.slice().reverse().map((r) => h("tr", { class: r.d > new Date().toISOString().slice(0, 10) ? "tds-fut" : "" }, h("td", { text: ds(r.d) }), h("td", { text: r.t || "" }), h("td", { class: "lab", text: r.g }), h("td", { class: "num", text: r.p + "名" }), h("td", { class: "lab", text: r.st }), h("td", { class: "lab", text: r.co || "" }), h("td", { class: "num", text: tdMan(r.y) }))))))));
   }
-  return [...head, filt, tiles,
-    h("div", { class: "panel scroll", id: "tds-list", style: "padding:4px 8px" }, list.length ? h("table", { class: "list tds-tbl" },
-      h("thead", {}, h("tr", {}, ...["状態", "旅行会社", "団体名（シリーズ）", "回数", `${Y - 1}年→${Y}年`, "人数", "売上", "期間", "間隔", "先の予約", "主な店舗"].map((t) => h("th", { text: t })))), tb)
+  return [...head, filt, tabs, h("div", { class: "small muted", id: "tds-note", text: TDS_TABS[tab][1] }), coChips,
+    h("div", { class: "panel scroll", id: "tds-list", style: "padding:4px 8px" }, list.length ? h("table", { class: "list tds-tbl" }, h("thead", {}, h("tr", {}, ...cols.map((t) => h("th", { text: t })))), tb)
       : h("div", { class: "empty", text: "条件に合うシリーズはありません。" })),
     list.length > 300 ? h("div", { class: "small muted", text: `ほか${list.length - 300}件は、絞り込むと表示されます。` }) : null];
 }
