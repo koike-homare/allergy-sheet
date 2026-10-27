@@ -530,6 +530,7 @@ table.pj th:nth-child(1),table.pj th:nth-child(2){min-width:230px} table.pj th:n
 .td-ctrl{display:flex;flex-direction:column;gap:10px} .td-ctrl select{width:auto;max-width:320px}
 .td-key{display:inline-block;width:14px;height:6px;border-radius:3px;background:var(--td-b)} .td-key.a{background:var(--td-a)}
 .tds-tile{cursor:pointer} .tds-tile.active{border-left:4px solid var(--ok)} .tds-tile.watch{border-left:4px solid var(--warn)} .tds-tile.stopped{border-left:4px solid var(--bad)}
+.tdg{border-collapse:collapse;font-size:11px} .tdg th,.tdg td{border:1px solid var(--line);padding:2px 3px;text-align:center;white-space:nowrap} .tdg td.nm{text-align:left;max-width:280px;overflow:hidden;text-overflow:ellipsis;background:var(--surface)} .tdg th.fut,.tdg td.fut{background:var(--sunken)} .tdg td.c{color:var(--accent-ink);font-weight:700} .tdg th.now{border-left:2px solid var(--bad)} .tdg td.now{border-left:2px solid var(--bad)}
 .tds-tbl td{vertical-align:top} .tds-tbl td.num{white-space:nowrap;text-align:right} .tds-tbl tr.on td{background:var(--accent-soft)} .tds-detail td{background:var(--sunken)} .tds-fut td{color:var(--accent);font-weight:700}
 .td-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
 .td-tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px;display:flex;flex-direction:column;gap:2px}
@@ -703,7 +704,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 199</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 200</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -6425,7 +6426,7 @@ function tdParse(rows) {
   return [...byId.values()];
 }
 /* ---------- シリーズ判定：同じ旅行会社から、同じ（または番号違いの）団体名で繰り返し入る予約 ---------- */
-let tdsView = { tab: "active", sort: "y1", sort2: "", co: "", q: "", open: "" };
+let tdsView = { mode: "co", coF: "", coOpen: "", tab: "active", sort: "y1", sort2: "", co: "", q: "", open: "" };
 /* 並び順：1つ目で並べ、同じものは2つ目で並べる。「最近の利用」は利用月で比べる（同じ月の中を2つ目の順で並べられるように） */
 const TDS_SORT = [["y1", "1年の売上の多い順"], ["n", "回数の多い順"], ["last", "最近の利用順（月）"], ["fut", "先の予約の多い順"]];
 const tdsCmp = (k) => (a, b) => (k === "n" ? b.n - a.n : k === "last" ? b.lastPast.slice(0, 7).localeCompare(a.lastPast.slice(0, 7)) : k === "fut" ? b.fut - a.fut : b.y1 - a.y1);
@@ -6467,6 +6468,60 @@ function tdSeries(rows, min) {
   }
   return out;
 }
+/* 旅行会社ごと：会社の中で、どのシリーズが終わり、どのシリーズが始まったかを見る */
+const TDS_MOVE = { switch: ["切り替わり", "warn", "直近1年の間に終わったシリーズと、始まったシリーズの両方がある"], start: ["新しく開始", "ok", "直近6か月に始まったシリーズがある"], end: ["終了のみ", "bad", "直近1年の間に終わったシリーズがあり、新しいシリーズはない"] };
+function tdsCompanies(rows, list0) {
+  const T = new Date().toISOString().slice(0, 10), back = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10), d6 = back(182), d12 = back(365), d24 = back(730);
+  const inSeries = new Set(); for (const x of list0) for (const r of x.rows) inSeries.add(r.i);
+  const m = new Map();
+  for (const x of list0) { const c = m.get(x.ag) || { ag: x.ag, series: [], rows: [] }; c.series.push(x); m.set(x.ag, c); }
+  for (const r of rows) { const c = m.get(r.ag); if (c) c.rows.push(r); }
+  return [...m.values()].map((c) => {
+    const y1 = c.rows.filter((r) => r.d > d12 && r.d <= T).reduce((a, r) => a + r.y, 0), y0 = c.rows.filter((r) => r.d > d24 && r.d <= d12).reduce((a, r) => a + r.y, 0);
+    const ys = c.series.reduce((a, x) => a + (x.tab === "active" ? x.y1 : 0), 0), fut = c.rows.filter((r) => r.d > T).length;
+    const started = c.series.filter((x) => x.first > d6), ended = c.series.filter((x) => x.tab !== "active" && x.lastPast > d12);
+    const move = started.length && ended.length ? "switch" : started.length ? "start" : ended.length ? "end" : "";
+    return { ...c, y1, y0, ys, fut, started, ended, move, act: c.series.filter((x) => x.tab === "active").length, other: c.rows.filter((r) => !inSeries.has(r.i)) };
+  });
+}
+/** 月ごとの帯（過去23か月〜先6か月）：シリーズごとに、その月の利用回数を出す */
+function tdsGrid(co) {
+  const now = new Date(), ms = []; for (let k = -23; k <= 6; k++) { const d = new Date(now.getFullYear(), now.getMonth() + k, 1); ms.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`); }
+  const cur = ms[23], line = (label, sub, rs, pill) => { const cnt = new Map(); for (const r of rs) { const k = r.d.slice(0, 7); cnt.set(k, (cnt.get(k) || 0) + 1); } const mx = Math.max(1, ...cnt.values());
+    return h("tr", {}, h("td", { class: "nm", title: label }, pill, " ", h("strong", { text: label }), sub ? h("span", { class: "muted", text: " " + sub }) : null),
+      ...ms.map((k) => { const n = cnt.get(k) || 0, f = k > cur; return h("td", { class: (f ? "fut " : "") + (k === cur ? "now " : "") + (n ? "c" : ""), title: n ? `${k.replace("-", "/")}：${n}件` : "", style: n ? `background:color-mix(in srgb, var(--accent) ${Math.round(35 + 65 * n / mx)}%, transparent)${f ? ";opacity:.6" : ""}` : "" }, n ? String(n) : ""); })); };
+  const ser = co.series.slice().sort((a, b) => a.first.localeCompare(b.first));
+  return h("div", { class: "scroll", style: "overflow-x:auto" }, h("table", { class: "tdg" },
+    h("thead", {}, h("tr", {}, h("th", { text: "シリーズ（始まった順）" }), ...ms.map((k) => h("th", { class: (k > cur ? "fut " : "") + (k === cur ? "now" : ""), text: (k.endsWith("-01") || k === ms[0] ? k.slice(2, 4) + "/" : "") + +k.slice(5) })))),
+    h("tbody", {}, ...ser.map((x) => line(x.sample, x.nameN > 1 ? `ほか${x.nameN - 1}件` : "", x.rows, h("span", { class: "pill " + (x.tab === "active" ? "ok" : x.tab === "recent" ? "warn" : "bad"), text: x.tab === "active" ? "進行中" : x.tab === "recent" ? "最近終了" : "過去" }))),
+      co.other.length ? line("シリーズ以外の予約", "", co.other, h("span", { class: "pill", text: "その他" })) : null)),
+    h("div", { class: "small muted", style: "margin-top:4px", text: "数字はその月の予約件数です。赤い線が今月、灰色の欄はこれからの予約です。" }));
+}
+function viewTdsCompanies(rows, list0, re) {
+  const q = norm(tdsView.q), all = tdsCompanies(rows, list0);
+  const list = all.filter((c) => (!tdsView.coF || c.move === tdsView.coF) && (!q || norm(c.ag + c.series.map((x) => x.key + x.sample).join("")).includes(q))).sort((a, b) => b.y1 - a.y1);
+  const chips = h("div", { class: "row", style: "gap:6px" }, h("span", { class: "small muted", text: "動き" }),
+    ...[["", "すべて"], ...Object.entries(TDS_MOVE).map(([k, v]) => [k, v[0]])].map(([k, t]) => h("button", { type: "button", class: "btn sm" + (tdsView.coF === k ? " primary" : ""), id: "tds-mv-" + (k || "all"), title: k ? TDS_MOVE[k][2] : "", onclick: () => { tdsView.coF = k; re(); } }, `${t}（${k ? all.filter((c) => c.move === k).length : all.length}社）`)));
+  const pct = (a, b) => (b ? `${a >= b ? "+" : ""}${Math.round(((a - b) / b) * 100)}%` : "—");
+  const tb = h("tbody");
+  for (const c of list.slice(0, 200)) {
+    const on = tdsView.coOpen === c.ag, nm = (xs) => xs.slice(0, 2).map((x) => x.sample).join("、") + (xs.length > 2 ? ` ほか${xs.length - 2}件` : "");
+    tb.append(h("tr", { class: "click" + (on ? " on" : ""), onclick: () => { tdsView.coOpen = on ? "" : c.ag; re(); } },
+      h("td", { class: "lab" }, h("strong", { text: c.ag })),
+      h("td", { class: "num", text: `進行中 ${c.act}件／全${c.series.length}件` }),
+      h("td", { class: "num" }, tdMan(c.y1), h("div", { class: "small " + (c.y1 >= c.y0 ? "muted" : ""), style: c.y1 < c.y0 * 0.8 ? "color:var(--bad)" : "", text: `前年 ${c.y0 ? tdMan(c.y0) : "0円"}（${pct(c.y1, c.y0)}）` })),
+      h("td", { class: "num", text: c.ys ? tdMan(c.ys) : "—" }),
+      h("td", { class: "lab small" }, c.move ? h("span", { class: "pill " + TDS_MOVE[c.move][1], text: TDS_MOVE[c.move][0] }) : null,
+        c.ended.length ? h("div", { text: `終了：${nm(c.ended)}` }) : null, c.started.length ? h("div", { text: `開始：${nm(c.started)}` }) : null),
+      h("td", { class: "num", text: c.fut ? `${c.fut}件` : "なし" })));
+    if (on) tb.append(h("tr", { class: "tds-detail" }, h("td", { colspan: "6" }, tdsGrid(c))));
+  }
+  return [chips, h("div", { class: "small muted", text: "旅行会社ごとに、シリーズの動きをまとめます。行を押すと、月ごとの帯で、どのシリーズが終わり、どのシリーズが始まったかが見られます。" }),
+    h("div", { class: "panel scroll", id: "tds-colist", style: "padding:4px 8px" }, list.length ? h("table", { class: "list tds-tbl" },
+      h("thead", {}, h("tr", {}, ...["旅行会社", "シリーズ", "会社全体の直近1年の売上", "うち進行中シリーズ", "動き（直近1年）", "先の予約"].map((t) => h("th", { text: t })))), tb)
+      : h("div", { class: "empty", text: "条件に合う旅行会社はありません。" })),
+    list.length > 200 ? h("div", { class: "small muted", text: `ほか${list.length - 200}社は、絞り込むと表示されます。` }) : null];
+}
 function viewTdSeries() {
   const all = [...S.td.values()].flatMap((d) => d.rows || []);
   const head = [h("div", { class: "row" }, h("h2", { text: "シリーズ判定" })),
@@ -6476,6 +6531,11 @@ function viewTdSeries() {
   const re = () => render();
   const rows = all.filter((r) => tdPass(r) && !tdIsCancel(r));
   const list0 = tdSeries(rows, 3), q = norm(tdsView.q), tab = tdsView.tab;
+  const modeSw = h("div", {}, h("div", { class: "list-tabs", role: "group", "aria-label": "表示の単位" }, ...[["co", "旅行会社ごと"], ["series", "シリーズごと"]].map(([k, t]) =>
+    h("button", { type: "button", class: "btn list-tab" + (tdsView.mode === k ? " on" : ""), id: "tds-mode-" + k, "aria-pressed": tdsView.mode === k ? "true" : "false", onclick: () => { tdsView.mode = k; re(); } }, t))));
+  const fCo = h("div", { class: "panel row", style: "gap:8px 18px" }, ...tdFilterEls("tds", re),
+    h("input", { type: "search", id: "tds-q", placeholder: "旅行会社・団体名で絞り込み", value: tdsView.q, style: "max-width:260px", oninput: (e) => { tdsView.q = e.target.value; clearTimeout(tdsView.t); tdsView.t = setTimeout(() => { re(); const el = $("#tds-q"); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 300); } }));
+  if (tdsView.mode === "co") return [...head, modeSw, fCo, ...viewTdsCompanies(rows, list0, re)];
   const inTab = list0.filter((x) => x.tab === tab), cnt = (k) => list0.filter((x) => x.tab === k), yOf = (xs) => xs.reduce((a, x) => a + x.y1, 0);
   const list = inTab.filter((x) => (tab !== "past" || !tdsView.co || x.coSt === tdsView.co) && (!q || norm(x.ag + x.key + x.sample).includes(q)))
     .sort((a, b) => tdsCmp(tdsView.sort)(a, b) || (tdsView.sort2 ? tdsCmp(tdsView.sort2)(a, b) : 0) || b.lastPast.localeCompare(a.lastPast) || b.y1 - a.y1);
@@ -6512,7 +6572,7 @@ function viewTdSeries() {
       h("table", { class: "td-tbl" }, h("thead", {}, h("tr", {}, ...["利用日", "時間", "団体名", "人数", "店舗", "コース", "売上"].map((t) => h("th", { class: /人数|売上/.test(t) ? "num" : "", text: t })))),
         h("tbody", {}, ...x.rows.slice().reverse().map((r) => h("tr", { class: r.d > new Date().toISOString().slice(0, 10) ? "tds-fut" : "" }, h("td", { text: ds(r.d) }), h("td", { text: r.t || "" }), h("td", { class: "lab", text: r.g }), h("td", { class: "num", text: r.p + "名" }), h("td", { class: "lab", text: r.st }), h("td", { class: "lab", text: r.co || "" }), h("td", { class: "num", text: tdMan(r.y) }))))))));
   }
-  return [...head, filt, tabs, h("div", { class: "small muted", id: "tds-note", text: TDS_TABS[tab][1] }), coChips,
+  return [...head, modeSw, filt, tabs, h("div", { class: "small muted", id: "tds-note", text: TDS_TABS[tab][1] }), coChips,
     h("div", { class: "panel scroll", id: "tds-list", style: "padding:4px 8px" }, list.length ? h("table", { class: "list tds-tbl" }, h("thead", {}, h("tr", {}, ...cols.map((t) => h("th", { text: t })))), tb)
       : h("div", { class: "empty", text: "条件に合うシリーズはありません。" })),
     list.length > 300 ? h("div", { class: "small muted", text: `ほか${list.length - 300}件は、絞り込むと表示されます。` }) : null];
