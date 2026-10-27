@@ -703,7 +703,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 196</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 197</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -6369,7 +6369,7 @@ function tdFilterEls(idp, re) {
   const corps = [...counts.keys()].sort(ja);
   tdView.corps = tdView.corps.filter((c) => counts.has(c));
   const stores = [...tdStoreOf(tdView.corps)].sort(ja);
-  const noCorp = rows.length && rows.some((r) => r.ho === undefined), oldY = rows.length && rows.some((r) => r.v !== 2);
+  const noCorp = rows.length && rows.some((r) => r.ho === undefined), oldY = rows.length && rows.some((r) => !(r.v >= 2));
   return [h("div", { class: "row small", style: "gap:6px" }, h("span", { text: "飲食法人" }), tdCorpPicker(idp, corps, counts, re)),
     h("label", { class: "row small", style: "gap:6px" }, "店舗", sel([["", tdView.corps.length ? "選んだ法人のすべての店舗" : "すべての店舗"], ...stores.map((x) => [x, x])], tdView.store, (v) => { tdView.store = v; re(); }, { id: idp + "-store", style: "max-width:320px" })),
     oldY ? h("div", { class: "banner warn", style: "flex-basis:100%", id: "td-old", text: "売上の計算のしかたを直しました（当日追加の金額が二重に数えられていました）。同じExcelをもう一度取り込むと、正しい金額になります。" })
@@ -6390,6 +6390,18 @@ function tdTime(v) {
 }
 const tdNum = (v) => { const n = typeof v === "number" ? v : parseFloat(String(v == null ? "" : v).replace(/[,，円\s]/g, "")); return isFinite(n) ? n : 0; };
 /** Excel の行（1予約が商品ごとに複数行）を、予約ごとの1件にまとめる。 */
+/* 予約一覧の全項目の保存：個人情報の列（担当者・添乗員の氏名と連絡先、ご要望・コメント）は保存しない。
+   予約ごとの項目は r.x（TDX_RES の順の配列）、品目の行ごとの項目は r.L（TDX_LINE の順の配列の配列）。知らない列が増えたときは r.xo に入れる。
+   コース詳細は長く同じ文が繰り返すので、コース名ごとに別の場所（tdcourse/details）へ1回だけ保存する。 */
+const TDX_PII = new Set(["旅行会社担当者", "手配担当者", "添乗員氏名", "添乗員連絡先", "ご要望・コメント"]);
+const TDX_RES = ["ID", "予約管理番号", "旅行会社名", "支店名", "適格請求書番号", "ステータス名", "対応状況", "予約日付", "予約開始時間", "予約終了時間", "団体名", "国籍", "区分", "合計人数", "大人", "小人", "席のみ幼児", "添乗員・D/G食事", "別席同食人数", "同席同食人数", "添乗員区分", "席割り", "席札", "飲食法人のID", "飲食法人名", "店舗ID", "店舗名", "適格事業者番号", "リクエスト日時", "店舗確定日時", "登録日時", "更新日時"];
+const TDX_LINE = ["商品区分", "コース名称", "支払い方法", "クーポン種別", "コース金額", "予約人数", "個数", "コース合計", "手数料", "手数料金額", "精算金額", "コース以外メニュー名", "コース以外単価", "コース以外個数", "コース以外合計", "コース以外税率", "当日追加支払区分"];
+const TDX_SKIP = new Set([...TDX_PII, ...TDX_RES, ...TDX_LINE, "コース詳細"]);
+const tdxVal = (v) => (v == null || v === "" ? null : typeof v === "number" ? v : v instanceof Date ? v.toISOString() : String(v).slice(0, 300));
+let tdCourseNew = {}; // 取り込みで見つけたコース詳細（保存のときにまとめて書く）
+/** 予約一覧の項目を取り出す（保存した r.x / r.L から）。例：tdField(r, "支店名")、tdLines(r) で品目の行（列名をキーにした形） */
+const tdField = (r, col) => { const i = TDX_RES.indexOf(col); return i >= 0 && r.x ? r.x[i] : r.xo ? r.xo[col] : undefined; };
+const tdLines = (r) => (r.L || []).map((a) => Object.fromEntries(TDX_LINE.map((c, i) => [c, a[i]])));
 function tdParse(rows) {
   const head = rows[0] || {}, miss = ["id", "date", "total"].filter((k) => !(TD_COLS[k] in head));
   if (miss.length) throw new Error(`トラベルダインの予約一覧の形ではありません（「${miss.map((k) => TD_COLS[k]).join("」「")}」の列が見つかりません）。`);
@@ -6400,9 +6412,12 @@ function tdParse(rows) {
     if (!r) { r = { i: id, d, t: tdTime(x[TD_COLS.start]), s: String(x[TD_COLS.status] || ""), k: String(x[TD_COLS.kubun] || ""), n: String(x[TD_COLS.nat] || ""), p: tdNum(x[TD_COLS.total]), a: tdNum(x[TD_COLS.adult]), c: tdNum(x[TD_COLS.child]), st: String(x[TD_COLS.store] || ""), ho: String(x[TD_COLS.corp] || ""), ag: String(x[TD_COLS.agency] || ""), co: "", py: String(x[TD_COLS.pay] || ""), y: 0, r: tdDate(x[TD_COLS.reg]) || tdDate(x[TD_COLS.req]) }; byId.set(id, r); }
     // 団体名はシリーズ判定に使う。5名以下（個人）は氏名が入っていることが多いので保存しない
     if (r.g === undefined) { const gn = String(x[TD_COLS.group] == null ? "" : x[TD_COLS.group]).replace(/\s+/g, " ").trim(); r.g = r.p > TD_SOLO && gn ? gn.slice(0, 80) : ""; }
+    if (!r.x) { r.x = TDX_RES.map((c) => (c === "団体名" ? (r.g || null) : tdxVal(x[c]))); r.L = []; const xo = {}; for (const [k, v] of Object.entries(x)) if (!TDX_SKIP.has(k) && v != null && v !== "") xo[k] = tdxVal(v); if (Object.keys(xo).length) r.xo = xo; r.v = 3; }
+    r.L.push(TDX_LINE.map((c) => tdxVal(x[c])));
+    { const cn = String(x["コース名称"] || "").trim(), cd = String(x["コース詳細"] || "").trim(); if (cn && cd && !tdCourseNew[cn]) tdCourseNew[cn] = cd.slice(0, 4000); }
     // 売上＝各行の「コース合計」（税込）。当日追加の行の金額は「コース以外合計」にも同じ額が入っているので、足さない（二重になる）。
     // 内訳：yc＝メイン・アレンジのコース、yx＝当日追加。飲み放題・サブコース・添乗員などは売上には入れ、内訳では「その他」になる。
-    const amt = tdNum(x[TD_COLS.sum]), pt = String(x[TD_COLS.ptype] || ""); r.y += amt; r.v = 2;
+    const amt = tdNum(x[TD_COLS.sum]), pt = String(x[TD_COLS.ptype] || ""); r.y += amt; r.v = Math.max(r.v || 0, 2);
     if (/メイン|アレンジ/.test(pt)) r.yc = (r.yc || 0) + amt; else if (/当日追加/.test(pt)) r.yx = (r.yx || 0) + amt;
     r.yc = r.yc || 0; r.yx = r.yx || 0;
     if (!r.co && /メイン|アレンジ/.test(String(x[TD_COLS.ptype] || ""))) r.co = String(x[TD_COLS.course] || "");
@@ -6488,6 +6503,7 @@ async function tdImport(file) {
   try {
     await loadScript(LIB.xlsx);
     const wb = XLSX.read(await file.arrayBuffer(), { type: "array" }), ws = wb.Sheets[wb.SheetNames[0]];
+    tdCourseNew = {};
     list = tdParse(XLSX.utils.sheet_to_json(ws, { defval: null, raw: true }));
   } catch (e) { return toast((e && e.message) || "取り込めませんでした。"); }
   if (!list.length) return toast("取り込める予約がありませんでした。");
@@ -6525,6 +6541,10 @@ async function tdImport(file) {
         if (!rows.length) { S.td.delete(m); if (db && !localOnly) await db.doc("tdstats/" + m).delete().catch(() => {}); continue; }
         const body = { rows: rows.sort((a, b) => a.d.localeCompare(b.d) || a.i.localeCompare(b.i)), updatedAt: new Date().toISOString(), src: file.name };
         S.td.set(m, body); if (db && !localOnly) await db.doc("tdstats/" + m).set(body);
+      }
+      if (db && !localOnly && Object.keys(tdCourseNew).length) { // コース詳細（コース名ごと・最新で上書き）
+        const ref = db.doc("tdcourse/details"), sn = await ref.get().catch(() => null), old = sn && sn.exists ? sn.data() || {} : {};
+        await ref.set({ map: { ...(old.map || {}), ...tdCourseNew }, updatedAt: new Date().toISOString() }).catch(() => {});
       }
       const { c } = calc(); dlg.close();
       toast(`${jd(from)}〜${jd(to)} を置き換えました（新規 ${c.add}件・更新 ${c.upd}件・削除 ${c.del}件）`);
@@ -7081,7 +7101,7 @@ function tdDetailData(id, X) {
   const { ytd, ytdL, book, bookL, all, Y, asOf, ly, Hd } = X, sumY = (rows) => rows.reduce((s, r) => s + r.y, 0), sumP = (rows) => rows.reduce((s, r) => s + r.p, 0);
   const T = [], F = {};
   if (id === "unit") {
-    const hasSplit = ytd.some((r) => r.v === 2) && ytdL.some((r) => r.v === 2);
+    const hasSplit = ytd.some((r) => r.v >= 2) && ytdL.some((r) => r.v >= 2);
     const per = (rows, k) => { const p = sumP(rows); return p ? Math.round(rows.reduce((s, r) => s + (r[k] || 0), 0) / p) : 0; };
     if (hasSplit) { F.コースと追加の1人あたり = { 前年: { コース: per(ytdL, "yc"), 追加: per(ytdL, "yx") }, 今年: { コース: per(ytd, "yc"), 追加: per(ytd, "yx") } }; const oth = (rows) => { const p = sumP(rows); return p ? Math.round(rows.reduce((s, r) => s + r.y - (r.yc || 0) - (r.yx || 0), 0) / p) : 0; };
       F.コースと追加の1人あたり.前年.その他 = oth(ytdL); F.コースと追加の1人あたり.今年.その他 = oth(ytd);
