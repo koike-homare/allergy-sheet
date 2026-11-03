@@ -710,7 +710,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 216</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 217</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -4181,10 +4181,38 @@ function pjTakeHead(c, sh) {
   c.drive.syncedAt = new Date().toISOString(); return changed;
 }
 const pjEn = (a) => { const ls = String(a || "").split("\n"), i = ls.findIndex((l) => /[぀-ヿ一-鿿]/.test(l)); return (i < 0 ? ls : ls.slice(0, i)).join("\n").trim() || String(a || "").trim(); }; // セルの中の英語の部分（最初に日本語が出る行より上）
+/** 配達時間が深夜・早朝（22:00〜7:59）に入った／外れたとき、作成済みの請求書の深夜・早朝料金を足すか・外すかを確認する */
+function pjNightCheck(c) {
+  if (!c.inv || !Array.isArray(c.inv.lines)) return false;
+  const has = c.inv.lines.some((l) => l.fee === "night"), need = pjNight(c.time);
+  if (need && !has && confirm(`配達時間が ${c.time} になり、深夜・早朝（22:00〜7:59）に入りました。\n作成済みの請求書に「深夜・早朝料金（${PJ_FEE.night.toLocaleString()}円・税率10%）」を追加しますか？`)) {
+    c.inv.lines.push({ id: uid("l"), name: "", ja: "深夜・早朝料金", qty: "1", unit: String(PJ_FEE.night), amount: String(PJ_FEE.night), tax: 10, fee: "night" }); toast("請求書に深夜・早朝料金を追加しました"); return true; }
+  if (!need && has && confirm(`配達時間が ${c.time || "（空欄）"} になり、深夜・早朝（22:00〜7:59）から外れました。\n作成済みの請求書から「深夜・早朝料金」の行を削除しますか？`)) {
+    c.inv.lines = c.inv.lines.filter((l) => l.fee !== "night"); toast("請求書から深夜・早朝料金を削除しました"); return true; }
+  return false;
+}
+/** 一覧用の5項目を手で直す：T-CORE の値を変え、スプレッドシートの同じセルにも書き込む（変えたセルは薄い赤・変更前は履歴のシートに残る） */
+async function pjHeadEdit(c, key, v, say, after) {
+  const F = { visitDate: "date", flight: "flight", orderNo: "orderNo", area: "area", time: "time" }[key];
+  if (!F || v === (c[key] || "")) return;
+  c[key] = v; c.groupName = pjName(c); caseSaver.touch();
+  try {
+    say("スプレッドシートに書き込んでいます…");
+    const sh = await pjSheetRead(c); await pjApply(c, sh, [{ type: "header", field: F, value: v }]);
+    const sh2 = await pjSheetRead(c); c.drive.snap = { at: new Date().toISOString(), g: sh2.grid }; caseSaver.touch();
+    say("スプレッドシートにも書き込みました（変えたセルは薄い赤。変更前の状態は履歴のシートに残しています）。");
+  } catch (err) { say("T-CORE の値は変えましたが、スプレッドシートには書き込めませんでした。Google にログインしてから、もう一度直してください。" + (err && err.message ? "\n" + err.message : ""), true); }
+  if (key === "time" && pjNightCheck(c)) caseSaver.touch();
+  after();
+}
 function viewPjSheet(c) {
   const ch = () => { c.groupName = pjName(c); caseSaver.touch(); };
   const msg = h("span", { class: "small", id: "pj-msg", style: "white-space:pre-wrap" }), say = (t, bad) => { msg.textContent = t; msg.style.color = bad ? "var(--bad)" : "var(--ok)"; };
-  const ro = (key, label, val) => field(label, h("input", { id: "pj-" + key, value: val || "", readonly: true, class: "ro", title: "スプレッドシートの内容です。直すときは、下のスプレッドシートで直してください" }));
+  // 一覧用の5項目は、ここで直せる（スプレッドシートにも書き込む）。閲覧専用のときは直せない
+  const ro = (key, label, val) => field(label, h("input", { id: "pj-" + key, value: key === "visitDate" ? c.visitDate || "" : val || "", type: key === "visitDate" && !readOnly ? "date" : "text", readonly: readOnly, class: readOnly ? "ro" : "",
+    placeholder: key === "time" ? "例：07:30" : "", title: readOnly ? "スプレッドシートの内容です" : "直すと、スプレッドシートの同じセルにも書き込みます",
+    onchange: readOnly ? null : (e) => { let v = e.target.value.trim(); if (key === "time") { const m = /^(\d{1,2})[:：](\d{2})$/.exec(v.replace(/\s/g, "")); if (v && !m) { toast("配達時間は「07:30」のように入力してください"); e.target.value = c.time || ""; return; } if (m) v = `${String(+m[1]).padStart(2, "0")}:${m[2]}`; }
+      pjHeadEdit(c, key, v, say, () => { drawHead(); }); } }));
   const head = h("div", { class: "panel fields", id: "pj-head" });
   // Excel・PDF は Google の書き出しをそのまま使う（このブラウザで Google にログインしている人の権限で保存される）。PDF は本体のシートだけ（履歴のシートは含めない）。
   const expUrl = (fmt) => `https://docs.google.com/spreadsheets/d/${c.drive.sheetId}/export?format=${fmt}` + (fmt === "pdf" ? (c.drive.gid != null ? "&gid=" + c.drive.gid : "") + "&size=A4&portrait=true&fitw=true&gridlines=false&sheetnames=false&printtitle=false&pagenumbers=false&fzr=false&top_margin=0.4&bottom_margin=0.4&left_margin=0.4&right_margin=0.4" : "");
@@ -4192,7 +4220,7 @@ function viewPjSheet(c) {
   const drawExp = () => { xBtn.href = expUrl("xlsx"); pBtn.href = expUrl("pdf"); }; drawExp();
   const drawHead = () => head.replaceChildren(ro("visitDate", "利用日", c.visitDate ? c.visitDate.replace(/-/g, "/") : ""), ro("flight", "フライトナンバー", c.flight), ro("orderNo", "オーダーナンバー", c.orderNo), ro("area", "配達エリア", c.area), ro("time", "配達時間", c.time), field("ステータス", pjStatusSel(c, "pj-status")));
   drawHead();
-  const sync = async (quiet) => { try { if (!quiet) say("スプレッドシートを読んでいます…"); const sh = await pjSheetRead(c), changed = pjTakeHead(c, sh); let n = 0; try { n = await pjTrack(c, sh); } catch (_) {} drawHead(); drawExp(); ch(); if (!quiet || changed) say((changed ? "スプレッドシートの内容で、利用日などを更新しました。" : "利用日などは、スプレッドシートと同じです。") + (n ? `（直接編集された ${n} か所を、変更履歴に記録しました）` : "")); return true; } catch (e) { if (!quiet) say(String((e && e.message) || "読み取れませんでした。"), true); return false; } };
+  const sync = async (quiet) => { try { if (!quiet) say("スプレッドシートを読んでいます…"); const t0 = c.time, sh = await pjSheetRead(c), changed = pjTakeHead(c, sh); if (c.time !== t0) pjNightCheck(c); let n = 0; try { n = await pjTrack(c, sh); } catch (_) {} drawHead(); drawExp(); ch(); if (!quiet || changed) say((changed ? "スプレッドシートの内容で、利用日などを更新しました。" : "利用日などは、スプレッドシートと同じです。") + (n ? `（直接編集された ${n} か所を、変更履歴に記録しました）` : "")); return true; } catch (e) { if (!quiet) say(String((e && e.message) || "読み取れませんでした。"), true); return false; } };
   // Google にログイン済みなら、開いたときに自動で読み直す（ログインの窓は、ボタンを押したときだけ出す）
   if (gTok && gTok.exp > Date.now() + 60000) queueMicrotask(() => sync(true));
   const file = pasteable(h("input", { type: "file", id: "pj-chg-file", accept: ".pdf,.xlsx,.xls,.csv,.tsv,.txt,image/*", multiple: true, hidden: true, onchange: (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) pjChange(c, { files: fs }, say, () => { drawHead(); ch(); }); } }));
