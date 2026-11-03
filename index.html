@@ -710,7 +710,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 210</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 211</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1611,7 +1611,7 @@ async function go(v) {
   try { location.hash = v.name === "case" ? "case-" + v.id : v.name; } catch (_) {}
   render(); window.scrollTo(0, 0);
 }
-$("#nav").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) go({ name: b.dataset.v }); });
+$("#nav").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { if (b.dataset.v === "tourrep") trView.page = "list"; go({ name: b.dataset.v }); } });
 /* 共通設定は上長承認のパスワードを入れた人だけが開ける（パスワードが未設定の間と、共有データに未接続のときは誰でも開ける）。 */
 $("#open-req").addEventListener("click", () => { if (authState === "open" && view.name !== "requests") go({ name: "requests" }); });
 $("#open-settings").addEventListener("click", async () => {
@@ -7353,7 +7353,7 @@ JSONだけで {"summary":"一言でいうと（1〜2文・80字以内）","cause
 /* ---------- ツアー報告書：トラベルダインの「Myレポート」（全体の月別実績・店舗別実績）を取り込んで表示する ----------
    保存：tourrep/monthly＝{ rows: { "2026-01": {…} }, cond, src, at }（取り込んだ月を上書き）
          tourrep/store_<開始>_<終了>＝{ from, to, rows: [{…}], cond, src, at }（期間ごと） */
-let trView = { year: "", sp: "", sort: "y", tab: "rep", rm: "" };
+let trView = { year: "", sp: "", sort: "y", tab: "rep", rm: "", page: "list", rid: "", nm: "", title: "" };
 const trNum = (v) => { if (v == null || v === "") return null; if (typeof v === "number") return v; const n = parseFloat(String(v).replace(/[,%日前円\s]/g, "")); return isNaN(n) ? null : n; };
 const TR_M = { 年月: "m", 予算: "bud", 実績: "y", 達成率: "ach", 前年比: "yoy", 全体件数: "n", 全体人数: "p", 国内割合: "dr", 国内件数: "dn", 国内人数: "dp", 国内客単コース: "dc", 国内客単追加: "dx", 訪日割合: "ir", 訪日件数: "in", 訪日人数: "ip", 訪日客単コース: "ic", 訪日客単追加: "ix" };
 const TR_S = { 店舗名: "st", 実績: "y", 前年実績: "py", 前年比: "yoy", 国内割合: "dr", 国内件数: "dn", 国内客単コース: "dc", 国内客単追加: "dx", 訪日割合: "ir", 訪日件数: "in", 訪日客単コース: "ic", 訪日客単追加: "ix" };
@@ -7648,8 +7648,8 @@ function trpProp(M, D, c) {
     h("div", { style: "display:flex;gap:14px;align-items:flex-start" }, h("div", { style: "flex:1.1;min-width:0" }, trpBox(`客単価の動き（1人あたり・1〜${mm}月）`, trend)), h("div", { style: "flex:1;min-width:0" }, trpBox(`当日追加が少ない店舗（国内）${sdx.from ? `　${sdx.from === sdx.to ? trpYm(sdx.from) : trpYm(sdx.from) + "〜" + trpYm(sdx.to)}` : ""}`, st.length ? low : h("div", { style: `font-size:11px;color:${TRP.mut}`, text: "店舗別のMyレポートを取り込むと表示します。" })))),
     trpBox("提案（コース単価を上げる・当日追加を取る）", h("div", { style: "font-size:13px;line-height:1.65;white-space:pre-wrap", text: c.p6 || "（提案未入力）" }), "flex:1;margin-bottom:14px;background:#fafbfd"));
 }
-function trpBuild(M, rep) {
-  const D = trpData(M), c = (rep && rep.c) || {};
+function trpBuild(M, rep, D0) {
+  const D = D0 || trpData(M), c = (rep && rep.c) || {};
   return [trpTitle(M, D, rep), trpWhole(M, D, c), trpStore(M, D, c), trpCourse(4, M, D, c),
     trpRank(5, "国別実績", M, D.nat, c, "国籍", `${trpSrc(D)}・上の表は累計の多い順（上位10）${D.tdLast ? `（${D.tdLast.replace(/-/g, "/")} の利用分まで）` : ""}　${trpChk(D)}`, "p4"),
     trpRank(6, "旅行会社別実績", M, D.ag, c, "旅行会社", `${trpSrc(D)}・上の表は累計の多い順（上位10社）　${trpChk(D)}`, "p5")];
@@ -7671,13 +7671,13 @@ async function trpAi(M, rep, save) {
   const c = { ...((rep && rep.c) || {}) }; for (const [k] of TRP_PAGES) if (res && typeof res[k] === "string" && res[k].trim()) c[k] = res[k].trim();
   await save({ c });
 }
-async function trpPdf(M, rep) {
+async function trpPdf(M, rep, D) {
   await loadScript(LIB.h2c); await loadScript(LIB.jspdf); try { await document.fonts.ready; } catch (_) {}
   const host = h("div", { style: "position:fixed;left:-20000px;top:0;z-index:-1" }); document.body.append(host);
   try {
-    const pages = trpBuild(M, rep), pdf = new jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape", compress: true });
+    const pages = trpBuild(M, rep, D), pdf = new jspdf.jsPDF({ unit: "mm", format: "a4", orientation: "landscape", compress: true });
     for (const [i, pg] of pages.entries()) { host.replaceChildren(pg); const cv = await html2canvas(pg, { scale: 2, backgroundColor: "#ffffff", logging: false, windowWidth: TRP.W + 40 }); if (i) pdf.addPage("a4", "landscape"); pdf.addImage(cv.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 297, 210); }
-    const blob = pdf.output("blob"), fn = `月次実績報告_${M.replace("-", "年")}月度.pdf`;
+    const blob = pdf.output("blob"), fn = `${((rep && rep.title) || "月次実績報告").replace(/[\\/:*?"<>|]/g, "")}_${M.replace("-", "年")}月度.pdf`;
     if (dl) await dl.save({ filename: fn, data: blob }); else { const u = URL.createObjectURL(blob), a = h("a", { href: u, download: fn }); document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 5000); }
   } finally { host.remove(); }
 }
@@ -7712,19 +7712,94 @@ function viewTrCheck() {
     h("div", { class: "small muted", style: "max-width:110ch", text: `ツアー分析の予約一覧（キャンセルを除く${scope ? `・店舗別のMyレポートにある${scope.size}店舗に絞る` : ""}）を月ごとに合計し、Myレポートの実績と比べます。Myレポートが税抜の月は、予約一覧を÷1.1で換算して比べます。差が1%を超える月は、予約一覧を出力し直して取り込むと縮まることがあります（予約一覧は ${last ? last.replace(/-/g, "/") : "—"} の利用分まで）。今月以降は、出力した日の違いで差が出やすくなります。` }),
     h("div", { class: "panel scroll", style: "padding:4px 8px" }, h("table", { class: "list tr-tbl", id: "tr-chk" }, h("thead", {}, h("tr", {}, ...["年月", "Myレポート", "ツアー分析", "差", "差の割合", "", "税区分"].map((t, i) => h("th", { class: i && i < 5 ? "num" : "", text: t })))), tb))];
 }
-function viewTourRep() {
+/* ---------- 報告書のレコード ----------
+   tourrep/r_<作成時刻>＝{ month, title, at, up, snap（作成した時点の数字）, src（使ったファイル）}
+   作成した時点の数字を持たせるので、あとでデータを取り込み直しても、過去の報告書は変わらない（「最新のデータで作り直す」で更新できる） */
+function trpSnap(M) {
+  const D = trpData(M), w = { ...D.whole }; delete w.py; const live = (xs) => xs.filter((x) => x.t || x.tL || x.m || x.mL);
+  return { ...D, whole: w, nat: live(D.nat), ag: live(D.ag), st: live(D.st), courses: D.courses.slice(0, 50) };
+}
+function trpRestore(snap) { const D = JSON.parse(JSON.stringify(snap)); D.whole.py = (r) => (r && r.yoy ? r.y / (r.yoy / 100) : null); return D; }
+function trpSrcInfo() {
+  const mon = S.tr.get("monthly"), sd = [...S.tr.keys()].filter((k) => k.startsWith("store_")).map((k) => S.tr.get(k)).sort((a, b) => (b.at || "").localeCompare(a.at || ""))[0];
+  return { monthly: mon ? { src: mon.src, at: mon.at, tax: (mon.cond || {}).tax || "" } : null, store: sd ? { src: sd.src, at: sd.at, tax: (sd.cond || {}).tax || "", from: sd.from, to: sd.to } : null };
+}
+const trRecs = () => [...S.tr.entries()].filter(([k]) => k.startsWith("r_")).map(([id, r]) => ({ id, ...r })).sort((a, b) => (b.month || "").localeCompare(a.month || "") || (b.at || "").localeCompare(a.at || ""));
+const trDt = (v) => (v ? new Date(v).toLocaleString("ja-JP", { dateStyle: "short", timeStyle: "short" }) : "—");
+async function trSaveRec(id, body) { S.tr.set(id, body); if (db && !localOnly) await db.doc("tourrep/" + id).set(body); }
+/** 一覧：作った報告書（対象月の新しい順） */
+function viewTrList() {
+  const recs = trRecs();
+  const tb = h("tbody", {}, ...recs.map((r) => h("tr", { class: "click", onclick: () => { trView.page = "rec"; trView.rid = r.id; render(); } },
+    h("td", { text: trpYm(r.month) + "度" }), h("td", {}, h("strong", { text: r.title || "観光事業部 月次実績報告" })), h("td", { class: "small", text: trDt(r.at) + (r.up && r.up !== r.at ? `（更新 ${trDt(r.up)}）` : "") }),
+    h("td", { class: "small" }, ...[["全体", (r.src || {}).monthly], ["店舗", (r.src || {}).store]].map(([t, x]) => h("div", {}, `${t}：`, x ? h("span", { class: "pill " + (x.tax === "税抜" ? "plain" : "warn"), text: x.tax || "—" }) : h("span", { class: "muted", text: "なし" }), x ? h("span", { class: "muted", text: " " + (x.src || "") }) : null))),
+    h("td", { style: "white-space:nowrap" }, h("button", { type: "button", class: "btn sm", text: "PDF", onclick: async (e) => { e.stopPropagation(); e.target.disabled = true; try { await trpPdf(r.month, r, trpRestore(r.snap)); } catch (err) { if (!(err && err.code === "declined")) toast("PDFを作成できませんでした"); } e.target.disabled = false; } }),
+      readOnly ? null : h("button", { type: "button", class: "btn sm danger", style: "margin-left:4px", text: "削除", onclick: async (e) => { e.stopPropagation(); if (!confirm(`${trpYm(r.month)}度「${r.title}」を削除します。よろしいですか？`)) return; S.tr.delete(r.id); try { if (db && !localOnly) await db.doc("tourrep/" + r.id).delete(); } catch (_) { toast("削除できませんでした"); } render(); } })))));
+  return [h("div", { class: "row" }, h("h2", { text: "ツアー報告書" }), h("span", { style: "margin-left:auto" }),
+      h("button", { type: "button", class: "btn", id: "tr-data", text: "取り込んだデータを見る", onclick: () => { trView.page = "data"; render(); } }),
+      readOnly ? null : h("button", { type: "button", class: "btn primary", id: "tr-new", text: "報告書を作成", onclick: () => { trView.page = "new"; render(); } })),
+    h("div", { class: "muted small", text: "作った報告書の一覧です。行を押すと中身を確認できます。報告書は作った時点の数字で保存されるので、あとでデータを取り込み直しても変わりません。" }),
+    h("div", { class: "panel scroll", id: "tr-list", style: "padding:4px 8px" }, recs.length ? h("table", { class: "list" }, h("thead", {}, h("tr", {}, ...["対象月", "タイトル", "作成日", "使ったデータ", ""].map((t) => h("th", { text: t })))), tb)
+      : h("div", { class: "empty", text: "まだ報告書はありません。「報告書を作成」から作ってください。" }))];
+}
+/** 作成：Myレポートを取り込む → 対象月・タイトルを選ぶ → レコードを作る */
+function viewTrNew() {
   const file = h("input", { type: "file", id: "tr-file", accept: ".xlsx,.xls", multiple: true, hidden: true, onchange: (e) => { const fs = [...e.target.files]; e.target.value = ""; if (fs.length) trImport(fs); } });
   const isF = (e) => [...((e.dataTransfer && e.dataTransfer.types) || [])].includes("Files");
-  // 取り込み：ボタンで選ぶか、この枠にExcelをドラッグ＆ドロップ（2つまとめてもよい）
-  const drop = readOnly ? null : h("div", { class: "panel drop", id: "tr-drop", style: "flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:12px 16px",
+  const drop = h("div", { class: "panel drop", id: "tr-drop", style: "flex-direction:row;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:12px 16px",
       ondragover: (e) => { if (isF(e)) { e.preventDefault(); e.currentTarget.classList.add("over"); } }, ondragleave: (e) => e.currentTarget.classList.remove("over"),
       ondrop: (e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.remove("over"); const fs = [...((e.dataTransfer && e.dataTransfer.files) || [])].filter((f) => /\.xlsx?$/i.test(f.name)); if (fs.length) trImport(fs); else toast("Excel（.xlsx）のファイルをドロップしてください"); } },
     h("button", { type: "button", class: "btn primary", id: "tr-import", text: "Myレポートを取り込む", onclick: () => file.click() }), file,
-    h("span", { class: "small muted", text: "またはここにExcelをドラッグ＆ドロップ。全体の月別実績と店舗別実績を2つまとめて入れられます（種類は自動で見分けます）。" }));
-  return [h("div", { class: "row" }, h("h2", { text: "ツアー報告書" })),
-    h("div", { class: "muted small", style: "max-width:100ch", text: "トラベルダインの「Myレポート」から出力したExcel（全体の月別実績・店舗別実績）を取り込みます。全体の月別実績は、同じ月を取り込み直すと上書きします。店舗別実績は、出力した期間ごとに保存します。" }), drop,
-    h("div", {}, h("div", { class: "list-tabs", role: "group", "aria-label": "表示" }, ...[["rep", "報告書"], ["data", "取り込んだデータ"]].map(([k, t]) => h("button", { type: "button", class: "btn list-tab" + (trView.tab === k ? " on" : ""), id: "tr-tab-" + k, "aria-pressed": trView.tab === k ? "true" : "false", onclick: () => { trView.tab = k; render(); } }, t)))),
-    ...(trView.tab === "rep" ? viewTrReport() : [...viewTrMonthly(), ...viewTrStore(), ...viewTrCheck()])];
+    h("span", { class: "small muted", text: "またはここにExcelをドラッグ＆ドロップ。全体の月別実績と店舗別実績を2つまとめて入れられます（種類は自動で見分けます）。表示設定は「税抜」で出力してください。" }));
+  const I = trpSrcInfo(), td = [...S.td.values()].flatMap((d) => d.rows || []), tdLast = td.reduce((a, r) => (r.d > a ? r.d : a), "");
+  const st = (ok, t, sub, need) => h("div", { class: "row", style: "gap:8px" }, h("span", { class: "pill " + (ok ? "ok" : need ? "bad" : "plain"), text: ok ? "取り込み済み" : need ? "必要" : "なし" }), h("strong", { text: t }), h("span", { class: "small muted", text: sub }));
+  const ms = Object.keys(((S.tr.get("monthly") || {}).rows) || {}).sort(), cur = new Date().toISOString().slice(0, 7), done = ms.filter((m) => m < cur);
+  if (!ms.includes(trView.nm)) trView.nm = done.length ? done[done.length - 1] : ms[ms.length - 1] || "";
+  if (!trView.title) trView.title = "観光事業部 月次実績報告";
+  const create = async (e) => {
+    const M = trView.nm; if (!M) return;
+    if (trRecs().some((r) => r.month === M) && !confirm(`${trpYm(M)}度の報告書はすでにあります。別の報告書として作りますか？`)) return;
+    e.target.disabled = true;
+    try { const now = new Date().toISOString(), id = "r_" + Date.now(); await trSaveRec(id, { month: M, title: trView.title.trim() || "観光事業部 月次実績報告", at: now, up: now, snap: trpSnap(M), src: trpSrcInfo() });
+      toast("報告書を作成しました"); trView.page = "rec"; trView.rid = id; trView.title = ""; render(); }
+    catch (_) { e.target.disabled = false; toast("保存できませんでした。もう一度お試しください。"); }
+  };
+  return [h("div", {}, h("button", { type: "button", class: "linkbtn", id: "tr-back", text: "← 報告書の一覧に戻る", onclick: () => { trView.page = "list"; render(); } })),
+    h("h2", { text: "報告書を作成" }),
+    h("div", { class: "panel stack", style: "gap:10px" }, h("h3", { text: "1. Myレポートを取り込む" }), drop,
+      st(!!I.monthly, "全体の月別実績", I.monthly ? `${I.monthly.src}（${I.monthly.tax}・${trDt(I.monthly.at)} 取り込み）` : "全体・予算の数字に使います", true),
+      st(!!I.store, "店舗別実績", I.store ? `${I.store.src}（${I.store.from}〜${I.store.to}・${I.store.tax}・${trDt(I.store.at)} 取り込み）` : "なくても作れます（店舗別はツアー分析から作ります）", false),
+      st(!!tdLast, "ツアー分析の予約一覧", tdLast ? `${tdLast.replace(/-/g, "/")} の利用分まで（店舗別・価格帯別・国別・旅行会社別に使います）` : "ツアー分析から予約一覧を取り込んでください", false),
+      h("div", { class: "small muted", text: "すでに取り込んであるデータで作る場合は、取り込みは省略できます。" })),
+    h("div", { class: "panel stack", style: "gap:10px" }, h("h3", { text: "2. 対象月とタイトル" }),
+      ms.length ? h("div", { class: "row", style: "gap:8px 16px" }, h("label", { class: "row small", style: "gap:6px" }, "対象月", sel(ms.map((m) => [m, trpYm(m) + "度"]), trView.nm, (v) => { trView.nm = v; }, { id: "trn-month", style: "width:auto" })),
+        h("label", { class: "row small", style: "gap:6px;flex:1;min-width:280px" }, "タイトル", h("input", { id: "trn-title", value: trView.title, oninput: (e) => { trView.title = e.target.value; } })))
+        : h("div", { class: "small", style: "color:var(--bad)", text: "全体の月別実績を取り込むと、対象月を選べます。" }),
+      h("div", {}, h("button", { type: "button", class: "btn primary", id: "trn-create", text: "報告書を作成", disabled: !ms.length, onclick: create })))];
+}
+/** 1件の報告書：作った時点の数字でページを表示。PDF出力・作り直し・タイトル変更 */
+function viewTrRec() {
+  const r = S.tr.get(trView.rid); if (!r) { trView.page = "list"; return viewTrList(); }
+  const D = trpRestore(r.snap), M = r.month, msg = h("span", { class: "small", id: "trp-msg" });
+  const pv = h("div", { class: "trp-list", id: "trp-list" }, ...trpBuild(M, r, D).map((pg) => h("div", { class: "trp-wrap" }, pg)));
+  let tm = null;
+  return [h("div", {}, h("button", { type: "button", class: "linkbtn", id: "tr-back", text: "← 報告書の一覧に戻る", onclick: () => { trView.page = "list"; render(); } })),
+    h("div", { class: "row" }, h("h2", { id: "trp-h2", text: `${trpYm(M)}度　${r.title || ""}` })),
+    h("div", { class: "panel row", style: "gap:8px 14px" },
+      h("label", { class: "row small", style: "gap:6px;flex:1;min-width:280px" }, "タイトル", h("input", { id: "trp-title", value: r.title || "", disabled: readOnly, oninput: (e) => { const v = e.target.value; clearTimeout(tm); tm = setTimeout(() => { const nr = { ...S.tr.get(trView.rid), title: v }; trSaveRec(trView.rid, nr).then(() => { const hh = $("#trp-h2"); if (hh) hh.textContent = `${trpYm(M)}度　${v}`; pv.replaceChildren(...trpBuild(M, nr, D).map((pg) => h("div", { class: "trp-wrap" }, pg))); }).catch(() => toast("保存できませんでした")); }, 800); } })),
+      h("span", { class: "small muted", text: `作成 ${trDt(r.at)}${r.up && r.up !== r.at ? `・更新 ${trDt(r.up)}` : ""}` }),
+      readOnly ? null : h("button", { type: "button", class: "btn", id: "trp-redo", text: "最新のデータで作り直す", onclick: async () => { if (!confirm("いま取り込まれているデータで、この報告書の数字を作り直します。よろしいですか？")) return; try { await trSaveRec(trView.rid, { ...r, snap: trpSnap(M), src: trpSrcInfo(), up: new Date().toISOString() }); toast("作り直しました"); render(); } catch (_) { toast("保存できませんでした"); } } }),
+      h("button", { type: "button", class: "btn primary", id: "trp-pdf", text: "PDFを出力", onclick: async (e) => { e.target.disabled = true; msg.textContent = "PDFを作成中…"; try { await trpPdf(M, S.tr.get(trView.rid), D); msg.textContent = "PDFを出力しました。"; } catch (err) { msg.textContent = err && err.code === "declined" ? "" : "PDFを作成できませんでした。"; } e.target.disabled = false; } }), msg),
+    pv];
+}
+function viewTourRep() {
+  const pg = trView.page;
+  if (pg === "new") return viewTrNew();
+  if (pg === "rec") return viewTrRec();
+  if (pg === "data") return [h("div", {}, h("button", { type: "button", class: "linkbtn", id: "tr-back", text: "← 報告書の一覧に戻る", onclick: () => { trView.page = "list"; render(); } })),
+    h("h2", { text: "取り込んだデータ" }), h("div", { class: "muted small", text: "報告書の作成に使う、取り込み済みのMyレポートと、ツアー分析との照合です。取り込みは「報告書を作成」から行います。" }),
+    ...viewTrMonthly(), ...viewTrStore(), ...viewTrCheck()];
+  return viewTrList();
 }
 
 /* ---------- 起動 ---------- */
