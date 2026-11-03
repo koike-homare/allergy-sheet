@@ -710,7 +710,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 207</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 210</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -7474,7 +7474,16 @@ function viewTrStore() {
    全体・店舗＝Myレポート（税抜で出力したもの）。国別・旅行会社別＝ツアー分析の予約一覧（税込）を÷1.1で税抜に換算。
    コメントは tourrep/rep_<対象月> に保存（AIの下書きを担当者が直す）。 */
 const TRP = { W: 1123, H: 794, ink: "#1b2432", mut: "#5a6676", line: "#d3dae4", ac: "#1f4e8c", soft: "#e4edf9", ok: "#1b7449", bad: "#b0261f", warn: "#8f5a00", bud: "#9aa3ad", cur: "#2a78d6", ly: "#eb6834" };
-const TRP_PAGES = [["p2", "全体実績"], ["p3", "店舗別実績"], ["p4", "国別実績"], ["p5", "旅行会社別実績"], ["p6", "売上を伸ばすための提案"]];
+const TRP_PAGES = [["p2", "全体実績"], ["p3", "店舗別実績"], ["pc", "価格帯別コース出数と追加売上"], ["p4", "国別実績"], ["p5", "旅行会社別実績"]]; // 「売上を伸ばすための提案」のページは削除
+const TRP_N = TRP_PAGES.length + 1; // タイトルを含むページ数
+/* コースの価格帯（1人あたり・税抜） */
+const TRP_BANDS = [["〜1,999円", 0, 2000], ["2,000〜2,499円", 2000, 2500], ["2,500〜2,999円", 2500, 3000], ["3,000〜3,999円", 3000, 4000], ["4,000〜4,999円", 4000, 5000], ["5,000円〜", 5000, 1e9]];
+const trpBandOf = (v) => TRP_BANDS.findIndex(([, a, b]) => v >= a && v < b);
+/** ツアー分析の集計を、Myレポートの店舗に絞る（範囲をそろえて、合計のずれを小さくする）。店舗別のMyレポートがなければ絞らない */
+function trpScope() {
+  const docs = [...S.tr.keys()].filter((k) => k.startsWith("store_")).map((k) => S.tr.get(k)).sort((a, b) => (b.at || "").localeCompare(a.at || ""));
+  const names = docs.length ? new Set((docs[0].rows || []).map((r) => r.st).filter(Boolean)) : null; return names && names.size ? names : null;
+}
 const trpMan = (v) => (v == null ? "—" : Math.abs(v) >= 1e4 ? (v < 0 ? "−" : "") + Math.round(Math.abs(v) / 1e4).toLocaleString() + "万円" : (v < 0 ? "−¥" : "¥") + Math.round(Math.abs(v)).toLocaleString());
 const trpDiff = (v) => (v == null ? "—" : (v >= 0 ? "＋" : "") + trpMan(v));
 const trpPct = (a, b) => (a != null && b ? (a / b) * 100 : null);
@@ -7490,7 +7499,8 @@ function trpData(M) {
   // 店舗のMyレポートは、期間が「当月だけ」か「1月〜当月」のときだけ使う（それ以外はツアー分析から作る）
   const sd = sdocs.find((d) => d.from === M && d.to === M) || sdocs.find((d) => d.from === `${Y}-01` && d.to === M) || null;
   // 国・旅行会社：予約一覧（キャンセル・お断りを除く）。税込÷1.1
-  const Ly = String(+Y - 1), mm = M.slice(5), td = [...S.td.values()].flatMap((d) => d.rows || []).filter((r) => !tdIsCancel(r));
+  const Ly = String(+Y - 1), mm = M.slice(5), td0 = [...S.td.values()].flatMap((d) => d.rows || []).filter((r) => !tdIsCancel(r)), scope = trpScope();
+  const td = scope && td0.some((r) => scope.has(r.st)) ? td0.filter((r) => scope.has(r.st)) : td0, scoped = td !== td0;
   const inM = (r, y) => r.d.slice(0, 7) === `${y}-${mm}`, inT = (r, y) => r.d >= `${y}-01-01` && r.d.slice(0, 7) <= `${y}-${mm}`;
   const grp = (fn) => { const g = new Map(); for (const r of td) { const k = fn(r); if (!k) continue; const a = inM(r, Y), b = inM(r, Ly), c = inT(r, Y), d = inT(r, Ly); if (!(a || b || c || d)) continue;
       const x = g.get(k) || { k, m: 0, mL: 0, t: 0, tL: 0, p: 0, pL: 0, n: 0, tc: 0, tx: 0 }; const yx = r.y / 1.1; if (a) x.m += yx; if (b) x.mL += yx; if (c) { x.t += yx; x.p += r.p; x.n++; x.tc += (r.yc || 0) / 1.1; x.tx += (r.yx || 0) / 1.1; } if (d) { x.tL += yx; x.pL += r.p; } g.set(k, x); }
@@ -7500,7 +7510,18 @@ function trpData(M) {
   const taxOf = (m) => (mon[m] && mon[m].tax) || ((S.tr.get("monthly") || {}).cond || {}).tax || "";
   const tdSum = (f) => td.filter(f).reduce((a, r) => a + r.y, 0), conv = (m, v) => (taxOf(m) === "税込" ? v : v / 1.1);
   const chkM = { my: cm && cm.y, td: conv(M, tdSum((r) => inM(r, Y))) }, chkT = { my: whole.ytd.y, td: ytd.reduce((a, r) => a + conv(r.m, tdSum((x) => x.d.slice(0, 7) === r.m)), 0) };
-  return { chk: { m: chkM, t: chkT }, st: grp((r) => r.st || ""), whole, sd, nat: grp((r) => r.n || "（国籍なし）"), ag: grp((r) => r.ag || ""), hasTd, tdLast: td.reduce((a, r) => (r.d > a && r.d.slice(0, 7) <= M ? r.d : a), "") };
+  // 価格帯別のコース出数と当日追加：予約の品目（メイン・アレンジのコース）から。品目がない古いデータは、コース売上÷人数で単価を出す
+  const bands = TRP_BANDS.map(([k]) => ({ k, m: 0, mL: 0, t: 0, tL: 0, ty: 0, tx: 0, tp: 0, txL: 0, tpL: 0 })), courses = new Map();
+  for (const r of td) {
+    const a = inM(r, Y), b = inM(r, Ly), c = inT(r, Y), d = inT(r, Ly); if (!(a || b || c || d)) continue;
+    const mains = r.L && r.L.length ? r.L.filter((l) => /メイン|アレンジ/.test(l[0] || "")).map((l) => ({ nm: String(l[1] || ""), pr: +l[4] || 0, q: +l[5] || +l[6] || 0 })) : r.yc && r.p ? [{ nm: r.co || "", pr: r.yc / r.p, q: r.p }] : [];
+    let best = null;
+    for (const x of mains) { const pr = x.pr / 1.1, bi = trpBandOf(pr); if (!(pr > 0) || bi < 0 || !x.q) continue; const B = bands[bi];
+      if (a) B.m += x.q; if (b) B.mL += x.q; if (c) { B.t += x.q; B.ty += pr * x.q; } if (d) B.tL += x.q; if (!best || x.q > best.q) best = { ...x, bi, pr };
+      if (c || d) { const k = x.nm + "\u0000" + Math.round(pr); const o = courses.get(k) || { nm: x.nm, pr, t: 0, tL: 0, tx: 0, tp: 0 }; if (c) o.t += x.q; if (d) o.tL += x.q; courses.set(k, o); } }
+    if (best) { const B = bands[best.bi]; if (c) { B.tx += (r.yx || 0) / 1.1; B.tp += r.p; const o = courses.get(best.nm + "\u0000" + Math.round(best.pr)); if (o) { o.tx += (r.yx || 0) / 1.1; o.tp += r.p; } } if (d) { B.txL += (r.yx || 0) / 1.1; B.tpL += r.p; } }
+  }
+  return { bands, courses: [...courses.values()].sort((a, b) => b.t - a.t), scoped, scopeN: scope ? scope.size : 0, chk: { m: chkM, t: chkT }, st: grp((r) => r.st || ""), whole, sd, nat: grp((r) => r.n || "（国籍なし）"), ag: grp((r) => r.ag || ""), hasTd, tdLast: td.reduce((a, r) => (r.d > a && r.d.slice(0, 7) <= M ? r.d : a), "") };
 }
 /** 1ページ分の枠（見出し・ページ番号・会社名） */
 function trpPage(no, title, M, ...kids) {
@@ -7508,12 +7529,13 @@ function trpPage(no, title, M, ...kids) {
     h("div", { style: `display:flex;align-items:baseline;gap:14px;border-bottom:3px solid ${TRP.ac};padding-bottom:6px` }, h("span", { style: `font-size:13px;font-weight:700;color:#fff;background:${TRP.ac};border-radius:4px;padding:1px 8px`, text: String(no) }),
       h("span", { style: "font-size:22px;font-weight:700", text: title }), h("span", { style: `margin-left:auto;font-size:13px;color:${TRP.mut}`, text: `${trpYm(M)}度 月次報告・金額は税抜` })),
     ...kids,
-    h("div", { style: `position:absolute;left:36px;right:36px;bottom:10px;display:flex;font-size:10px;color:${TRP.mut}` }, h("span", { text: "株式会社HASSIN 観光事業部" }), h("span", { style: "margin-left:auto", text: `${no} / 6` })));
+    h("div", { style: `position:absolute;left:36px;right:36px;bottom:10px;display:flex;font-size:10px;color:${TRP.mut}` }, h("span", { text: "株式会社HASSIN 観光事業部" }), h("span", { style: "margin-left:auto", text: `${no} / ${TRP_N}` })));
 }
 const trpBox = (title, body, style = "") => h("div", { style: `border:1px solid ${TRP.line};border-radius:6px;padding:8px 12px;${style}` }, title ? h("div", { style: `font-size:12px;font-weight:700;color:${TRP.ac};margin-bottom:4px`, text: title }) : null, body);
-const trpComment = (txt, h0 = 110) => trpBox("所感・今後の動き", h("div", { style: "font-size:12.5px;line-height:1.6;white-space:pre-wrap", text: txt || "（コメント未入力）" }), `min-height:${h0}px;background:#fafbfd;margin-top:auto;margin-bottom:14px`);
-const trpKpi = (t, v, sub, color) => h("div", { style: `flex:1;border:1px solid ${TRP.line};border-radius:6px;padding:6px 10px;min-width:0` }, h("div", { style: `font-size:11px;color:${TRP.mut}`, text: t }),
-  h("div", { style: `font-size:19px;font-weight:700;line-height:1.3;white-space:nowrap;color:${color || TRP.ink}` }, v), h("div", { style: `font-size:10.5px;color:${TRP.mut}`, text: sub || "" }));
+const trpComment = () => null; // 所感・今後の動きの欄は載せない（提案は7ページ目）
+const trpComment0 = (txt, h0 = 110) => trpBox("所感・今後の動き", h("div", { style: "font-size:12.5px;line-height:1.6;white-space:pre-wrap", text: txt || "（コメント未入力）" }), `min-height:${h0}px;background:#fafbfd;margin-top:auto;margin-bottom:14px`);
+const trpKpi = (t, v, sub, color) => h("div", { style: `flex:1;border:1px solid ${TRP.line};border-radius:6px;padding:6px 8px;min-width:0;overflow:hidden` }, h("div", { style: `font-size:11px;color:${TRP.mut}`, text: t }),
+  h("div", { style: `font-size:17px;font-weight:700;line-height:1.3;white-space:nowrap;letter-spacing:-.02em;color:${color || TRP.ink}` }, v), h("div", { style: `font-size:10px;color:${TRP.mut};white-space:nowrap;overflow:hidden;text-overflow:ellipsis`, text: sub || "" }));
 const trpTbl = (cols, rows, opt = {}) => h("table", { style: `width:100%;border-collapse:collapse;font-size:${opt.fs || 11}px;font-variant-numeric:tabular-nums` },
   h("thead", {}, h("tr", {}, ...cols.map((c) => h("th", { style: `text-align:${c.r ? "right" : "left"};font-weight:400;color:${TRP.mut};border-bottom:1.5px solid ${TRP.ink};padding:3px 5px;white-space:nowrap;${c.w ? "width:" + c.w : ""}`, text: c.t })))),
   h("tbody", {}, ...rows.map((r, i) => h("tr", { style: (r.tot ? `font-weight:700;background:${TRP.soft};` : i % 2 ? "background:#f6f8fb;" : "") }, ...r.cells.map((v, j) => h("td", { style: `text-align:${cols[j].r ? "right" : "left"};padding:${opt.pad || 3}px 5px;border-bottom:1px solid ${TRP.line};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:${cols[j].mw || 9999}px` }, v))))));
@@ -7525,7 +7547,7 @@ function trpTitle(M, D, rep) {
     h("div", { style: "font-size:40px;font-weight:700;margin:10px 0 6px;line-height:1.3", text: (rep && rep.title) || "観光事業部 月次実績報告" }),
     h("div", { style: `font-size:26px;font-weight:700;color:${TRP.ac}`, text: `${trpYm(M)}度` }),
     h("div", { style: `height:2px;background:${TRP.line};margin:28px 0 18px;width:520px` }),
-    h("div", { style: "font-size:14px;line-height:2" }, h("div", { text: `対象：${trpYm(M)}（年累計は ${M.slice(0, 4)}年1月〜${+M.slice(5)}月）` }), h("div", { text: "内容：全体実績・店舗別実績・国別実績・旅行会社別実績・売上を伸ばすための提案" }), h("div", { text: "金額はすべて税抜です。" }),
+    h("div", { style: "font-size:14px;line-height:2" }, h("div", { text: `対象：${trpYm(M)}（年累計は ${M.slice(0, 4)}年1月〜${+M.slice(5)}月）` }), h("div", { text: "内容：全体実績・店舗別実績・価格帯別コース出数と追加売上・国別実績・旅行会社別実績" }), h("div", { text: "金額はすべて税抜です。" }),
       warn ? h("div", { style: `color:${TRP.bad};font-weight:700`, text: "※ 一部に税込のデータを仮で使っています（税抜のデータに置き換え予定）。" }) : null),
     h("div", { style: "position:absolute;right:90px;bottom:60px;text-align:right;font-size:14px;line-height:1.8" }, h("div", { style: "font-weight:700;font-size:16px", text: "株式会社HASSIN 観光事業部" }), h("div", { text: `作成日 ${new Date().toLocaleDateString("ja-JP")}` })));
 }
@@ -7533,7 +7555,7 @@ function trpWhole(M, D, c) {
   const W = D.whole; if (!W.rows.length) return trpPage(2, "全体実績", M, h("div", { style: "font-size:16px;color:" + TRP.mut, text: "全体の月別実績（Myレポート）が取り込まれていません。" }));
   const k = (lab, X, sub) => [trpKpi(`${lab} 予算`, trpMan(X.bud), sub), trpKpi(`${lab} 実績`, trpMan(X.y), `前年 ${trpMan(X.py)}`), trpKpi("予算達成率", trpPctEl(trpPct(X.y, X.bud)), `差 ${trpDiff(X.y != null && X.bud != null ? X.y - X.bud : null)}`), trpKpi("前年比", trpPctEl(trpPct(X.y, X.py)), `差 ${trpDiff(X.y != null && X.py != null ? X.y - X.py : null)}`)];
   // 月ごとの棒（予算・実績・前年）
-  const vals = Array.from({ length: 12 }, (_, i) => W.rows.find((r) => +r.m.slice(5) === i + 1) || null), mx = Math.max(1, ...vals.flatMap((r) => (r ? [r.bud || 0, r.y || 0, W.py(r) || 0] : [0]))), CH = 250;
+  const vals = Array.from({ length: 12 }, (_, i) => W.rows.find((r) => +r.m.slice(5) === i + 1) || null), mx = Math.max(1, ...vals.flatMap((r) => (r ? [r.bud || 0, r.y || 0, W.py(r) || 0] : [0]))), CH = 360;
   const bar = (v, col, op = 1) => h("div", { style: `width:13px;height:${Math.max(1, ((v || 0) / mx) * CH)}px;background:${col};opacity:${op};border-radius:2px 2px 0 0` });
   const chart = h("div", {}, h("div", { style: `display:flex;gap:14px;font-size:10.5px;color:${TRP.mut};margin-bottom:4px` }, ...[["予算", TRP.bud], ["実績", TRP.cur], ["前年", TRP.ly]].map(([t, col]) => h("span", {}, h("span", { style: `display:inline-block;width:10px;height:10px;background:${col};margin-right:4px;vertical-align:-1px` }), t)), h("span", { text: `（${+M.slice(5)}月より後は予約済みの分）` })),
     h("div", { style: `display:flex;align-items:flex-end;height:${CH}px;border-bottom:1px solid ${TRP.ink}` }, ...vals.map((r, i) => h("div", { style: `flex:1;display:flex;justify-content:center;align-items:flex-end;gap:2px;${i + 1 === +M.slice(5) ? "background:" + TRP.soft : ""};height:100%` }, ...(r ? [bar(r.bud, TRP.bud), bar(r.y, TRP.cur, r.m > M ? 0.4 : 1), bar(W.py(r), TRP.ly)] : [])))),
@@ -7549,64 +7571,88 @@ function trpWhole(M, D, c) {
 }
 function trpStore(M, D, c) {
   const sd = D.sd; if (!sd) return trpStoreTd(M, D, c);
-  const rows = (sd.rows || []).slice().sort((a, b) => (b.y || 0) - (a.y || 0)), tot = { y: rows.reduce((a, r) => a + (r.y || 0), 0), py: rows.reduce((a, r) => a + (r.py || 0), 0) }, MAX = 24;
+  const rows = (sd.rows || []).slice().sort((a, b) => (b.y || 0) - (a.y || 0)), tot = { y: rows.reduce((a, r) => a + (r.y || 0), 0), py: rows.reduce((a, r) => a + (r.py || 0), 0) }, MAX = 28;
   const shown = rows.slice(0, rows.length > MAX ? MAX - 1 : MAX), rest = rows.slice(shown.length), mx = Math.max(1, ...rows.map((r) => r.y || 0));
-  const cust = (c1, c2) => (c1 ? `¥${c1.toLocaleString()}＋${(c2 || 0).toLocaleString()}` : "—");
+  const cust = (c1, c2) => (c1 ? `¥${Math.round(c1 + (c2 || 0)).toLocaleString()}` : "—");
   const line = (r) => ({ cells: [r.st, h("div", { style: `height:7px;width:${((r.y || 0) / mx) * 100}%;background:${TRP.cur};border-radius:2px` }), trpMan(r.y), r.py ? trpMan(r.py) : "—", r.py ? trpPctEl(trpPct(r.y, r.py)) : h("span", { style: `color:${TRP.ok};font-weight:700`, text: "新規" }),
     h("span", { style: `color:${(r.y || 0) - (r.py || 0) < 0 ? TRP.bad : TRP.ok}`, text: trpDiff((r.y || 0) - (r.py || 0)) }), tot.y ? (((r.y || 0) / tot.y) * 100).toFixed(1) + "%" : "—", cust(r.dc, r.dx), cust(r.ic, r.ix)] });
   const rr = shown.map(line); if (rest.length) { const y = rest.reduce((a, r) => a + (r.y || 0), 0), q = rest.reduce((a, r) => a + (r.py || 0), 0); rr.push({ cells: [`ほか${rest.length}店舗`, "", trpMan(y), trpMan(q), trpPctEl(trpPct(y, q)), trpDiff(y - q), tot.y ? ((y / tot.y) * 100).toFixed(1) + "%" : "", "", ""] }); }
   rr.push({ tot: 1, cells: [`合計（${rows.length}店舗）`, "", trpMan(tot.y), trpMan(tot.py), trpPctEl(trpPct(tot.y, tot.py)), trpDiff(tot.y - tot.py), "100%", "", ""] });
   const per = sd.from === sd.to ? trpYm(sd.from) : `${trpYm(sd.from)}〜${trpYm(sd.to)}`;
-  return trpPage(3, "店舗別実績", M, h("div", { style: `font-size:11px;color:${TRP.mut};margin-top:-4px`, text: `期間：${per}（Myレポート・${(sd.cond || {}).tax || ""}）　実績の多い順。客単価は1人あたりの「コース＋当日追加」。` }),
-    trpTbl([{ t: "店舗", mw: 300 }, { t: "", w: "110px" }, { t: "実績", r: 1 }, { t: "前年実績", r: 1 }, { t: "前年比", r: 1 }, { t: "前年との差", r: 1 }, { t: "構成比", r: 1 }, { t: "国内 客単価", r: 1 }, { t: "訪日 客単価", r: 1 }], rr, { fs: 10.5, pad: 2 }),
+  return trpPage(3, "店舗別実績", M, h("div", { style: `font-size:11px;color:${TRP.mut};margin-top:-4px`, text: `期間：${per}（Myレポート・${(sd.cond || {}).tax || ""}）　実績の多い順。客単価は1人あたりのコースと当日追加の合計。` }),
+    trpTbl([{ t: "店舗", mw: 300 }, { t: "", w: "110px" }, { t: "実績", r: 1 }, { t: "前年実績", r: 1 }, { t: "前年比", r: 1 }, { t: "前年との差", r: 1 }, { t: "構成比", r: 1 }, { t: "国内 客単価", r: 1 }, { t: "訪日 客単価", r: 1 }], rr, { fs: 10.5, pad: 1.5 }),
     trpComment(c.p3, 70));
 }
+/** 出どころの一文 */
+const trpSrc = (D) => `予約一覧（ツアー分析）から集計・税込÷1.1で税抜に換算・キャンセルを除く${D.scoped ? `・Myレポートの店舗（${D.scopeN}店舗）に絞って集計` : ""}`;
 /** 照合の一文：ツアー分析の集計とMyレポートの差 */
 const trpChk = (D) => { const t = D.chk.t; if (!t.my || !t.td) return ""; const d = t.td - t.my; return `合計の照合：1〜${+D.whole.M.slice(5)}月の累計 ツアー分析 ${trpMan(t.td)}／Myレポート ${trpMan(t.my)}（差 ${trpDiff(d)}・${((d / t.my) * 100).toFixed(1)}%）`; };
 function trpStoreTd(M, D, c) {
-  const rows = D.st.filter((x) => x.t || x.tL || x.m), tot = rows.reduce((a, x) => ({ m: a.m + x.m, mL: a.mL + x.mL, t: a.t + x.t, tL: a.tL + x.tL }), { m: 0, mL: 0, t: 0, tL: 0 }), MAX = 24, mm = +M.slice(5);
+  const rows = D.st.filter((x) => x.t || x.tL || x.m), tot = rows.reduce((a, x) => ({ m: a.m + x.m, mL: a.mL + x.mL, t: a.t + x.t, tL: a.tL + x.tL }), { m: 0, mL: 0, t: 0, tL: 0 }), MAX = 28, mm = +M.slice(5);
   if (!rows.length) return trpPage(3, "店舗別実績", M, h("div", { style: "font-size:16px;color:" + TRP.mut, text: "店舗別のデータがありません（ツアー分析の予約一覧、または対象月の店舗別Myレポートを取り込んでください）。" }), trpComment(c.p3));
   const shown = rows.slice(0, rows.length > MAX ? MAX - 1 : MAX), rest = rows.slice(shown.length), d = (x) => x.t - x.tL;
   const line = (x) => ({ cells: [x.k, trpMan(x.m), trpMan(x.mL), trpPctEl(x.mL ? trpPct(x.m, x.mL) : null), trpMan(x.t), x.tL ? trpMan(x.tL) : "—", x.tL ? trpPctEl(trpPct(x.t, x.tL)) : h("span", { style: `color:${TRP.ok};font-weight:700`, text: "新規" }),
-    h("span", { style: `color:${d(x) < 0 ? TRP.bad : TRP.ok}`, text: trpDiff(d(x)) }), tot.t ? ((x.t / tot.t) * 100).toFixed(1) + "%" : "—", x.p ? `¥${Math.round(x.tc / x.p).toLocaleString()}＋${Math.round(x.tx / x.p).toLocaleString()}` : "—"] });
+    h("span", { style: `color:${d(x) < 0 ? TRP.bad : TRP.ok}`, text: trpDiff(d(x)) }), tot.t ? ((x.t / tot.t) * 100).toFixed(1) + "%" : "—", x.p ? `¥${Math.round((x.tc + x.tx) / x.p).toLocaleString()}` : "—"] });
   const rr = shown.map(line); if (rest.length) { const s2 = rest.reduce((a, x) => ({ m: a.m + x.m, mL: a.mL + x.mL, t: a.t + x.t, tL: a.tL + x.tL }), { m: 0, mL: 0, t: 0, tL: 0 }); rr.push({ cells: [`ほか${rest.length}店舗`, trpMan(s2.m), trpMan(s2.mL), trpPctEl(trpPct(s2.m, s2.mL)), trpMan(s2.t), trpMan(s2.tL), trpPctEl(trpPct(s2.t, s2.tL)), trpDiff(s2.t - s2.tL), tot.t ? ((s2.t / tot.t) * 100).toFixed(1) + "%" : "", ""] }); }
   rr.push({ tot: 1, cells: [`合計（${rows.length}店舗）`, trpMan(tot.m), trpMan(tot.mL), trpPctEl(trpPct(tot.m, tot.mL)), trpMan(tot.t), trpMan(tot.tL), trpPctEl(trpPct(tot.t, tot.tL)), trpDiff(tot.t - tot.tL), "100%", ""] });
-  return trpPage(3, "店舗別実績", M, h("div", { style: `font-size:11px;color:${TRP.mut};margin-top:-4px`, text: `予約一覧（ツアー分析）から集計・税込÷1.1で税抜に換算・キャンセルを除く・累計の多い順。客単価は1人あたりの「コース＋当日追加」（累計）。${trpChk(D)}` }),
-    trpTbl([{ t: "店舗", mw: 280 }, { t: `${mm}月`, r: 1 }, { t: "前年同月", r: 1 }, { t: "前年比", r: 1 }, { t: `1〜${mm}月 累計`, r: 1 }, { t: "前年累計", r: 1 }, { t: "前年比", r: 1 }, { t: "前年との差", r: 1 }, { t: "構成比", r: 1 }, { t: "客単価", r: 1 }], rr, { fs: 10.5, pad: 2 }),
+  return trpPage(3, "店舗別実績", M, h("div", { style: `font-size:11px;color:${TRP.mut};margin-top:-4px`, text: `${trpSrc(D)}・累計の多い順。客単価は1人あたりのコースと当日追加の合計（累計）。　${trpChk(D)}` }),
+    trpTbl([{ t: "店舗", mw: 280 }, { t: `${mm}月`, r: 1 }, { t: "前年同月", r: 1 }, { t: "前年比", r: 1 }, { t: `1〜${mm}月 累計`, r: 1 }, { t: "前年累計", r: 1 }, { t: "前年比", r: 1 }, { t: "前年との差", r: 1 }, { t: "構成比", r: 1 }, { t: "客単価", r: 1 }], rr, { fs: 10.5, pad: 1.5 }),
     trpComment(c.p3, 70));
 }
-function trpRank(no, title, M, list, c, key, note) {
+function trpRank(no, title, M, list, c, key, note, ck) {
   // 上：累計の多い順（上位10）／下：増えている・減っている（累計の前年との差）を左右に並べる
   const d = (x) => x.t - x.tL, mm = +M.slice(5), live = list.filter((x) => x.t || x.tL);
   const top = live.slice(0, 10), up = live.filter((x) => d(x) > 0).sort((a, b) => d(b) - d(a)).slice(0, 8), dn = live.filter((x) => d(x) < 0).sort((a, b) => d(a) - d(b)).slice(0, 8);
   const pctM = (x) => trpPctEl(x.mL ? trpPct(x.m, x.mL) : null), pctT = (x) => trpPctEl(x.tL ? trpPct(x.t, x.tL) : null);
-  const main = trpTbl([{ t: key, mw: 260 }, { t: `${mm}月`, r: 1 }, { t: "前年同月", r: 1 }, { t: "前年比", r: 1 }, { t: `1〜${mm}月 累計`, r: 1 }, { t: "前年累計", r: 1 }, { t: "前年比", r: 1 }, { t: "前年との差", r: 1 }, { t: "人数（累計）", r: 1 }, { t: "1人あたり", r: 1 }],
+  const main = trpTbl([{ t: key, mw: 230 }, { t: `${mm}月`, r: 1 }, { t: "前年同月", r: 1 }, { t: "前年比", r: 1 }, { t: `1〜${mm}月 累計`, r: 1 }, { t: "前年累計", r: 1 }, { t: "前年比", r: 1 }, { t: "前年との差", r: 1 }, { t: "人数（累計）", r: 1 }, { t: "1人あたり", r: 1 }],
     top.map((x) => ({ cells: [x.k, trpMan(x.m), trpMan(x.mL), pctM(x), trpMan(x.t), trpMan(x.tL), pctT(x), h("span", { style: `color:${d(x) < 0 ? TRP.bad : TRP.ok}`, text: trpDiff(d(x)) }), x.p.toLocaleString() + "名", x.p ? "¥" + Math.round(x.t / x.p).toLocaleString() : "—"] })), { fs: 10.5, pad: 2.5 });
   const side = (t, xs, col, bg) => h("div", { style: `flex:1;min-width:0;border:1px solid ${TRP.line};border-top:4px solid ${col};border-radius:6px;padding:6px 10px;background:${bg}` },
     h("div", { style: `font-size:12.5px;font-weight:700;color:${col};margin-bottom:3px`, text: t }),
-    xs.length ? trpTbl([{ t: key, mw: 200 }, { t: "前年との差", r: 1 }, { t: `累計`, r: 1 }, { t: "前年累計", r: 1 }, { t: "前年比", r: 1 }, { t: `${mm}月の前年比`, r: 1 }],
-      xs.map((x) => ({ cells: [x.k, h("b", { style: `color:${col}`, text: trpDiff(d(x)) }), trpMan(x.t), trpMan(x.tL), pctT(x), pctM(x)] })), { fs: 10.5, pad: 2.5 }) : h("div", { style: `font-size:11px;color:${TRP.mut}`, text: "該当なし" }));
+    xs.length ? trpTbl([{ t: key, mw: 140 }, { t: "前年との差", r: 1 }, { t: `累計`, r: 1 }, { t: "前年累計", r: 1 }, { t: "前年比", r: 1 }, { t: `${mm}月前年比`, r: 1 }],
+      xs.map((x) => ({ cells: [x.k, h("b", { style: `color:${col}`, text: trpDiff(d(x)) }), trpMan(x.t), trpMan(x.tL), pctT(x), pctM(x)] })), { fs: 10, pad: 2.5 }) : h("div", { style: `font-size:11px;color:${TRP.mut}`, text: "該当なし" }));
   return trpPage(no, title, M, h("div", { style: `font-size:11px;color:${TRP.mut};margin-top:-4px`, text: note }),
     !D_HAS(list) ? h("div", { style: "font-size:16px;color:" + TRP.mut, text: "ツアー分析に、この期間の予約一覧が取り込まれていません。" }) : main,
     D_HAS(list) ? h("div", { style: "display:flex;gap:14px" }, side(`増えている（1〜${mm}月の累計・前年との差）`, up, TRP.ok, "#f3faf6"), side(`減っている（1〜${mm}月の累計・前年との差）`, dn, TRP.bad, "#fdf5f4")) : null,
-    trpComment(c[`p${no}`], 70));
+    trpComment(c[ck], 70));
 }
 const D_HAS = (list) => list.some((x) => x.t || x.tL);
+function trpCourse(no, M, D, c) {
+  const B = D.bands, mm = +M.slice(5), tT = B.reduce((a, x) => a + x.t, 0), tL = B.reduce((a, x) => a + x.tL, 0);
+  if (!tT && !tL) return trpPage(no, "価格帯別コース出数と追加売上", M, h("div", { style: "font-size:16px;color:" + TRP.mut, text: "ツアー分析に、この期間の予約一覧が取り込まれていません。" }), trpComment(c.pc));
+  const sh = (v, t) => (t ? ((v / t) * 100).toFixed(1) + "%" : "—"), yen = (v) => "¥" + Math.round(v).toLocaleString();
+  const rows = B.map((x) => ({ cells: [x.k, x.m.toLocaleString(), x.mL.toLocaleString(), trpPctEl(x.mL ? trpPct(x.m, x.mL) : null), x.t.toLocaleString(), x.tL.toLocaleString(), trpPctEl(x.tL ? trpPct(x.t, x.tL) : null), sh(x.t, tT), sh(x.tL, tL),
+    x.tp ? yen(x.tx / x.tp) : "—", x.tpL ? yen(x.txL / x.tpL) : "—", x.ty ? ((x.tx / x.ty) * 100).toFixed(1) + "%" : "—"] }));
+  const sum = (f) => B.reduce((a, x) => a + f(x), 0), tx = sum((x) => x.tx), tp = sum((x) => x.tp), txL = sum((x) => x.txL), tpL = sum((x) => x.tpL), ty = sum((x) => x.ty);
+  rows.push({ tot: 1, cells: ["合計", sum((x) => x.m).toLocaleString(), sum((x) => x.mL).toLocaleString(), trpPctEl(trpPct(sum((x) => x.m), sum((x) => x.mL))), tT.toLocaleString(), tL.toLocaleString(), trpPctEl(trpPct(tT, tL)), "100%", "100%", tp ? yen(tx / tp) : "—", tpL ? yen(txL / tpL) : "—", ty ? ((tx / ty) * 100).toFixed(1) + "%" : "—"] });
+  const COL = ["#c6dbf7", "#8fb8ee", "#5598e7", "#2a78d6", "#1c5cab", "#0d366b"];
+  const stack = (lab, vals, tot) => h("div", { style: "display:flex;align-items:center;gap:8px;font-size:11px" }, h("span", { style: "width:52px;color:" + TRP.mut, text: lab }),
+    h("div", { style: "flex:1;display:flex;height:20px;border-radius:3px;overflow:hidden;background:#eef1f5" }, ...vals.map((v, i) => { const w = tot ? (v / tot) * 100 : 0; return h("div", { style: `width:${w}%;background:${COL[i]};color:${i >= 2 ? "#fff" : TRP.ink};font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap`, text: w >= 6 ? Math.round(w) + "%" : "" }); })));
+  const leg = h("div", { style: `display:flex;flex-wrap:wrap;gap:4px 12px;font-size:10.5px;color:${TRP.mut}` }, ...TRP_BANDS.map(([k], i) => h("span", {}, h("span", { style: `display:inline-block;width:10px;height:10px;background:${COL[i]};margin-right:4px;vertical-align:-1px` }), k)));
+  const top = D.courses.slice(0, 9), ct = trpTbl([{ t: "コース（累計の出数が多い順）", mw: 270 }, { t: "単価", r: 1 }, { t: "出数", r: 1 }, { t: "前年", r: 1 }, { t: "前年比", r: 1 }, { t: "1人あたり追加", r: 1 }],
+    top.map((x) => ({ cells: [x.nm || "（名称なし）", yen(x.pr), x.t.toLocaleString(), x.tL.toLocaleString(), trpPctEl(x.tL ? trpPct(x.t, x.tL) : null), x.tp ? yen(x.tx / x.tp) : "—"] })), { fs: 10, pad: 2 });
+  return trpPage(no, "価格帯別コース出数と追加売上", M, h("div", { style: `font-size:11px;color:${TRP.mut};margin-top:-4px`, text: `${trpSrc(D)}。出数＝メイン・アレンジのコースの人数。価格帯は1人あたりのコース単価（税抜）。当日追加は、その予約のおもなコースの価格帯に入れて、1人あたりで出しています。` }),
+    trpTbl([{ t: "価格帯（税抜）" }, { t: `${mm}月 出数`, r: 1 }, { t: "前年同月", r: 1 }, { t: "前年比", r: 1 }, { t: `1〜${mm}月 出数`, r: 1 }, { t: "前年累計", r: 1 }, { t: "前年比", r: 1 }, { t: "構成比", r: 1 }, { t: "前年構成比", r: 1 }, { t: "1人あたり追加", r: 1 }, { t: "前年", r: 1 }, { t: "追加÷コース", r: 1 }], rows, { fs: 10.5, pad: 3 }),
+    h("div", { style: "display:flex;gap:14px;align-items:flex-start" },
+      h("div", { style: "flex:1;min-width:0" }, trpBox(`出数の構成比（1〜${mm}月）`, h("div", { style: "display:flex;flex-direction:column;gap:6px" }, stack(`${M.slice(0, 4)}年`, B.map((x) => x.t), tT), stack(`${+M.slice(0, 4) - 1}年`, B.map((x) => x.tL), tL), leg))),
+      h("div", { style: "flex:1.25;min-width:0" }, trpBox("", ct))),
+    trpComment(c.pc, 70));
+}
 function trpProp(M, D, c) {
   const W = D.whole, ytd = W.rows.filter((r) => r.m <= M), mm = +M.slice(5);
   const trend = trpTbl([{ t: "月" }, { t: "国内 コース", r: 1 }, { t: "国内 当日追加", r: 1 }, { t: "追加÷コース", r: 1 }, { t: "訪日 コース", r: 1 }, { t: "訪日 当日追加", r: 1 }, { t: "追加÷コース", r: 1 }],
     ytd.map((r) => ({ cells: [`${+r.m.slice(5)}月`, "¥" + (r.dc || 0).toLocaleString(), "¥" + (r.dx || 0).toLocaleString(), r.dc ? ((r.dx / r.dc) * 100).toFixed(1) + "%" : "—", "¥" + (r.ic || 0).toLocaleString(), "¥" + (r.ix || 0).toLocaleString(), r.ic ? ((r.ix / r.ic) * 100).toFixed(1) + "%" : "—"] })), { fs: 10.5, pad: 2 });
-  const st = ((D.sd || {}).rows || []).filter((r) => (r.dn || 0) >= 20 && r.dc).map((r) => ({ ...r, ar: r.dx / r.dc })).sort((a, b) => a.ar - b.ar).slice(0, 8);
+  const sdx = D.sd || [...S.tr.keys()].filter((k) => k.startsWith("store_")).map((k) => S.tr.get(k)).sort((a, b) => (b.at || "").localeCompare(a.at || ""))[0] || {};
+  const st = (sdx.rows || []).filter((r) => (r.dn || 0) >= 20 && r.dc).map((r) => ({ ...r, ar: r.dx / r.dc })).sort((a, b) => a.ar - b.ar).slice(0, 8);
   const low = trpTbl([{ t: "店舗（国内20件以上）", mw: 230 }, { t: "国内 コース", r: 1 }, { t: "当日追加", r: 1 }, { t: "追加÷コース", r: 1 }], st.map((r) => ({ cells: [r.st, "¥" + r.dc.toLocaleString(), "¥" + (r.dx || 0).toLocaleString(), (r.ar * 100).toFixed(1) + "%"] })), { fs: 10.5, pad: 2 });
-  return trpPage(6, "売上を伸ばすための提案", M,
-    h("div", { style: "display:flex;gap:14px;align-items:flex-start" }, h("div", { style: "flex:1.1;min-width:0" }, trpBox(`客単価の動き（1人あたり・1〜${mm}月）`, trend)), h("div", { style: "flex:1;min-width:0" }, trpBox("当日追加が少ない店舗（国内）", low))),
+  return trpPage(7, "売上を伸ばすための提案", M,
+    h("div", { style: "display:flex;gap:14px;align-items:flex-start" }, h("div", { style: "flex:1.1;min-width:0" }, trpBox(`客単価の動き（1人あたり・1〜${mm}月）`, trend)), h("div", { style: "flex:1;min-width:0" }, trpBox(`当日追加が少ない店舗（国内）${sdx.from ? `　${sdx.from === sdx.to ? trpYm(sdx.from) : trpYm(sdx.from) + "〜" + trpYm(sdx.to)}` : ""}`, st.length ? low : h("div", { style: `font-size:11px;color:${TRP.mut}`, text: "店舗別のMyレポートを取り込むと表示します。" })))),
     trpBox("提案（コース単価を上げる・当日追加を取る）", h("div", { style: "font-size:13px;line-height:1.65;white-space:pre-wrap", text: c.p6 || "（提案未入力）" }), "flex:1;margin-bottom:14px;background:#fafbfd"));
 }
 function trpBuild(M, rep) {
   const D = trpData(M), c = (rep && rep.c) || {};
-  return [trpTitle(M, D, rep), trpWhole(M, D, c), trpStore(M, D, c),
-    trpRank(4, "国別実績", M, D.nat, c, "国籍", `予約一覧（ツアー分析）から集計・税込÷1.1で税抜に換算・キャンセルを除く・上の表は累計の多い順（上位10）${D.tdLast ? `（${D.tdLast.replace(/-/g, "/")} の利用分まで）` : ""}　${trpChk(D)}`),
-    trpRank(5, "旅行会社別実績", M, D.ag, c, "旅行会社", `予約一覧（ツアー分析）から集計・税込÷1.1で税抜に換算・キャンセルを除く・上の表は累計の多い順（上位10社）　${trpChk(D)}`), trpProp(M, D, c)];
+  return [trpTitle(M, D, rep), trpWhole(M, D, c), trpStore(M, D, c), trpCourse(4, M, D, c),
+    trpRank(5, "国別実績", M, D.nat, c, "国籍", `${trpSrc(D)}・上の表は累計の多い順（上位10）${D.tdLast ? `（${D.tdLast.replace(/-/g, "/")} の利用分まで）` : ""}　${trpChk(D)}`, "p4"),
+    trpRank(6, "旅行会社別実績", M, D.ag, c, "旅行会社", `${trpSrc(D)}・上の表は累計の多い順（上位10社）　${trpChk(D)}`, "p5")];
 }
 /** AIで下書き：各ページの数字を渡して、所感と提案を作ってもらう（個人名・電話・コメントは送らない） */
 async function trpAi(M, rep, save) {
@@ -7614,17 +7660,14 @@ async function trpAi(M, rep, save) {
   const data = { 対象月: M, 全体: { 当月: { 予算: f(W.cur.bud), 実績: f(W.cur.y), 前年: f(W.cur.py) }, 累計: { 予算: f(W.ytd.bud), 実績: f(W.ytd.y), 前年: f(W.ytd.py) },
       月別: W.rows.map((r) => ({ 月: r.m, 予算: r.bud, 実績: r.y, 前年比: r.yoy, 国内客単コース: r.dc, 国内客単追加: r.dx, 訪日客単コース: r.ic, 訪日客単追加: r.ix, 国内リード: r.dl, 訪日リード: r.il })) },
     店舗: ((D.sd || {}).rows || []).map((r) => ({ 店舗: r.st, 実績: r.y, 前年: r.py, 国内件数: r.dn, 国内客単コース: r.dc, 国内客単追加: r.dx, 訪日件数: r.in, 訪日客単コース: r.ic, 訪日客単追加: r.ix })),
-    国別: top(D.nat), 旅行会社: top(D.ag) };
+    国別: top(D.nat), 旅行会社: top(D.ag),
+    価格帯: D.bands.map((x) => ({ 価格帯: x.k, 当月出数: x.m, 前年同月出数: x.mL, 累計出数: x.t, 前年累計出数: x.tL, 一人あたり追加: x.tp ? f(x.tx / x.tp) : null, 前年一人あたり追加: x.tpL ? f(x.txL / x.tpL) : null })),
+    出数の多いコース: D.courses.slice(0, 10).map((x) => ({ コース: x.nm, 単価: f(x.pr), 累計出数: x.t, 前年: x.tL, 一人あたり追加: x.tp ? f(x.tx / x.tp) : null })) };
   const res = await sample.json(`あなたは飲食店グループ（株式会社HASSIN 観光事業部。旅行会社経由の団体予約を受ける）の営業企画担当です。社内の月次報告会（店舗を管轄する管理職と役員が出席）で使う資料のコメントを書きます。
-次のデータ（金額は税抜・円。客単価は1人あたり）をもとに、ページごとのコメントを書いてください。
-- p2 全体実績：会社として当月と年累計がどうだったか（予算・前年との比較）。
-- p3 店舗別実績：伸びた店・落ちた店と、その差額。
-- p4 国別実績：伸びている国・減っている国。
-- p5 旅行会社別実績：伸びている会社・減っている会社。
-- p6 売上を伸ばすための提案：コース単価を上げる提案、当日追加を取るための動きなど、具体的な行動（誰が・何を）。
-書き方：各ページ3〜4行の箇条書き（行頭は「・」）。1行は60字以内。数字は「万円」「%」で具体的に。データから言えないことは推測と分かるように書く。敬語は不要（である調でなく、です・ます調でもなく、体言止めでよい）。
+次のデータ（金額は税抜・円。客単価は1人あたり）をもとに、「売上を伸ばすための提案」を書いてください。全体・店舗・価格帯別のコース出数と当日追加・国別・旅行会社別の動きを根拠に、コース単価を上げる提案、当日追加を取るための動きなど、具体的な行動（誰が・何を）を挙げます。
+書き方：5〜8行の箇条書き（行頭は「・」）。根拠の数字を添える。1行は60字以内。数字は「万円」「%」で具体的に。データから言えないことは推測と分かるように書く。敬語は不要（である調でなく、です・ます調でもなく、体言止めでよい）。
 データ：${JSON.stringify(data)}
-返答はJSONのみ：{"p2":"…","p3":"…","p4":"…","p5":"…","p6":"…"}`, { cache: false });
+返答はJSONのみ：{"p6":"…"}`, { cache: false });
   const c = { ...((rep && rep.c) || {}) }; for (const [k] of TRP_PAGES) if (res && typeof res[k] === "string" && res[k].trim()) c[k] = res[k].trim();
   await save({ c });
 }
@@ -7651,22 +7694,22 @@ function viewTrReport() {
   const ed = h("div", { class: "panel stack", style: "gap:10px" },
     h("div", { class: "row", style: "gap:8px 14px" }, h("label", { class: "row small", style: "gap:6px" }, "対象月", sel(ms.map((m) => [m, trpYm(m) + "度"]), M, (v) => { trView.rm = v; render(); }, { id: "trp-month", style: "width:auto" })),
       h("label", { class: "row small", style: "gap:6px;flex:1;min-width:260px" }, "タイトル", h("input", { id: "trp-title", value: rep.title || "観光事業部 月次実績報告", disabled: readOnly, oninput: (e) => { const r = S.tr.get(id) || {}; S.tr.set(id, { ...r, title: e.target.value }); clearTimeout(tm); tm = setTimeout(() => { draw(); save({ title: e.target.value }).catch(() => {}); }, 600); } })),
-      sample && !readOnly ? h("button", { type: "button", class: "btn", id: "trp-ai", text: "AIでコメントを下書き", onclick: async (e) => { if (Object.values(rep.c || {}).some((x) => x && x.trim()) && !confirm("入力済みのコメントを、AIの下書きで置き換えます。よろしいですか？")) return; e.target.disabled = true; msg.textContent = "下書きを作っています…（30秒ほど）"; try { await trpAi(M, S.tr.get(id), save); toast("下書きを入れました。内容を確認して直してください。"); render(); } catch (_) { msg.textContent = "下書きを作れませんでした。もう一度お試しください。"; } e.target.disabled = false; } }) : null,
+      false && sample && !readOnly ? h("button", { type: "button", class: "btn", id: "trp-ai", text: "AIで提案を下書き", onclick: async (e) => { if (((rep.c || {}).p6 || "").trim() && !confirm("入力済みの提案を、AIの下書きで置き換えます。よろしいですか？")) return; e.target.disabled = true; msg.textContent = "下書きを作っています…（30秒ほど）"; try { await trpAi(M, S.tr.get(id), save); toast("下書きを入れました。内容を確認して直してください。"); render(); } catch (_) { msg.textContent = "下書きを作れませんでした。もう一度お試しください。"; } e.target.disabled = false; } }) : null,
       h("button", { type: "button", class: "btn primary", id: "trp-pdf", text: "PDFを出力", onclick: async (e) => { e.target.disabled = true; msg.textContent = "PDFを作成中…"; try { await trpPdf(M, S.tr.get(id) || {}); msg.textContent = "PDFを出力しました。"; } catch (err) { msg.textContent = err && err.code === "declined" ? "" : "PDFを作成できませんでした。"; } e.target.disabled = false; } }), msg),
-    h("div", { class: "tr-ed" }, ...TRP_PAGES.map(([k, t], i) => h("label", {}, `${i + 2}. ${t}の${k === "p6" ? "提案" : "所感"}`, h("textarea", { id: "trp-" + k, value: (rep.c || {})[k] || "", disabled: readOnly, placeholder: "・", oninput: (e) => edit(k, e.target.value) })))));
+    null && h("div", { class: "tr-ed" }, ...TRP_PAGES.map((x, i) => [...x, i]).filter(([k]) => k === "p6").map(([k, t, i]) => h("label", {}, `${i + 2}. ${t}`, h("textarea", { id: "trp-" + k, value: (rep.c || {})[k] || "", disabled: readOnly, placeholder: "・", oninput: (e) => edit(k, e.target.value) })))));
   draw();
-  return [h("div", { class: "small muted", text: "対象月を選び、コメントを入れてPDFを出力します。全体・店舗はMyレポート、国別・旅行会社別はツアー分析の予約一覧から作ります。コメントは自動で保存します。" }), ed, pv];
+  return [h("div", { class: "small muted", text: "対象月を選んでPDFを出力します。全体・店舗はMyレポート、国別・旅行会社別はツアー分析の予約一覧から作ります。" }), ed, pv];
 }
 /** 照合：月ごとに、Myレポートの実績とツアー分析の集計を比べる（差が1%を超えた月に印） */
 function viewTrCheck() {
   const mon = (S.tr.get("monthly") || {}).rows || {}, ms = Object.keys(mon).sort(); if (!ms.length) return [];
-  const td = [...S.td.values()].flatMap((d) => d.rows || []).filter((r) => !tdIsCancel(r)), by = new Map(); for (const r of td) { const k = r.d.slice(0, 7); by.set(k, (by.get(k) || 0) + r.y); }
+  const td0 = [...S.td.values()].flatMap((d) => d.rows || []).filter((r) => !tdIsCancel(r)), scope = trpScope(), td = scope && td0.some((r) => scope.has(r.st)) ? td0.filter((r) => scope.has(r.st)) : td0, by = new Map(); for (const r of td) { const k = r.d.slice(0, 7); by.set(k, (by.get(k) || 0) + r.y); }
   const last = td.reduce((a, r) => (r.d > a ? r.d : a), ""), cur = new Date().toISOString().slice(0, 7);
   const tb = h("tbody", {}, ...ms.map((m) => { const r = mon[m], tax = r.tax || ((S.tr.get("monthly") || {}).cond || {}).tax || "", raw = by.get(m), t = raw == null ? null : tax === "税込" ? raw : raw / 1.1, d = t == null || r.y == null ? null : t - r.y, pc = d == null || !r.y ? null : (d / r.y) * 100, bad = pc != null && Math.abs(pc) > 1;
     return h("tr", { class: m > cur ? "fut" : "" }, h("td", { text: trpYm(m) }), h("td", { class: "num", text: trYen(r.y) }), h("td", { class: "num", text: t == null ? "データなし" : trYen(t) }), h("td", { class: "num", text: d == null ? "—" : trpDiff(d) }),
       h("td", { class: "num" }, pc == null ? "—" : h("span", { class: bad ? "tr-bad" : "tr-good", text: (pc >= 0 ? "+" : "") + pc.toFixed(2) + "%" })), h("td", {}, bad ? h("span", { class: "pill bad", text: "差が1%超" }) : null), h("td", { class: "small muted", text: tax })); }));
   return [h("h3", { text: "合計の照合（Myレポート と ツアー分析）" }),
-    h("div", { class: "small muted", style: "max-width:110ch", text: `ツアー分析の予約一覧（キャンセルを除く）を月ごとに合計し、Myレポートの実績と比べます。Myレポートが税抜の月は、予約一覧を÷1.1で換算して比べます。差が1%を超える月は、予約一覧を出力し直して取り込むと縮まることがあります（予約一覧は ${last ? last.replace(/-/g, "/") : "—"} の利用分まで）。今月以降は、出力した日の違いで差が出やすくなります。` }),
+    h("div", { class: "small muted", style: "max-width:110ch", text: `ツアー分析の予約一覧（キャンセルを除く${scope ? `・店舗別のMyレポートにある${scope.size}店舗に絞る` : ""}）を月ごとに合計し、Myレポートの実績と比べます。Myレポートが税抜の月は、予約一覧を÷1.1で換算して比べます。差が1%を超える月は、予約一覧を出力し直して取り込むと縮まることがあります（予約一覧は ${last ? last.replace(/-/g, "/") : "—"} の利用分まで）。今月以降は、出力した日の違いで差が出やすくなります。` }),
     h("div", { class: "panel scroll", style: "padding:4px 8px" }, h("table", { class: "list tr-tbl", id: "tr-chk" }, h("thead", {}, h("tr", {}, ...["年月", "Myレポート", "ツアー分析", "差", "差の割合", "", "税区分"].map((t, i) => h("th", { class: i && i < 5 ? "num" : "", text: t })))), tb))];
 }
 function viewTourRep() {
