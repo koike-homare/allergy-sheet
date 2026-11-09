@@ -171,6 +171,14 @@ window.APP_CONFIG = {
           return await r.json().catch(() => ({ code: "connect" }));
         } catch (_) { return { code: "connect" }; }
       },
+/** 朝礼シートを今すぐ作り直す（結果は mailchk/morning に書かれ、画面に届く） */
+      buildMorning: async () => {
+        try {
+          const { data: se } = await sb.auth.getSession(); if (!se || !se.session) return false;
+          const r = await fetch(CFG.url + "/functions/v1/mail-check", { method: "POST", headers: { "Content-Type": "application/json", apikey: CFG.key, Authorization: "Bearer " + se.session.access_token }, body: JSON.stringify({ mode: "morning" }) });
+          return r.ok;
+        } catch (_) { return false; }
+      },
       checkMail: async () => {
         try {
           const { data: se } = await sb.auth.getSession(); if (!se || !se.session) return false;
@@ -731,11 +739,12 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
       <button type="button" data-v="tourrep">ツアー報告書</button>
       <button type="button" data-v="tdimp">TD予約取込</button>
       <button type="button" data-v="mailchk">手配チェック</button>
+      <button type="button" data-v="morning">朝礼シート</button>
     </nav>
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 230</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 231</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1418,7 +1427,7 @@ function startData() {
   // 手配チェック（サーバーが読んだ予約メールと、Travel Dineとの照合結果）
   unsubs.push(db.collection("mailchk").onSnapshot((snap) => {
     S.mc = new Map(snap.docs.map((d) => [d.id, clone(d.data())]));
-    if (view.name === "mailchk" && !$("#dlg").open) render();
+    if ((view.name === "mailchk" || view.name === "morning") && !$("#dlg").open) render();
   }, () => {}));
   unsubs.push(db.collection("tourrep").onSnapshot((snap) => {
     S.tr = new Map(snap.docs.map((d) => [d.id, clone(d.data())]));
@@ -2484,6 +2493,81 @@ function viewMailChk() {
       ...bookingMails.slice(-200).reverse().map((m) => h("div", { class: "row small", style: "border-bottom:1px solid var(--line);padding:4px 0" }, h("span", { style: "white-space:nowrap", text: new Date(m.at).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) }), h("span", { style: "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap", title: m.subject, text: `${m.subject}（${m.fromName || m.from}）予約${m.bookings.length}件` }),
         readOnly ? null : h("button", { type: "button", class: "btn sm", text: "関係ない（この差出人を除外）", onclick: () => { if (confirm(`${m.from} からのメールを、次から読まないようにします。よろしいですか？`)) mcBlock(m.from); } })))) : null].filter(Boolean);
 }
+/* ---------- 朝礼シート ----------
+   当日と翌営業日（金曜は翌週月曜まで、祝日をはさむときはその先の平日まで）の予約を一覧にする。
+   予約は毎朝6時台に Travel Dine から自動で読み、メモ欄（社内向け・注意事項・予約表の備考）をAIが要約して mailchk/morning に書く。 */
+const mr = { store: "", msg: "" };
+const mrWd = (ymd) => MC_WD[new Date(ymd + "T00:00:00Z").getUTCDay()];
+const mrDay = (ymd) => `${Number(ymd.slice(5, 7))}/${Number(ymd.slice(8, 10))}（${mrWd(ymd)}）`;
+/** 食事制限があるか（「なし」「申告なし」以外） */
+const mrDietHit = (s) => !!s && !/^(なし|申告なし|事前申告なし|不明|申告なし・不明|事前申告なし・不明)$/.test(String(s).trim());
+const mrAt = (iso) => (iso ? new Date(iso).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
+async function mrBuild() {
+  const host = window.claude && window.claude.host;
+  if (!host || !host.buildMorning) return toast("この表示環境では使えません");
+  mr.msg = "作り直しています（1〜2分）。終わると自動で表示が変わります"; render();
+  const ok = await host.buildMorning(); if (!ok) { mr.msg = "作り直しを始められませんでした"; render(); }
+}
+function mrRows() {
+  const doc = (S.mc && S.mc.get("morning")) || null;
+  const rows = ((doc && doc.rows) || []).filter((r) => !mr.store || r.store === mr.store);
+  return { doc, rows };
+}
+/** 印刷用のページ（A4横・複数ページ）を作って印刷する */
+function mrPrint() {
+  const { doc, rows } = mrRows(); if (!doc || !rows.length) return toast("印刷する予約がありません");
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const by = new Map(); for (const r of rows) { if (!by.has(r.date)) by.set(r.date, []); by.get(r.date).push(r); }
+  const sec = [...by.entries()].map(([d, list], i) => `<section${i ? ' class="pb"' : ""}><h2>${esc(mrDay(d))}${d === doc.day ? "　当日" : ""}　${list.length}件・${list.reduce((a, r) => a + (Number(r.people) || 0), 0)}名${mr.store ? "　" + esc(mr.store) : ""}</h2>
+<table><thead><tr><th class="c-t">時間</th><th class="c-a">旅行会社</th><th class="c-g">団体名</th><th class="c-c">法人名</th><th class="c-s">店舗名</th><th class="c-n">人数</th><th class="c-k">コース名</th><th>備考</th></tr></thead><tbody>
+${list.map((r) => `<tr><td class="c-t">${esc(r.time)}${/リクエスト|変更/.test(r.status) ? `<div class="st">${esc(r.status)}</div>` : ""}</td><td>${esc(r.agency)}</td><td><b>${esc(r.group)}</b></td><td>${esc(r.corp)}</td><td>${esc(r.store)}</td><td class="c-n">${esc(r.people)}</td><td>${esc(r.course)}</td><td>${r.diet ? `<div class="${mrDietHit(r.diet) ? "dt" : ""}">食事制限：${esc(r.diet)}</div>` : ""}${(r.remarks || []).map((x) => `<div>・${esc(x)}</div>`).join("")}${(r.cautions || []).map((x) => `<div class="ca">⚠ ${esc(x)}</div>`).join("")}</td></tr>`).join("")}
+</tbody></table></section>`).join("");
+  const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>朝礼シート ${esc(mrDay(doc.day))}</title><style>
+@page{size:A4 landscape;margin:9mm}
+body{font:9.5px/1.35 "BIZ UDPGothic","Hiragino Sans","Yu Gothic",Meiryo,sans-serif;color:#000;margin:0}
+h1{font-size:15px;margin:0 0 2px} .sub{font-size:10px;color:#444;margin-bottom:6px}
+h2{font-size:13px;margin:8px 0 4px;padding:3px 6px;background:#e8ecf2;border-left:4px solid #1f4e8c}
+section.pb{break-before:page}
+table{width:100%;border-collapse:collapse;table-layout:fixed} thead{display:table-header-group}
+th,td{border:1px solid #888;padding:2px 4px;vertical-align:top;word-break:break-word} th{background:#f2f4f8;font-weight:700;text-align:left}
+tr{break-inside:avoid}
+.c-t{width:5%}.c-a{width:12%}.c-g{width:14%}.c-c{width:9%}.c-s{width:12%}.c-n{width:4%;text-align:right}.c-k{width:12%}
+.ca{color:#b0261f;font-weight:700} .dt{font-weight:700;text-decoration:underline} .st{font-size:9px;color:#8f5a00}
+</style></head><body><h1>朝礼シート</h1><div class="sub">${esc(doc.dates.map(mrDay).join("・"))}　作成：${esc(mrAt(doc.finishedAt || doc.at))}（Travel Dineの予約とメモから作成。⚠はAIが気づいた注意点です）</div>${sec}</body></html>`;
+  const f = document.createElement("iframe"); f.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0"; document.body.appendChild(f);
+  f.contentDocument.open(); f.contentDocument.write(html); f.contentDocument.close();
+  setTimeout(() => { try { f.contentWindow.focus(); f.contentWindow.print(); } catch (_) { toast("印刷できませんでした"); } setTimeout(() => f.remove(), 2000); }, 300);
+}
+function viewMorning() {
+  const { doc, rows } = mrRows(), today = mcToday(), host = window.claude && window.claude.host;
+  const stale = doc && doc.day !== today;
+  const stores = [...new Set(((doc && doc.rows) || []).map((r) => r.store).filter(Boolean))].sort();
+  const head = h("div", { class: "row" }, h("h2", { text: "朝礼シート" }), h("span", { style: "margin-left:auto" }),
+    stores.length > 1 ? h("select", { class: "sm", style: "width:auto", onchange: (e) => { mr.store = e.target.value; render(); } }, h("option", { value: "", text: "全店舗" }), ...stores.map((s) => h("option", { value: s, text: s, selected: mr.store === s }))) : null,
+    host && host.buildMorning && !readOnly ? h("button", { type: "button", class: "btn sm", id: "mr-build", disabled: !!(doc && doc.running && Date.now() - Date.parse(doc.at || "") < 3 * 60e3), text: doc && doc.running ? "作成中…" : "今すぐ作り直す", onclick: mrBuild }) : null,
+    h("button", { type: "button", class: "btn primary", id: "mr-print", text: "印刷（A4横）", disabled: !rows.length || stale, onclick: mrPrint }));
+  const st = h("div", { class: "panel small stack" },
+    h("div", { class: "muted", text: "当日と翌営業日（金曜は翌週月曜まで。祝日をはさむときは、その先の平日まで）の予約です。毎朝6時台にTravel Dineから自動で作ります（Travel Dineは読むだけで、書き込みはしません）。備考は予約詳細のメモ欄をAIが要約したもので、⚠はAIが気づいた注意点です。原本はTravel Dineで確認してください。" }),
+    doc ? h("div", {}, `対象：${(doc.dates || []).map(mrDay).join("・")}　作成：${mrAt(doc.finishedAt || doc.at)}（${doc.by === "manual" ? "手動" : "自動"}）` + (doc.running && doc.todo ? `　作成中 ${(doc.rows || []).length - (doc.todo || []).length}/${(doc.rows || []).length}件` : "")) : h("div", { text: "まだ作成していません。" }),
+    stale ? h("div", { class: "banner warn", text: `表示しているのは ${mrDay(doc.day)} に作ったシートです。今日の分は6時台に自動で作ります（すぐ必要なときは「今すぐ作り直す」）。` }) : null,
+    doc && doc.error ? h("div", { class: "banner bad", text: doc.error }) : null, mr.msg ? h("div", { class: "muted", text: mr.msg }) : null);
+  if (!doc) return [head, st];
+  const by = new Map(); for (const r of rows) { if (!by.has(r.date)) by.set(r.date, []); by.get(r.date).push(r); }
+  const tables = (doc.dates || []).map((d) => {
+    const list = by.get(d) || [];
+    return h("div", { class: "panel" }, h("h3", { style: "margin:0 0 8px", text: `${mrDay(d)}${d === doc.day ? "　当日" : ""}　${list.length}件・${list.reduce((a, r) => a + (Number(r.people) || 0), 0)}名` }),
+      list.length ? h("div", { class: "scroll" }, h("table", { class: "list mr-table" }, h("thead", {}, h("tr", {}, ...["時間", "旅行会社", "団体名", "法人名", "店舗名", "人数", "コース名", "備考"].map((t) => h("th", { text: t })))),
+        h("tbody", {}, ...list.map((r) => h("tr", {},
+          h("td", { style: "white-space:nowrap;font-weight:700", text: r.time }, /リクエスト|変更/.test(r.status) ? h("div", { class: "small", style: "color:var(--warn)", text: r.status }) : null),
+          h("td", { class: "small", text: r.agency }), h("td", { style: "font-weight:700", text: r.group }), h("td", { class: "small", text: r.corp }), h("td", { class: "small", text: r.store }),
+          h("td", { style: "text-align:right;white-space:nowrap", text: r.people + "名" }), h("td", { class: "small", text: r.course }),
+          h("td", { class: "small", style: "min-width:280px" }, r.diet ? h("div", { style: mrDietHit(r.diet) ? "font-weight:700" : "", class: mrDietHit(r.diet) ? "" : "muted", text: "食事制限：" + r.diet }) : null, ...(r.remarks || []).map((x) => h("div", { text: "・" + x })), ...(r.cautions || []).map((x) => h("div", { style: "color:var(--bad);font-weight:700", text: "⚠ " + x })),
+            doc.running && (doc.todo || []).includes(r.id) ? h("div", { class: "muted", text: "備考を作成中…" }) : !r.diet && !(r.remarks || []).length && !(r.cautions || []).length ? h("div", { class: "muted", text: r.noMemo ? "（メモなし）" : "（特記事項なし）" }) : null,
+            h("a", { href: `${MC_TD_ORIGIN}/admin/reservations/detail/${r.id}`, target: "_blank", rel: "noopener", class: "small", text: "Travel Dineで開く" })))))))
+        : h("div", { class: "empty", text: "予約はありません。" }));
+  });
+  return [head, st, ...tables];
+}
 /* ---------- 画面切替 ---------- */
 async function go(v) {
   if (authState !== "open") return;
@@ -2525,6 +2609,7 @@ function render() {
   else if (view.name === "tourrep") app.replaceChildren(...top, ...viewTourRep());
   else if (view.name === "tdimp") app.replaceChildren(...top, ...viewTdImp());
   else if (view.name === "mailchk") app.replaceChildren(...top, ...viewMailChk());
+  else if (view.name === "morning") app.replaceChildren(...top, ...viewMorning());
   else if (view.name === "requests") app.replaceChildren(...top, ...viewRequests());
   else if (view.name === "case") app.replaceChildren(...top, ...viewCase());
   else if (view.name === "stores") app.replaceChildren(...top, ...viewStores());
@@ -8781,7 +8866,7 @@ window.addEventListener("drop", (e) => e.preventDefault());
 (function init() {
   const hsh = (location.hash || "").slice(1);
   if (hsh.startsWith("case-")) view = { name: "case", id: hsh.slice(5) };
-  else if (["stores", "courses", "spec", "layouts", "pj", "pjsales", "tdstats", "tdseries", "tourrep", "tdimp", "mailchk"].includes(hsh)) view = { name: hsh };
+  else if (["stores", "courses", "spec", "layouts", "pj", "pjsales", "tdstats", "tdseries", "tourrep", "tdimp", "mailchk", "morning"].includes(hsh)) view = { name: hsh };
   boot();
 })();
 </script>
