@@ -163,6 +163,14 @@ window.APP_CONFIG = {
           return r.ok;
         } catch (_) { return false; }
       },
+/** 手配チェック：メール1通をメールサーバーから読んで返す（保存しない・既読にしない） */
+      openMail: async (id) => {
+        try {
+          const { data: se } = await sb.auth.getSession(); if (!se || !se.session) return { code: "auth" };
+          const r = await fetch(CFG.url + "/functions/v1/mail-check", { method: "POST", headers: { "Content-Type": "application/json", apikey: CFG.key, Authorization: "Bearer " + se.session.access_token }, body: JSON.stringify({ mode: "mail", id }) });
+          return await r.json().catch(() => ({ code: "connect" }));
+        } catch (_) { return { code: "connect" }; }
+      },
       checkMail: async () => {
         try {
           const { data: se } = await sb.auth.getSession(); if (!se || !se.session) return false;
@@ -727,7 +735,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 229</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 230</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -2228,6 +2236,15 @@ const mcWd = (ymd) => { const d = new Date(ymd + "T00:00:00+09:00"); return isNa
 const mcFmt = (ymd) => (ymd ? `${Number(ymd.slice(5, 7))}/${Number(ymd.slice(8, 10))}（${mcWd(ymd)}）` : "（日付なし）");
 const mcToday = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
 const mcAdd = (ymd, n) => new Date(Date.parse(ymd + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
+/** 要望欄からアレルギーなど健康に関する詳しい内容を外し、「食事制限あり（○名）」だけにする（以前に保存された分にも効くよう、表示のときにも外す） */
+const MC_HEALTH = /アレルギ|アレルゲン|除去|食事制限|食物|ベジタリアン|ヴィーガン|ビーガン|ハラ[ルー]|宗教|持病|疾患|病気|妊娠|服薬|グルテン|乳製品|甲殻|そば粉|卵抜き/;
+function mcScrub(s) {
+  const keep = []; let hit = false, n = 0;
+  for (const p of String(s || "").split(/(?<=[。．\n])/)) { if (MC_HEALTH.test(p)) { hit = true; for (const m of p.matchAll(/(\d+)\s*名/g)) n = Math.max(n, Number(m[1])); } else keep.push(p); }
+  let out = keep.join("").trim();
+  if (hit) out = (out ? out.replace(/[。．]?$/, "。") : "") + `食事制限あり${n ? `（${n}名）` : ""}`;
+  return out;
+}
 const mcGroupKey = (s) => tdiKey(String(s || "").replace(/^【[^】]*】/, "").replace(/(様|御一行様?|ご一行様?)$/, ""));
 function mcDocs() {
   const all = S.mc || new Map(), days = [...all.entries()].filter(([k]) => /^d_/.test(k)).sort((a, b) => (a[0] < b[0] ? 1 : -1));
@@ -2241,11 +2258,19 @@ function mcItems() {
     items.push({ key: m.id + "#" + i, mail: m, b, date, agencyId: ag.id || "", agName: [b.agency?.name, b.agency?.branch].filter(Boolean).join(" "), gk: mcGroupKey(b.groupName) });
   });
   items.sort((a, b) => (a.mail.at < b.mail.at ? -1 : a.mail.at > b.mail.at ? 1 : 0));
+  // 同じ団体をまとめる（旅行会社名に部署名が付いている・団体名に説明が付いているなど、書き方の違いは同じ団体とみなす）
+  const clusters = [];
+  for (const it of items) { let c = clusters.find((cl) => cl.some((x) => mcSameItem(x, it))); if (!c) { c = []; c.id = "c" + clusters.length; clusters.push(c); } c.push(it); it.ck = c.id; }
   const last = new Map();
-  for (const it of items) { const k = (it.agencyId || tdiKey(it.b.agency?.name)) + "|" + it.gk + "|" + it.date; const p = last.get(k); if (p && p.mail.id !== it.mail.id) p.superseded = it; last.set(k, it); }
+  for (const it of items) { const k = it.ck + "|" + it.date; const p = last.get(k); if (p && p.mail.id !== it.mail.id) p.superseded = it; last.set(k, it); }
   return items;
 }
-const mcSameAg = (it, r) => (it.agencyId && r.agencyId ? it.agencyId === r.agencyId : tdiSim(r.agency, it.b.agency?.name || "") >= 0.7);
+const mcAgSame = (a, b) => !!a && !!b && (a === b || (Math.min(a.length, b.length) >= 3 && (a.includes(b) || b.includes(a))) || tdiSim(a, b) >= 0.7);
+const mcNums = (s) => (String(s || "").normalize("NFKC").match(/\d+/g) || []).join(",");
+/** 団体名が同じか（片方がもう片方を含む。ただし「1組」「2組」のように数字が違うものは別） */
+const mcGkSame = (a, b) => !!a && !!b && (a === b || (Math.min(a.length, b.length) >= 4 && (a.includes(b) || b.includes(a)) && (!mcNums(a) || !mcNums(b) || mcNums(a).startsWith(mcNums(b)) || mcNums(b).startsWith(mcNums(a)))));
+const mcSameItem = (x, y) => (x.agencyId && y.agencyId ? x.agencyId === y.agencyId : mcAgSame(tdiKey(x.b.agency?.name), tdiKey(y.b.agency?.name))) && mcGkSame(x.gk, y.gk);
+const mcSameAg = (it, r) => (it.agencyId && r.agencyId ? it.agencyId === r.agencyId : mcAgSame(tdiKey(r.agency), tdiKey(it.b.agency?.name)));
 const mcSameGroup = (it, r) => { const g = mcGroupKey(r.group); return !!it.gk && !!g && (g.includes(it.gk) || it.gk.includes(g) || tdiSim(g, it.gk) >= 0.6); };
 const mcActive = (r) => !/キャンセル/.test(r.status || "");
 /** メールの予約とTravel Dineの登録を突き合わせる。シリーズ（同じ団体で日付が複数）は、日付が一致するものから組み、残りを「日付違い」として組む */
@@ -2253,9 +2278,9 @@ function mcCompare(items) {
   const { snap } = mcDocs(), rows = (snap && snap.rows) || [], res = new Map(), tdOnly = [];
   const live = items.filter((it) => !it.superseded && it.date);
   const groups = new Map();
-  for (const it of live) { const k = (it.agencyId || tdiKey(it.b.agency?.name)) + "|" + it.gk; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(it); }
+  for (const it of live) { const k = it.ck; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(it); }
   for (const g of groups.values()) {
-    const cand = rows.filter((r) => mcSameAg(g[0], r) && mcSameGroup(g[0], r)), used = new Set();
+    const cand = rows.filter((r) => g.some((it) => mcSameAg(it, r) && mcSameGroup(it, r))), used = new Set();
     const book = g.filter((it) => !/取消/.test(it.b.kind)), cancel = g.filter((it) => /取消/.test(it.b.kind));
     // ① 日付が一致するもの
     const newest = [...g].sort((a, b) => (a.mail.at < b.mail.at ? 1 : a.mail.at > b.mail.at ? -1 : 0)); // 新しいメールの予約から先に組む
@@ -2356,6 +2381,25 @@ async function mcBlock(addr) {
   S.mc = new Map(S.mc || []); S.mc.set("rules", r); render();
   if (db && !localOnly && !readOnly) { try { await db.doc("mailchk/rules").set(r); toast(`${addr} からのメールは、次から読みません`); } catch (_) { toast("保存できませんでした"); } }
 }
+const MC_MAIL_ERR = { gone: "メールが見つかりません（削除・移動された可能性があります）。Outlookで確認してください", too_big: "メールが大きすぎて表示できません。Outlookで確認してください", login: "メールサーバーにログインできません", connect: "メールサーバーに接続できません。しばらくしてからお試しください", no_account: "メールの接続情報が未登録です", bad_id: "このメールは開けません", auth: "サインインし直してください", not_granted: "サインインし直してください" };
+/** メール本文を表示する。本文は文字だけで表示し（画像・リンク・添付は開かない）、T-COREには保存しない */
+async function mcMailDialog(m) {
+  const dlg = $("#dlg"), body = h("div", { class: "stack", style: "gap:8px" }, h("div", { class: "muted", text: "メールサーバーから読み込んでいます…" }));
+  dlg.replaceChildren(h("div", { class: "dlg stack" }, h("h3", { text: m.subject || "（件名なし）" }), body,
+    h("div", { class: "row" }, h("button", { type: "button", class: "btn sm", text: "件名をコピー", onclick: () => tdiCopy(m.subject, "件名") }), h("span", { style: "margin-left:auto" }), h("button", { type: "button", class: "btn primary", text: "閉じる", onclick: () => dlg.close() }))));
+  if (!dlg.open) { dlg.style.width = "min(860px,calc(100vw - 32px))"; dlg.addEventListener("close", () => (dlg.style.width = "", dlg.replaceChildren()), { once: true }); dlg.showModal(); }
+  const r = await window.claude.host.openMail(m.id);
+  if (!dlg.open) return;
+  if (!r || r.code) { body.replaceChildren(h("div", { class: "banner warn", text: MC_MAIL_ERR[r && r.code] || "メールを読み込めませんでした" })); return; }
+  const kb = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "MB" : Math.max(1, Math.round(n / 1e3)) + "KB");
+  const meta = [["受信", r.date ? new Date(r.date).toLocaleString("ja-JP", { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) + "（" + r.box + "）" : r.box], ["差出人", r.from], ["宛先", r.to], ["CC", r.cc]].filter((x) => x[1]);
+  body.replaceChildren(...[
+    h("div", { class: "small", style: "display:grid;grid-template-columns:auto 1fr;gap:2px 10px" }, ...meta.flatMap(([k, v]) => [h("span", { class: "muted", text: k }), h("span", { style: "word-break:break-all", text: v })])),
+    (r.atts || []).length ? h("div", { class: "small" }, h("span", { class: "muted", text: "添付：" }), (r.atts || []).map((a) => `${a.name}（${kb(a.size)}）`).join("、"), h("div", { class: "muted", text: "添付ファイルは、安全のためここでは開きません。Outlookで開いてください。" })) : null,
+    h("pre", { style: "white-space:pre-wrap;word-break:break-word;font:13px/1.6 inherit;font-family:inherit;max-height:60vh;overflow:auto;margin:0;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--bg)", text: r.text || "（本文なし）" }),
+    r.truncated ? h("div", { class: "small muted", text: "本文が長いため、途中までを表示しています。" }) : null,
+    h("div", { class: "small muted", text: "メールサーバーから読み取りだけで表示しています（既読にはなりません。T-COREには保存しません）。" })].filter(Boolean));
+}
 async function mcTdNow() {
   const host = window.claude && window.claude.host;
   if (!host || !host.checkTd) return toast("この表示環境では使えません");
@@ -2405,10 +2449,12 @@ function viewMailChk() {
       h("td", { class: "small" }, row ? h("div", {}, h("div", { style: r.dateOk ? "" : "color:var(--bad);font-weight:700", text: `${mcFmt(row.date)} ${row.time}` }), h("div", { text: `${row.group}／${row.people}名` }), h("div", { class: "muted", text: `${row.store}／${row.status}` }),
         h("a", { href: `${MC_TD_ORIGIN}/admin/reservations/detail/${row.id}`, target: "_blank", rel: "noopener", text: "Travel Dineで開く" })) : h("span", { class: "muted", text: cmp.checkedAt ? "見つかりません" : "未照合" })),
       h("td", { class: "small", style: "min-width:230px" }, ...j.list.filter((x) => x.lv !== "ok" || j.lv === "ok").map((x) => h("div", { style: x.lv === "ng" ? "color:var(--bad);font-weight:700" : x.lv === "warn" ? "color:var(--warn)" : "", text: x.t })),
-        b.notes ? h("div", { class: "muted", text: "要望：" + b.notes }) : null),
+        b.notes ? h("div", { class: "muted", text: "要望：" + mcScrub(b.notes).replace(/^要望[:：]\s*/, "") }) : null),
       h("td", { class: "small", style: "max-width:220px" }, h("div", { style: "font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap", title: it.mail.subject, text: it.mail.subject }),
         h("div", { class: "muted", text: `${new Date(it.mail.at).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}受信・${it.mail.box}@` }), h("div", { class: "muted", style: "overflow:hidden;text-overflow:ellipsis;white-space:nowrap", text: it.mail.fromName || it.mail.from }),
-        b.source && b.source !== "本文" ? h("div", { class: "muted", text: "読取元：" + b.source }) : null),
+        b.source && b.source !== "本文" ? h("div", { class: "muted", text: "読取元：" + b.source }) : null,
+        h("div", { class: "row", style: "gap:4px;margin-top:4px;flex-wrap:nowrap" }, window.claude && window.claude.host && window.claude.host.openMail ? h("button", { type: "button", class: "btn sm", text: "メールを開く", onclick: () => mcMailDialog(it.mail) }) : null,
+          h("button", { type: "button", class: "btn sm", title: "Outlookで探すときに使います", text: "件名をコピー", onclick: () => tdiCopy(it.mail.subject, "件名") }))),
       h("td", {}, j.lv === "old" ? null : done ? h("button", { type: "button", class: "btn sm", text: "戻す", onclick: () => mcSaveReview((v) => { delete v.items[it.key]; }) })
         : h("button", { type: "button", class: "btn sm", text: "確認済みにする", onclick: () => mcSaveReview((v) => { v.items[it.key] = { at: new Date().toISOString(), lv: j.lv }; }) })));
   }));
