@@ -746,7 +746,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 232</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 233</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1648,12 +1648,12 @@ const TDI_BM = "javascript:!function()%7Bconst%20t%3D%22admin.travel-dine.com%22
 /* ---------- Travel Dine予約取込 ----------
    旅行会社から届く予約の依頼書・通知書（PDF・画像。様式はいろいろ）をAIで読み取り、
    Travel Dineのマスタ（旅行会社・店舗・コース・飲み放題）に当てはめて、「一括登録」ブックマークレットに渡すデータを作る。
-   ・日本旅行のバウチャー通知（tabiwa。「通知:」〜「END.」が1件）は、これまでどおり取込ルールで決める。
+   ・日本旅行のバウチャー通知（tabiwa。「通知:」〜「END.」が1件）と、日本旅行（EX）の予約通知（「○予約通知 EXNTA」〜「***」が1件）は、取込ルールで決める。
    ・それ以外の様式は、旅行会社（電話・FAX番号→会社名＋支店名）、店舗、コース、飲み放題、支払方法をマスタに当てはめる。
      はっきり決まらないものは「要確認」にして、スタッフが選ぶ。選んだ対応は覚えて、次から自動で決める（tdimport/learn）。
    氏名などの読み取り結果はこの画面の中だけで使い、共有データには保存しない（保存するのは取込ルール・マスタ・覚えた対応だけ）。 */
 const TDI_DEFAULT = {
-  agencyId: "371", manager: "バウチャー ご担当者", prefix: "【tabiwa】", start: "11:00", end: "17:00",
+  agencyId: "371", manager: "バウチャー ご担当者", prefix: "【tabiwa】", prefixEx: "【EX】", start: "11:00", end: "17:00",
   payCourse: "請求書", payAddition: "当日払い（満額）", stay: 90,
   products: [
     { id: "p1", match: "新世界満喫チケット", store: "串かつ振興会", course: "新世界満喫チケット【通天閣入場券付】" },
@@ -1784,7 +1784,8 @@ const tdiTime = (s) => { const m = /(\d{1,2})[:：時](\d{2})?/.exec(String(s ||
 const tdiAddMin = (t, n) => { const m = /^(\d{2}):(\d{2})$/.exec(t || ""); if (!m) return ""; const x = (+m[1] * 60 + +m[2] + Number(n || 0)) % 1440; return `${String(Math.floor(x / 60)).padStart(2, "0")}:${String(x % 60).padStart(2, "0")}`; };
 function tdiMatch(product) {
   const p = tdiNorm(product);
-  return (tdi.rules.products || []).find((r) => r.match && p.includes(tdiNorm(r.match))) || null;
+  // 含む文字がいちばん長い対応を使う（「特得パック」と「特得パック【串カツ15本】」の両方があれば、長いほう）
+  return (tdi.rules.products || []).filter((r) => r.match && p.includes(tdiNorm(r.match))).sort((a, b) => tdiNorm(b.match).length - tdiNorm(a.match).length)[0] || null;
 }
 /** 取込ルール（tabiwa）の店舗名・コース名を、マスタのIDに直す（マスタがなければ名前のまま。一括登録が名前で探す） */
 function tdiTabiwaIds(r) {
@@ -1801,6 +1802,11 @@ function tdiCheck(r) {
   if (r.fmt === "tabiwa") {
     if (!r.kana) pr.push("氏名（カナ）が読み取れません");
     if (!r.store || !r.course) pr.push("商品に合う店舗・コースがありません（取込ルールに追加してください）");
+    else { // 商品とコースで本数・枚数が違うとき（例：特得パック【串カツ15本】を9枚綴りのコースに当てはめた）は登録しない
+      const cnt = (t) => { const m = /(\d+)\s*(本|枚)/.exec(String(t || "").normalize("NFKC")); return m ? Number(m[1]) : 0; };
+      const a = cnt(r.product), b = cnt(r.course);
+      if (a && b && a !== b) pr.push(`商品（${a}本・枚）とコース（${b}本・枚）の数が違います。取込ルールの「商品の対応」に、この商品の対応を追加してください`);
+    }
   } else {
     if (!r.groupName) pr.push("団体名が読み取れません");
     if (!tdi.master) pr.push("旅行会社・店舗・コースを決められません。Travel Dineの一覧（TDマスタ）がまだT-COREに入っていないためです。");
@@ -1842,7 +1848,9 @@ function tdiRecheck() {
 }
 const TDI_PROMPT = `旅行会社から飲食店（株式会社HASSIN）に届いた、団体の食事予約の依頼書・通知書・確認書です。FAXを写真に撮ったものが多く、横向きや逆さまのこともあります。向きに関係なく読んでください。
 資料に含まれる予約を、上から順にすべて読み取ってください。
-・日本旅行のバウチャー通知（「通知:#…」の行から「END.」の行までが1件）のときは format を "tabiwa" にする。それ以外は "general"（1枚に1件のことが多い）。
+・日本旅行のバウチャー通知（「通知:#…」の行から「END.」の行までが1件）のときは format を "tabiwa"、series を "tabiwa" にする。
+・日本旅行（EX）の通知（「○予約通知 EXNTA」「○取消通知 EXNTA」などで始まり「***」で終わる。1枚に1件）のときも format を "tabiwa" にし、series を "EX" にする。kind は「○予約通知」なら「予約」、「○取消通知」なら「取消」、「○変更通知」なら「変更」。reserveNo は「受付NO」、kana は「旅行中代表者」のカナを「姓/名」の形で（例：マツヤマ/カナメ）、kanji は「申込者」、product は「プラン」の次の行の商品名（例：4月以降　新世界特得パック【串カツ9本】　基本）、facility は宛先の店舗名（「様」と番号は除く）、useDate は「利用年月日」、adults は「大人合計」の人数。
+・それ以外は format を "general" にする（1枚に1件のことが多い）。
 ・kind：新規の予約なら「予約」、取消・キャンセルなら「取消」、変更なら「変更」。通知:#番号のすぐ後ろの［］の中に書かれていればそれを使う。
 ・agency：予約を依頼してきた旅行会社（発信元）。name は会社名（例：株式会社日本旅行）、branch は支店・営業所名（例：岩国支店）。tel・fax は発信元の番号。faxHeader は用紙のいちばん上に印字された送信元の番号（例：0827217183）。宛先の飲食店（HASSIN・06-6631-8814・06-6631-8846）の情報は入れない。
 ・useDate は西暦 YYYY-MM-DD（令和8年＝2026年、令和9年＝2027年）。start・end は "HH:MM"。終了時刻が書かれていなければ end は空。
@@ -1852,9 +1860,9 @@ const TDI_PROMPT = `旅行会社から飲食店（株式会社HASSIN）に届い
 ・courseText：コース名やメニューの書き方そのまま。coursePrice：1人あたりの金額（数字だけ。書かれていなければ0）。飲み放題が別に書かれていれば drinkText・drinkPrice に入れる（コースに含まれると書いてあれば drinkText は空）。
 ・payText：支払方法の書き方そのまま（例：全旅クーポン、請求書、現地現金払い）。
 ・notes：席の要望（個室・貸切など）、返答の依頼、確認してほしいことなど。groupName は団体名（「様」は付けない）、groupKana はふりがながあれば。
-・tabiwa のときは、kana（予約者の氏名のカナ。例：ﾜﾀﾅﾍﾞ/ｷﾖﾐｻﾏ）・kanji・reserveNo（予約#の番号）・product（商品名）・facility（施設名）・adults（人数）も入れる。
+・tabiwa（EXを含む）のときは、series、kana（予約者の氏名のカナ。例：ﾜﾀﾅﾍﾞ/ｷﾖﾐｻﾏ）・kanji・reserveNo（予約#の番号）・product（商品名）・facility（施設名）・adults（人数）も入れる。
 ・uncertain：読み取りに自信がない項目名（例：["店舗","人数"]）。
-返答はJSONだけ。形式：{"bookings":[{"format":"general","notice":"","kind":"予約","complete":true,"agency":{"name":"","branch":"","tel":"","fax":"","faxHeader":""},"groupName":"","groupKana":"","useDate":"","start":"","end":"","adults":0,"children":0,"conductors":0,"guides":0,"drivers":0,"isSchool":false,"nationality":"","storeCandidates":[],"courseText":"","coursePrice":0,"drinkText":"","drinkPrice":0,"payText":"","notes":"","kana":"","kanji":"","reserveNo":"","product":"","facility":"","uncertain":[]}]}
+返答はJSONだけ。形式：{"bookings":[{"format":"general","series":"","notice":"","kind":"予約","complete":true,"agency":{"name":"","branch":"","tel":"","fax":"","faxHeader":""},"groupName":"","groupKana":"","useDate":"","start":"","end":"","adults":0,"children":0,"conductors":0,"guides":0,"drivers":0,"isSchool":false,"nationality":"","storeCandidates":[],"courseText":"","coursePrice":0,"drinkText":"","drinkPrice":0,"payText":"","notes":"","kana":"","kanji":"","reserveNo":"","product":"","facility":"","uncertain":[]}]}
 complete は、その予約の内容が渡された資料の中にすべて含まれていれば true、途中で切れていれば false にする。
 書かれていない項目は空文字（数値は0）にし、推測で補わない。`;
 async function tdiPdfPages(f) {
@@ -1949,7 +1957,8 @@ function tdiRowOf(b, id) {
   };
   if (r.fmt === "tabiwa") {
     const kana = tdiKana(b.kana);
-    Object.assign(r, { reserveNo: String(b.reserveNo || ""), kanji: String(b.kanji || "").replace(/様$/, ""), kana, groupName: kana ? R.prefix + kana : "",
+    const ex = /^EX$/i.test(String(b.series || "")); r.series = ex ? "EX" : "tabiwa";
+    Object.assign(r, { reserveNo: String(b.reserveNo || ""), kanji: String(b.kanji || "").replace(/様$/, ""), kana, groupName: kana ? (ex ? R.prefixEx || "【EX】" : R.prefix) + kana : "",
       product: String(b.product || ""), facility: String(b.facility || ""), agencyId: R.agencyId, manager: R.manager, start: R.start, end: R.end, payCourse: R.payCourse, uncertain: [] });
   } else {
     const a = b.agency || {}, start = tdiTime(b.start), end = tdiTime(b.end);
@@ -2098,7 +2107,7 @@ function tdiTable() {
     const staff = [["添乗員", r.conductors], ["ガイド", r.guides], ["ドライバー", r.drivers]].filter((x) => x[1] > 0).map((x) => x[0] + x[1]).join("・");
     let mapCell, docCell;
     if (!gen) {
-      docCell = h("td", { class: "small" }, h("span", { class: "pill plain", text: "日本旅行（tabiwa）" }), h("div", { text: r.product }), r.facility ? h("div", { class: "muted", text: r.facility }) : null);
+      docCell = h("td", { class: "small" }, h("span", { class: "pill plain", text: r.series === "EX" ? "日本旅行（EX）" : "日本旅行（tabiwa）" }), r.reserveNo ? h("div", { class: "muted", text: "受付・予約番号：" + r.reserveNo }) : null, h("div", { text: r.product }), r.facility ? h("div", { class: "muted", text: r.facility }) : null);
       mapCell = h("td", {}, inp("store", { list: "tdi-stores", style: "min-width:140px" }), inp("course", { list: "tdi-courses", style: "min-width:220px;margin-top:4px" }),
         h("div", { class: "small muted", text: `${r.start}〜${r.end}／${tdi.rules.payCourse}` }));
     } else {
@@ -2156,7 +2165,7 @@ function tdiTable() {
       needCheck ? h("span", { class: "pill bad", text: `要確認 ${needCheck}件` }) : null,
       rows.some((r) => !r.problems.length && r.pairWith) ? h("span", { class: "pill plain", text: `取消・変更あり ${rows.filter((r) => !r.problems.length && r.pairWith).length}件` }) : null,
       h("span", { class: "pill ok", text: `登録する ${inc.length}件` })),
-    rows.some((r) => r.fmt === "tabiwa") ? h("div", { class: "small muted", text: `日本旅行（tabiwa）：入店${tdi.rules.start}〜退店${tdi.rules.end}／${tdi.rules.payCourse}／当日追加：${tdi.rules.payAddition}／手配担当者：${tdi.rules.manager}（変えるときは「取込ルール」）` }) : null,
+    rows.some((r) => r.fmt === "tabiwa") ? h("div", { class: "small muted", text: `日本旅行（tabiwa・EX）：入店${tdi.rules.start}〜退店${tdi.rules.end}／${tdi.rules.payCourse}／当日追加：${tdi.rules.payAddition}／手配担当者：${tdi.rules.manager}（変えるときは「取込ルール」）` }) : null,
     hasGen ? h("div", { class: "small muted", text: "旅行会社・店舗・コース・支払方法は、はっきり決まらないときは「要確認」になります。選んだ対応は覚えて、次から自動で選びます。当日追加の支払は「" + tdi.rules.payAddition + "」で登録します。" }) : null,
     h("div", { class: "scroll" }, h("table", { class: "list" },
       h("thead", {}, h("tr", {}, ...["登録", "No", "利用日／時間", "団体名", "人数", "資料の内容", "Travel Dineの登録内容", "状態"].map((t) => h("th", { text: t })))), tb)),
@@ -2207,12 +2216,12 @@ function tdiRulesPanel() {
   return h("div", { class: "panel stack" },
     h("h3", { text: "取込ルール（全員共通）" }),
     h("div", { class: "fields" }, f("payAddition", "当日追加の支払方法（すべての予約）"), f("stay", "終了時間が書かれていないときの滞在時間（分）", { type: "number", min: 30, step: 15, placeholder: "90" })),
-    h("h4", { text: "日本旅行（tabiwa）のバウチャー通知" }),
+    h("h4", { text: "日本旅行（tabiwa）のバウチャー通知・日本旅行（EX）の予約通知" }),
     h("div", { class: "fields" },
-      f("agencyId", "旅行会社のID（予約登録画面のURLの travel_agency_id）"), f("manager", "手配担当者"), f("prefix", "団体名の頭に付ける文字"),
+      f("agencyId", "旅行会社のID（予約登録画面のURLの travel_agency_id）"), f("manager", "手配担当者"), f("prefix", "団体名の頭に付ける文字（tabiwa）"), f("prefixEx", "団体名の頭に付ける文字（EX）"),
       f("start", "入店時間", { placeholder: "11:00" }), f("end", "退店時間", { placeholder: "17:00" }),
       f("payCourse", "コース支払方法")),
-    h("div", { class: "small muted", text: "商品の対応：通知の商品名に「含む文字」が入っていれば、その店舗・コースで登録します。店舗名・コース名はTravel Dineの表示と同じ文字で書いてください（前方一致でも探します）。" }),
+    h("div", { class: "small muted", text: "商品の対応：通知の商品名に「含む文字」が入っていれば、その店舗・コースで登録します（tabiwa・EX共通。いくつも当てはまるときは、含む文字がいちばん長いもの）。例：「特得パック【串カツ15本】」を足すと、15本の商品だけ別のコースにできます。店舗名・コース名はTravel Dineの表示と同じ文字で書いてください（前方一致でも探します）。" }),
     h("div", { class: "scroll" }, h("table", { class: "list" }, h("thead", {}, h("tr", {}, ...["通知の商品名に含む文字", "店舗", "コース", ""].map((t) => h("th", { text: t })))), prodBody)),
     h("div", { class: "row" },
       h("button", { type: "button", class: "btn sm", text: "＋ 商品の対応を追加", onclick: () => { R.products.push({ id: uid("p"), match: "", store: "", course: "" }); dirty(); render(); } }),
