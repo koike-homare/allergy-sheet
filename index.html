@@ -780,7 +780,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 246</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 247</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -2290,6 +2290,61 @@ function viewTdImp() {
   return out.filter(Boolean);
 }
 /** 一般様式の行で、スタッフが選んだときの処理（選んだ対応は覚える） */
+/** 日本の祝日名（振替休日・国民の休日を含む）。祝日でなければ "" */
+function jpHoliday(d) {
+  const y = d.getFullYear(), m = d.getMonth() + 1, day = d.getDate(), wd = d.getDay();
+  const eq = (base) => Math.floor(base + 0.242194 * (y - 1980) - Math.floor((y - 1980) / 4));
+  const base = (mm, dd, w, nt) => {
+    if (mm === 1 && dd === 1) return "元日";
+    if (mm === 1 && w === 1 && Math.ceil(dd / 7) === 2) return "成人の日";
+    if (mm === 2 && dd === 11) return "建国記念の日";
+    if (mm === 2 && dd === 23) return "天皇誕生日";
+    if (mm === 3 && dd === eq(20.8431)) return "春分の日";
+    if (mm === 4 && dd === 29) return "昭和の日";
+    if (mm === 5 && dd === 3) return "憲法記念日";
+    if (mm === 5 && dd === 4) return "みどりの日";
+    if (mm === 5 && dd === 5) return "こどもの日";
+    if (mm === 7 && w === 1 && Math.ceil(dd / 7) === 3) return "海の日";
+    if (mm === 8 && dd === 11) return "山の日";
+    if (mm === 9 && w === 1 && Math.ceil(dd / 7) === 3) return "敬老の日";
+    if (mm === 9 && dd === eq(23.2488)) return "秋分の日";
+    if (mm === 10 && w === 1 && Math.ceil(dd / 7) === 2) return "スポーツの日";
+    if (mm === 11 && dd === 3) return "文化の日";
+    if (mm === 11 && dd === 23) return "勤労感謝の日";
+    return "";
+  };
+  const at = (k) => { const x = new Date(y, m - 1, day + k); return [x, base(x.getMonth() + 1, x.getDate(), x.getDay())]; };
+  const b = base(m, day, wd); if (b) return b;
+  // 振替休日：日曜の祝日のあと、最初の祝日でない日
+  for (let k = 1; k <= 6; k++) { const [x, n] = at(-k); if (!n) break; if (x.getDay() === 0) return "振替休日"; }
+  // 国民の休日：前後が祝日にはさまれた平日
+  if (wd !== 0 && at(-1)[1] && at(1)[1]) return "国民の休日";
+  return "";
+}
+/** 利用日の曜日（祝日は「月/祝」）と、連休・GW・お盆・年末年始の注意 */
+function tdiDayInfo(s) {
+  const m = /^(\d{4})\D(\d{1,2})\D(\d{1,2})/.exec(String(s || "").trim()); if (!m) return null;
+  const d = new Date(+m[1], +m[2] - 1, +m[3]); if (isNaN(d)) return null;
+  const W = "日月火水木金土", hol = jpHoliday(d), wd = d.getDay();
+  const off = (x) => x.getDay() === 0 || x.getDay() === 6 || !!jpHoliday(x);
+  const md = (x) => `${x.getMonth() + 1}/${x.getDate()}`;
+  const notes = [];
+  if (off(d)) { // 土日・祝日が3日以上続く連休の中か
+    let a = new Date(d), z = new Date(d);
+    while (off(new Date(a.getFullYear(), a.getMonth(), a.getDate() - 1))) a = new Date(a.getFullYear(), a.getMonth(), a.getDate() - 1);
+    while (off(new Date(z.getFullYear(), z.getMonth(), z.getDate() + 1))) z = new Date(z.getFullYear(), z.getMonth(), z.getDate() + 1);
+    const n = Math.round((z - a) / 864e5) + 1;
+    if (n >= 3) notes.push(`${n}連休中（${md(a)}〜${md(z)}）`);
+  }
+  const mo = d.getMonth() + 1, dd = d.getDate();
+  if ((mo === 4 && dd >= 29) || (mo === 5 && dd <= 6)) notes.push("GW期間中");
+  if (mo === 8 && dd >= 10 && dd <= 16) notes.push("お盆期間中");
+  if ((mo === 12 && dd >= 28) || (mo === 1 && dd <= 4)) notes.push("年末年始");
+  const col = hol ? "#d9730d" : wd === 0 ? "var(--bad)" : wd === 6 ? "var(--ok)" : "var(--muted)";
+  return h("div", { class: "small", style: "line-height:1.4;margin-top:2px" },
+    h("span", { style: `font-weight:700;color:${col}`, text: `（${W[wd]}${hol ? "/祝" : ""}）` }), hol ? h("span", { style: `color:${col}`, text: hol }) : null,
+    notes.length ? h("div", { style: "color:var(--bad);font-weight:700", text: `⚠ ${notes.join("・")}` }) : null);
+}
 function tdiPick(r, what, v, v2) {
   const P = tdiPays();
   if (what === "agency") {
@@ -2505,7 +2560,7 @@ function tdiTable() {
       pair ? null : h("button", { type: "button", class: "btn sm", text: r.skip ? "登録するに戻す" : "登録しない", title: "この予約をTravel Dineに登録しない", onclick: () => { r.skip = !r.skip; tdiCheck(r); ch(); } }));
     const num = (k, min = 0) => inp(k, { type: "number", min, style: "width:84px" });
     const top = h("div", { class: "stack", style: "gap:8px" },
-      h("div", { class: "tdi-g" }, fld("利用日", inp("date")), gen ? fld("時間", h("span", {}, h("span", { class: "row", style: "gap:4px;flex-wrap:nowrap" }, inp("start", { style: "width:72px", placeholder: "11:00" }), "〜", inp("end", { style: "width:72px", placeholder: "12:30" })), r.endAuto && r.stayWhy ? h("div", { class: "small muted", text: `滞在${r.stayMin % 60 ? r.stayMin + "分" : r.stayMin / 60 + "時間"}：${r.stayWhy}` }) : !r.endAuto && r.end ? h("div", { class: "small muted", text: "終了：資料・手入力" }) : null)) : null,
+      h("div", { class: "tdi-g" }, fld("利用日", h("span", {}, inp("date", { style: "width:100%" }), tdiDayInfo(r.date))), gen ? fld("時間", h("span", {}, h("span", { class: "row", style: "gap:4px;flex-wrap:nowrap" }, inp("start", { style: "width:72px", placeholder: "11:00" }), "〜", inp("end", { style: "width:72px", placeholder: "12:30" })), r.endAuto && r.stayWhy ? h("div", { class: "small muted", text: `滞在${r.stayMin % 60 ? r.stayMin + "分" : r.stayMin / 60 + "時間"}：${r.stayWhy}` }) : !r.endAuto && r.end ? h("div", { class: "small muted", text: "終了：資料・手入力" }) : null)) : null,
         fld("団体名", h("span", {}, inp("groupName", { style: "width:100%" }), (gen ? r.groupKana : r.kanji) ? h("div", { class: "small muted", text: gen ? r.groupKana : r.kanji }) : null), 2),
         tySelTop ? fld("区分 *", h("span", {}, tySelTop, r.isSchool ? h("div", { class: "small muted", text: "資料：学校・教育旅行" }) : null)) : null,
         ctSelTop ? fld("国籍 *", h("span", {}, ctSelTop, r.nationality ? h("div", { class: "small muted", text: "資料：" + r.nationality }) : null)) : null,
