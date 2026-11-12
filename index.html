@@ -21,7 +21,8 @@
 .tdi-mailv{position:sticky;top:8px}
 .tdi-mailbody{white-space:pre-wrap;word-break:break-word;font:13px/1.6 inherit;font-family:inherit;max-height:520px;overflow:auto;margin:0;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
 @media (max-width:900px){.tdi-cols,.tdi-split{grid-template-columns:1fr}}
-.tdi-cmp{display:grid;grid-template-columns:120px minmax(0,1fr) minmax(0,1.3fr);border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.tdi-cmp{display:grid;grid-template-columns:120px minmax(0,1fr) minmax(0,1.3fr);border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.tdi-cmp>.tdi-ng{background:var(--bad-soft)}.tdi-cmp>.lb.tdi-ng{box-shadow:inset 3px 0 0 var(--bad);color:var(--bad)}.tdi-ngi{border-color:var(--bad)!important;background:var(--bad-soft)!important}.tdi-ready{color:var(--ok);font-weight:700;font-size:14px}
 .tdi-cmp>div{padding:7px 10px;border-top:1px solid var(--line);min-width:0;font-size:13px}
 .tdi-cmp>.hd{border-top:0;background:var(--sunken);font-size:11px;font-weight:700;color:var(--muted)}
 .tdi-cmp>.lb{font-size:12px;font-weight:700;color:var(--muted);background:var(--sunken)}
@@ -33,6 +34,13 @@
 .tdi-ppl{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-start;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
 .tdi-ppl .tdi-f{min-width:0}
 .tdi-ppl-sep{width:1px;align-self:stretch;background:var(--line);margin:0 4px}
+.tdi-combo{position:relative;width:100%}
+.tdi-combo-list{position:absolute;z-index:60;left:0;right:0;top:calc(100% + 2px);max-height:320px;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.18)}
+.tdi-combo-list[hidden]{display:none}
+.tdi-combo-grp{padding:4px 8px;font-size:11px;font-weight:700;color:var(--muted);background:var(--sunken);position:sticky;top:0}
+.tdi-combo-item{padding:6px 10px;cursor:pointer;font-size:13px}
+.tdi-combo-item:hover,.tdi-combo-item.act{background:var(--accent-soft)}
+.tdi-combo-item.sel{font-weight:700}
 </style>
 </head>
 <body>
@@ -772,7 +780,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 244</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 246</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1783,6 +1791,8 @@ function tdiMatchStore(texts) {
   const cands = sc.filter((x) => x[1] >= 0.35).slice(0, 6).map((x) => x[0].id);
   if (list.length > 1) return { id: "", cands, how: `店舗の候補が${list.length}つあります（${list.join("・")}）` };
   if (top && top[1] >= 0.6 && top[1] - second[1] >= 0.15) return { id: top[0].id, cands: [], how: "店舗名" };
+  const coreHit = M.stores.filter((st) => list.some((t) => { const w = core(t), k = hira(tdiKey(st.name)); return w.length && w.join("").length >= 2 && w.every((x) => k.includes(x)); }));
+  if (coreHit.length === 1) return { id: coreHit[0].id, cands: [], how: "店舗名（主な語が一致）" }; // 例：鶴亀家 大阪新世界店 → 串かつ・どて焼 名代 鶴亀家
   return { id: "", cands, how: cands.length ? "店舗が1つに決まりません" : "店舗名に合う店舗がありません" };
 }
 /** コース（または飲み放題）を当てはめる。名前がはっきり合うとき、または覚えた対応があるときだけ決める（金額だけ合うものは候補に出す） */
@@ -1870,7 +1880,7 @@ function tdiApplyStay(r) {
   const s = tdiStay(r); r.end = tdiAddMin(r.start, s.min); r.stayMin = s.min; r.stayWhy = s.why;
 }
 function tdiCheck(r) {
-  const pr = [], wa = [];
+  const pr = [], wa = [], bk = [];
   if (r.kind && r.kind !== "予約") pr.push(`「${r.kind}」の通知です（新規予約ではありません。Travel Dineで手作業で対応してください）`);
   if (!/^\d{4}\/\d{2}\/\d{2}$/.test(r.date)) pr.push("利用日が読み取れません");
   if (!(Number(r.adults) >= 1)) pr.push("大人の人数が読み取れません");
@@ -1885,34 +1895,37 @@ function tdiCheck(r) {
       if (a && b && a !== b) pr.push(`商品（${a}本・枚）とコース（${b}本・枚）の数が違います。取込ルールの「商品の対応」に、この商品の対応を追加してください`);
     }
   } else {
-    if (!r.groupName) pr.push("団体名が読み取れません");
+    const ng = (k, m) => { pr.push(m); bk.push(k); };
+    if (!r.groupName) ng("groupName", "団体名が読み取れません");
     if (!tdi.master) pr.push("旅行会社・店舗・コースを決められません。Travel Dineの一覧（TDマスタ）がまだT-COREに入っていないためです。");
     else {
-      if (!r.agencyId) pr.push(`旅行会社を選んでください（${r.agHow || "決まりません"}）`);
-      else { const L = tdiMgrs(r.agencyId); if (L && !L.length) pr.push("この旅行会社の手配担当者がTravel Dineに登録されていません（Travel Dineで担当者を追加し、TDマスタを取り直してください）"); else if (L && !r.manager) pr.push(`手配担当者を選んでください（${L.length}人）`); }
-      if (!r.storeId) pr.push(`店舗を選んでください（${r.stHow || "決まりません"}）`);
-      else if (!r.courseId) pr.push(`コースを選んでください（${r.coHow || "決まりません"}）`);
-      if (r.storeId && r.drinkText && !r.drinkId && !r.noDrink) pr.push(`飲み放題を選んでください（${r.drHow || "決まりません"}）`);
-      if (!r.payCourse) pr.push(`支払方法を選んでください（${r.payHow || "決まりません"}）`);
-      else if (tdiIsCp(r.payCourse) && !r.payCourseCp) pr.push("クーポンの種類を選んでください");
-      if (r.drinkId && r.payDrink && tdiIsCp(r.payDrink) && !r.payDrinkCp) pr.push("飲み放題のクーポンの種類を選んでください");
-      if (!r.countryId) pr.push(`国籍を選んでください（${r.nationality || "不明"}）`);
+      if (!r.agencyId) ng("agency", `旅行会社を選んでください（${r.agHow || "決まりません"}）`);
+      else { const L = tdiMgrs(r.agencyId); if (L && !L.length) ng("manager", "この旅行会社の手配担当者がTravel Dineに登録されていません（Travel Dineで担当者を追加し、TDマスタを取り直してください）"); else if (L && !r.manager) ng("manager", `手配担当者を選んでください（${L.length}人）`); }
+      if (!r.storeId) ng("store", `店舗を選んでください（${r.stHow || "決まりません"}）`);
+      else if (!r.courseId) ng("course", `コースを選んでください（${r.coHow || "決まりません"}）`);
+      if (r.storeId && r.drinkText && !r.drinkId && !r.noDrink) ng("drink", `飲み放題を選んでください（${r.drHow || "決まりません"}）`);
+      if (!r.payCourse) ng("pay", `支払方法を選んでください（${r.payHow || "決まりません"}）`);
+      else if (tdiIsCp(r.payCourse) && !r.payCourseCp) ng("pay", "クーポンの種類を選んでください");
+      if (r.drinkId && r.payDrink && tdiIsCp(r.payDrink) && !r.payDrinkCp) ng("payDrink", "飲み放題のクーポンの種類を選んでください");
+      if (!r.countryId) ng("country", `国籍を選んでください（${r.nationality || "不明"}）`);
       if (r.dgMode) {
-        if (!((Number(r.dgTogether) || 0) + (Number(r.dgSeparate) || 0))) pr.push("添乗員の食事：同席・別席の人数を入れてください");
+        if (!((Number(r.dgTogether) || 0) + (Number(r.dgSeparate) || 0))) ng("dg", "添乗員の食事：同席・別席の人数を入れてください");
         const st = tdiStore(r.storeId);
-        if (r.dgMode === "sep" && st && st.dg && !st.dg.length) pr.push("この店舗には添乗員コース（別食）がTravel Dineに登録されていません");
-        else if (r.dgMode === "sep" && st && st.dg && !r.dgMenuId) pr.push("添乗員コース（別食）を選んでください");
-        if (r.payConductor && tdiIsCp(r.payConductor) && !r.payConductorCp) pr.push("添乗員コースのクーポンの種類を選んでください");
+        if (r.dgMode === "sep" && st && st.dg && !st.dg.length) ng("dg", "この店舗には添乗員コース（別食）がTravel Dineに登録されていません");
+        else if (r.dgMode === "sep" && st && st.dg && !r.dgMenuId) ng("dg", "添乗員コース（別食）を選んでください");
+        if (r.payConductor && tdiIsCp(r.payConductor) && !r.payConductorCp) ng("payConductor", "添乗員コースのクーポンの種類を選んでください");
       }
     }
-    if (!/^\d{2}:\d{2}$/.test(r.start || "")) pr.push("開始時間が読み取れません");
-    if (!/^\d{2}:\d{2}$/.test(r.end || "")) pr.push("終了時間を入れてください");
+    if (!/^\d{2}:\d{2}$/.test(r.start || "")) ng("start", "開始時間が読み取れません");
+    if (!/^\d{2}:\d{2}$/.test(r.end || "")) ng("end", "終了時間を入れてください");
     if (r.endAuto) wa.push(`終了時間は書類になく、滞在${r.stayMin || tdi.rules.stay || 90}分（${r.stayWhy || "標準"}）で補っています`);
     if (r.courseId && r.coHow && /コース未定/.test(r.coHow)) wa.push("コースは「コース未定」で登録します（" + r.courseText + "）。決まったらTravel Dineで変更してください");
     if (r.notes) wa.push("要望・確認事項：" + r.notes);
     if (r.uncertain && r.uncertain.length) wa.push("読み取りに自信がない項目：" + r.uncertain.join("・"));
   }
-  r.problems = pr; r.warns = (r.mailWarns || []).concat(wa);
+  r.problems = pr; r.badKeys = bk; r.warns = (r.mailWarns || []).concat(wa);
+  // 不備がなければ自動で登録対象（チェック不要）。「登録しない」にしたものと、取消・変更と組になった予約は除く
+  if (!r.pairWith) r.include = !pr.length && !r.skip; else if (pr.length) r.include = false;
   return r;
 }
 /** マスタ・覚えた対応・取込ルールが変わったとき、まだスタッフが選んでいない項目を当てはめ直す */
@@ -2079,7 +2092,6 @@ function tdiRowOf(b, id) {
   tdiAuto(r);
   if (r.fmt !== "tabiwa" && r.agencyId && !tdiMgrs(r.agencyId)) r.manager = tdi.learn["mg:" + r.agencyId] || "";
   tdiCheck(r);
-  r.include = !r.problems.length && !r.warns.length; // 要確認があるものは、スタッフが確認してチェックを入れる
   return r;
 }
 /** 同じお客様・同じ利用日の「予約」と「取消・変更」が一覧にあれば組み合わせる。
@@ -2182,7 +2194,7 @@ function tdiAddFromMail(its) {
     const extra = ["メールから取り込みました。原本のメールと照合してください"];
     if (TDI_VACANCY.test([it.b.notes, it.mail.snippet].join(" "))) extra.push("空き確認を兼ねた依頼です。空きを確認してから登録してください");
     for (const u of it.mail.unreadable || []) extra.push("メール：" + u);
-    r.mailWarns = extra; tdiCheck(r); r.include = false;
+    r.mailWarns = extra; tdiCheck(r);
     return r;
   });
   tdi.rows = tdi.rows.concat(added); tdiPair(); tdi.mailOpen = false;
@@ -2292,13 +2304,15 @@ function tdiPick(r, what, v, v2) {
     r.drManual = true; r.noDrink = v === "__none"; r.drinkId = v === "__none" ? "" : v;
     if (r.drinkText && r.storeId && v) tdiRemember("dr:" + r.storeId + "|" + tdiKey(r.drinkText) + "|" + (Number(r.drinkPrice) || 0), r.drinkId);
   } else if (what === "pay") {
+    const oldCp = r.payCourseCp;
     r.payManual = true; r.payCourse = v; if (!tdiIsCp(v)) r.payCourseCp = ""; else if (v2 != null) r.payCourseCp = v2;
+    // 飲み放題・添乗員コースもクーポン払いなら、コースと同じクーポンの種類にそろえる（別の種類を選んでいたものは変えない）
+    if (r.payCourseCp) for (const k of ["payDrink", "payConductor"]) if (tdiIsCp(r[k]) && (!r[k + "Cp"] || r[k + "Cp"] === oldCp)) r[k + "Cp"] = r.payCourseCp;
     if (r.payText && r.payCourse && (!tdiIsCp(r.payCourse) || r.payCourseCp)) tdiRemember("pay:" + tdiKey(r.payText), { pay: r.payCourse, cp: r.payCourseCp || "" });
     void P;
   } else if (what === "type") { r.typeId = v; r.tyManual = true; }
   else if (what === "country") { r.countryId = v; r.ctManual = true; if (!r.tyManual) r.typeId = r.isSchool ? "4" : v && v !== "1" ? "3" : "1"; }
   tdiAuto(r); tdiCheck(r);
-  if (r.problems.length) r.include = false; else if (!r.warns.length && !r.pairWith) r.include = true; // 選んで決まったら取込対象にする
   render();
 }
 /** 旅行会社の候補（Travel Dineの旅行会社のうち、FAXの電話・FAX番号や会社名・支店名が近いもの）を一覧にする */
@@ -2328,6 +2342,43 @@ function tdiAgCandBox(r) {
       r.agencyId ? h("button", { type: "button", class: "btn sm", text: "閉じる", onclick: () => { r.showAgCands = false; render(); } }) : null),
     h("div", { class: "small muted", text: "✓はFAXの電話・FAX番号と一致。太字は会社名・支店名が近いもの。" }), h("div", { style: "overflow-x:auto" }, body));
 }
+/** 入力して絞り込める選択欄（店舗・コース・旅行会社・手配担当者）。
+    options: [{ id, label, sub, key }]　cands: 先頭に「候補」として出すID。1文字（例：「鶴」）から部分一致で絞り込む（ひらがな・カタカナ、全角・半角の違いは無視） */
+const tdiFold = (s) => String(s || "").normalize("NFKC").toLowerCase().replace(/[\u30a1-\u30f6]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60)).replace(/[\s　・･.,、。()（）【】\[\]「」\-‐－—~〜_]/g, "");
+function tdiCombo({ value, options, cands = [], placeholder = "", onPick, empty = "" }) {
+  const cur = options.find((o) => o.id === String(value || ""));
+  const wrap = h("div", { class: "tdi-combo" });
+  const input = h("input", { value: cur ? cur.label : "", placeholder: placeholder || "入力して探す（例：「鶴」）", style: "width:100%", autocomplete: "off" });
+  const list = h("div", { class: "tdi-combo-list", hidden: true });
+  let shown = [], act = -1;
+  const pick = (o) => { list.hidden = true; input.blur(); onPick(o ? o.id : ""); };
+  const draw = (q) => {
+    const k = tdiFold(q), cs = cands.map((id) => options.find((o) => o.id === String(id))).filter(Boolean);
+    const hit = k ? options.filter((o) => (o.key || (o.key = tdiFold(o.label + " " + (o.sub || "")))).includes(k)) : options;
+    const rest = hit.filter((o) => !cs.includes(o)).slice(0, 100);
+    shown = [...(k ? cs.filter((o) => hit.includes(o)) : cs), ...rest]; act = -1;
+    const row = (o, i) => h("div", { class: "tdi-combo-item" + (cur && o.id === cur.id ? " sel" : ""), "data-i": i, onmousedown: (e) => { e.preventDefault(); pick(o); } },
+      h("span", { text: o.label }), o.sub ? h("span", { class: "small muted", text: "　" + o.sub }) : null);
+    const nc = k ? cs.filter((o) => hit.includes(o)).length : cs.length;
+    list.replaceChildren(
+      ...(nc ? [h("div", { class: "tdi-combo-grp", text: "候補" }), ...shown.slice(0, nc).map(row)] : []),
+      ...(shown.length > nc ? [h("div", { class: "tdi-combo-grp", text: k ? `「${q}」を含むもの（${hit.length}件${hit.length > 100 ? "・先頭100件" : ""}）` : "すべて" }), ...shown.slice(nc).map((o, i) => row(o, i + nc))] : []),
+      ...(!shown.length ? [h("div", { class: "small muted", style: "padding:6px 8px", text: `「${q}」を含むものはありません` })] : []),
+      ...(empty && cur ? [h("div", { class: "tdi-combo-item muted", onmousedown: (e) => { e.preventDefault(); pick(null); }, text: empty })] : []));
+    list.hidden = false;
+  };
+  const hl = () => list.querySelectorAll(".tdi-combo-item").forEach((el) => el.classList.toggle("act", Number(el.dataset.i) === act));
+  input.addEventListener("focus", () => { input.select(); draw(""); });
+  input.addEventListener("input", () => draw(input.value));
+  input.addEventListener("blur", () => setTimeout(() => { list.hidden = true; input.value = cur ? cur.label : ""; }, 150));
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); if (list.hidden) draw(input.value); act = Math.max(0, Math.min(shown.length - 1, act + (e.key === "ArrowDown" ? 1 : -1))); hl(); list.querySelector(".tdi-combo-item.act")?.scrollIntoView({ block: "nearest" }); }
+    else if (e.key === "Enter") { e.preventDefault(); const o = shown[act >= 0 ? act : 0]; if (o && (act >= 0 || shown.length === 1 || input.value.trim())) pick(o); }
+    else if (e.key === "Escape") { list.hidden = true; input.blur(); }
+  });
+  wrap.append(input, list);
+  return wrap;
+}
 function tdiTable() {
   tdiPair(); // 日付や氏名を直したときも、組み合わせを見直す
   const rows = tdi.rows, ok = rows.filter((r) => !r.problems.length), inc = rows.filter((r) => r.include && !r.problems.length), M = tdi.master, P = tdiPays();
@@ -2341,7 +2392,8 @@ function tdiTable() {
   const kv = (list) => h("div", { class: "tdi-kv" }, ...list.filter((x) => x && x[1]).flatMap(([k, v, cls]) => [h("span", { class: "tdi-l", text: k }), h("span", { class: cls || "", text: v })]));
   const tb = h("div", { class: "stack", style: "gap:10px" }, ...rows.map((r, i) => {
     const bad = r.problems.length, warn = !bad && r.warns.length, gen = r.fmt !== "tabiwa";
-    const inp = (key, attrs = {}) => h("input", { value: r[key] ?? "", ...attrs, oninput: (e) => { r[key] = attrs.type === "number" ? Number(e.target.value) : e.target.value; if (key === "store" || key === "course") r.manualMap = true; if (key === "end") r.endAuto = false; tdiCheck(r); }, onchange: () => { if (key === "date") r.date = tdiDate(r.date) || r.date; if (key === "start") tdiApplyStay(r); tdiCheck(r); if (r.problems.length) r.include = false; ch(); } });
+    const ngK = (k) => (r.badKeys || []).includes(k), ngC = (k) => (ngK(k) ? { class: "tdi-ngi" } : {});
+    const inp = (key, attrs = {}) => h("input", { value: r[key] ?? "", ...ngC(key), ...attrs, oninput: (e) => { r[key] = attrs.type === "number" ? Number(e.target.value) : e.target.value; if (key === "store" || key === "course") r.manualMap = true; if (key === "end") r.endAuto = false; tdiCheck(r); }, onchange: () => { if (key === "date") r.date = tdiDate(r.date) || r.date; if (key === "start") tdiApplyStay(r); tdiCheck(r); ch(); } });
     const pair = !bad && r.pairWith;
     const staff = [["添乗員", r.conductors], ["ガイド", r.guides], ["ドライバー", r.drivers]].filter((x) => x[1] > 0).map((x) => x[0] + x[1]).join("・");
     let mapBox, docBox, tySelTop = null, ctSelTop = null; // 区分・国籍は団体名の横に出す
@@ -2361,33 +2413,34 @@ function tdiTable() {
         const W = "width:100%";
         const cand = (r.agCands || []).map((id) => tdiAg(id)).filter(Boolean);
         if (r.agencyId && !cand.some((a) => a[0] === r.agencyId) && tdiAg(r.agencyId)) cand.unshift(tdiAg(r.agencyId));
-        const agSel = sel(r.agencyId, [["", "（旅行会社を選ぶ）"], ...cand.map((a) => [a[0], `${tdiAgName(a)}${a[3] ? "（" + a[3] + "）" : ""}`])], (v) => tdiPick(r, "agency", v), { style: W });
-        const agFind = h("input", { list: "tdi-ags", placeholder: "候補にないとき：会社名・番号で探す", style: W, onchange: (e) => { const m = /#(\d+)$/.exec(e.target.value); if (m) tdiPick(r, "agency", m[1]); } });
+        const agSel = tdiCombo({ value: r.agencyId, cands: (r.agCands || []).concat(r.agencyId ? [r.agencyId] : []), placeholder: "（旅行会社を選ぶ）会社名・支店名・電話番号で探す",
+          options: M.agencies.map((a) => ({ id: a[0], label: tdiAgName(a), sub: [a[3] && "TEL " + a[3], a[4] && "FAX " + a[4]].filter(Boolean).join("　") })), onPick: (v) => tdiPick(r, "agency", v) });
+        const agFind = null;
         const stCand = (r.stCands || []).map((id) => tdiStore(id)).filter(Boolean);
-        const stSel = sel(r.storeId, [["", "（店舗を選ぶ）"], ...(stCand.length ? [{ group: "候補", items: stCand.map((s) => [s.id, s.name]) }] : []), { group: "すべての店舗", items: M.stores.map((s) => [s.id, s.name]) }], (v) => tdiPick(r, "store", v), { style: W });
+        const stSel = tdiCombo({ value: r.storeId, cands: (r.stCands || []).filter((id) => tdiStore(id)), placeholder: "（店舗を選ぶ）店名で探す（例：「鶴」）", options: M.stores.map((x) => ({ id: x.id, label: x.name })), onPick: (v) => tdiPick(r, "store", v) });
         const yen = (m) => `${m[1]}${m[2] ? `（${m[2].toLocaleString()}円）` : ""}`;
         const coCand = st ? (r.coCands || []).map((id) => (st.main || []).find((m) => m[0] === id)).filter(Boolean) : [];
-        const coSel = st ? sel(r.courseId, [["", "（コースを選ぶ）"], ...(coCand.length ? [{ group: "候補", items: coCand.map((m) => [m[0], yen(m)]) }] : []), { group: "この店舗のコース", items: (st.main || []).map((m) => [m[0], yen(m)]) }], (v) => tdiPick(r, "course", v), { style: W }) : h("span", { class: "small muted", text: "店舗を選ぶと出ます" });
+        const coSel = st ? tdiCombo({ value: r.courseId, cands: coCand.map((m) => m[0]), placeholder: "（コースを選ぶ）コース名・金額で探す", options: (st.main || []).map((m) => ({ id: m[0], label: m[1] })), onPick: (v) => tdiPick(r, "course", v) }) : h("span", { class: "muted", text: "店舗を選ぶと出ます" });
         const drSel = st && ((st.drink || []).length || r.drinkText) ? sel(r.noDrink ? "__none" : r.drinkId, [["", r.drinkText ? "（飲み放題を選ぶ）" : "なし"], ...(r.drinkText ? [["__none", "飲み放題なしで登録"]] : []), ...(st.drink || []).map((m) => [m[0], yen(m)])], (v) => tdiPick(r, "drink", v), { style: W }) : null;
         const paySel = sel(r.payCourse, [["", "（支払方法を選ぶ）"], ...P.methods.map((m) => [m, m])], (v) => tdiPick(r, "pay", v), { style: W });
         const cpSel = tdiIsCp(r.payCourse) || (!r.payCourse && r.payCourseCp) ? sel(r.payCourseCp, [["", "（クーポンの種類）"], ...P.cps.map((c) => [c, c])], (v) => tdiPick(r, "pay", r.payCourse, v), { style: W + ";margin-top:4px" }) : null;
         const tySel = sel(r.typeId, types, (v) => tdiPick(r, "type", v), { style: W });
-        const ctSel = sel(r.countryId, [["", "（国籍）"], ...(M.countries || [])], (v) => tdiPick(r, "country", v), { style: W });
+        const ctSel = sel(r.countryId, [["", "（国籍）"], ...(M.countries || [])], (v) => tdiPick(r, "country", v), { style: W, ...ngC("country") });
         tySelTop = tySel; ctSelTop = ctSel;
         const mgL = tdiMgrs(r.agencyId);
         const mg = mgL ? h("span", { class: "stack", style: "gap:4px" },
-            sel(r.manager, [["", r.agencyId ? (mgL.length ? `（手配担当者を選ぶ：${mgL.length}人）` : "（Travel Dineに登録なし）") : "（先に旅行会社を選ぶ）"], ...mgL.map((x) => [x[1], x[1]])], (v) => tdiPick(r, "manager", v), { style: W }),
+            tdiCombo({ value: r.manager, placeholder: r.agencyId ? (mgL.length ? `（手配担当者を選ぶ：${mgL.length}人）名前で探す` : "（Travel Dineに登録なし）") : "（先に旅行会社を選ぶ）", options: mgL.map((x) => ({ id: x[1], label: x[1] })), onPick: (v) => tdiPick(r, "manager", v) }),
             r.manager && r.mgHow ? h("div", { class: "small muted", text: "自動で選択：" + r.mgHow }) : null)
-          : h("input", { value: r.manager || "", placeholder: "1人だけなら空でOK", style: W, onchange: (e) => tdiPick(r, "manager", e.target.value.trim()) });
+          : h("input", { value: r.manager || "", placeholder: "1人だけなら空でOK", style: W, ...ngC("manager"), onchange: (e) => tdiPick(r, "manager", e.target.value.trim()) });
         const opt = (key, ph, attrs = {}) => h("input", { value: r[key] ?? "", placeholder: ph, style: W, ...attrs, onchange: (e) => { r[key] = attrs.type === "number" ? Number(e.target.value) || 0 : e.target.value.trim(); ch(); } });
         // 「項目｜資料・メールの内容｜Travel Dineに登録する内容」の3列で、同じ項目を横に並べる
         const dash = (v) => (v ? String(v) : "—"), sub = (t) => h("div", { class: "small muted", text: t });
-        const row = (label, doc, td, o = {}) => [h("div", { class: "lb" }, label, o.req ? h("span", { style: "color:var(--bad)", text: " *" }) : null), h("div", { class: "doc" }, ...(Array.isArray(doc) ? doc : [dash(doc)])), h("div", { class: "td" }, td)];
+        const row = (label, doc, td, o = {}) => [h("div", { class: "lb" + (o.k && ngK(o.k) ? " tdi-ng" : "") }, label, o.req ? h("span", { style: "color:var(--bad)", text: " *" }) : null), h("div", { class: "doc" }, ...(Array.isArray(doc) ? doc : [dash(doc)])), h("div", { class: "td" + (o.k && ngK(o.k) ? " tdi-ng" : "") }, td)];
         const payDrinkSel = r.drinkId ? h("span", { class: "stack", style: "gap:4px" },
-          sel(r.payDrink, [["", "コースと同じ"], ...P.methods.map((m) => [m, m])], (v) => { r.payDrink = v; if (!tdiIsCp(v)) r.payDrinkCp = ""; tdiCheck(r); ch(); }, { style: W }),
+          sel(r.payDrink, [["", "コースと同じ"], ...P.methods.map((m) => [m, m])], (v) => { r.payDrink = v; if (!tdiIsCp(v)) r.payDrinkCp = ""; else if (!r.payDrinkCp && tdiIsCp(r.payCourse) && r.payCourseCp) r.payDrinkCp = r.payCourseCp; tdiCheck(r); ch(); }, { style: W }),
           tdiIsCp(r.payDrink) ? sel(r.payDrinkCp, [["", "（クーポンの種類）"], ...P.cps.map((c) => [c, c])], (v) => { r.payDrinkCp = v; tdiCheck(r); ch(); }, { style: W }) : null) : null;
         const agDoc = [h("div", { text: [t.name, t.branch].filter(Boolean).join(" ") || "（なし）" }), [t.tel && "TEL " + t.tel, t.fax && "FAX " + t.fax].filter(Boolean).length ? sub([t.tel && "TEL " + t.tel, t.fax && "FAX " + t.fax].filter(Boolean).join("　")) : null].filter(Boolean);
-        const agTd = h("span", { class: "stack", style: "gap:4px" }, agSel, h("span", { class: "row", style: "gap:6px;flex-wrap:nowrap" }, agFind,
+        const agTd = h("span", { class: "stack", style: "gap:4px" }, h("span", { class: "row", style: "gap:6px;flex-wrap:nowrap" }, h("span", { style: "flex:1;min-width:0" }, agSel),
           r.agencyId && !r.showAgCands ? h("button", { type: "button", class: "btn sm", style: "white-space:nowrap", text: "候補を見る", onclick: () => { r.showAgCands = true; render(); } }) : null));
         const agOpen = !r.agencyId || r.showAgCands;
         // 旅行会社は「会社名・支店名・電話・FAX」の4行で照合し、一致・不一致を印で示す
@@ -2402,7 +2455,7 @@ function tdiTable() {
         const tdVal = (v, j) => h("div", { class: "row", style: "gap:8px;align-items:center" }, h("span", { text: ag ? v || "（空欄）" : "（未選択）", style: ag ? "" : "color:var(--muted)" }), markEl(j));
         const hit = [jName, jBr, jTel, jFax].filter((j) => j[0] === "ok").length;
         const agRows = [
-          ...row("旅行会社", t.name || "", h("span", { class: "stack", style: "gap:6px" }, agTd, ag ? tdVal(ag[1], jName) : null, ag ? h("div", { class: "small muted", text: `会社名・支店名・電話・FAXのうち ${hit}項目が一致` }) : null), { req: 1 }),
+          ...row("旅行会社", t.name || "", h("span", { class: "stack", style: "gap:6px" }, agTd, ag ? tdVal(ag[1], jName) : null, ag ? h("div", { class: "small muted", text: `会社名・支店名・電話・FAXのうち ${hit}項目が一致` }) : null), { req: 1, k: "agency" }),
           ...row("支店名", t.branch || "", brInName ? h("div", { class: "row", style: "gap:8px;align-items:center" }, h("span", { class: "muted", text: "（会社名に含まれています）" }), markEl(jBr)) : tdVal(ag && ag[2], jBr)),
           ...row("電話・FAX", [t.tel ? "TEL " + t.tel : "TEL —", t.fax ? "FAX " + t.fax : "FAX —"].join("　"),
             h("div", { class: "row", style: "gap:18px;flex-wrap:wrap" }, h("span", { class: "row", style: "gap:6px" }, h("span", { class: "muted", text: "TEL" }), tdVal(ag && ag[3], jTel)), h("span", { class: "row", style: "gap:6px" }, h("span", { class: "muted", text: "FAX" }), tdVal(ag && ag[4], jFax)))),
@@ -2411,10 +2464,10 @@ function tdiTable() {
           h("div", { class: "hd" }, "項目"), h("div", { class: "hd" }, "資料・メールの内容"), h("div", { class: "hd" }, "Travel Dineに登録する内容"),
           ...agRows,
           agOpen ? h("div", { class: "full" }, tdiAgCandBox(r)) : null,
-          ...row("手配担当者", r.agentStaff, mg, { req: 1 }),
-          ...row("店舗", (r.storeTexts || []).join(" ／ "), stSel, { req: 1 }),
-          ...row("コース", [r.courseText || "—", r.coursePrice ? sub(r.coursePrice.toLocaleString() + "円") : null].filter(Boolean), coSel, { req: 1 }),
-          ...row("飲み放題", [r.drinkText || "—", r.drinkPrice ? sub(r.drinkPrice.toLocaleString() + "円") : null].filter(Boolean), drSel || h("span", { class: "small muted", text: "店舗を選ぶと出ます" })),
+          ...row("手配担当者", r.agentStaff, mg, { req: 1, k: "manager" }),
+          ...row("店舗", (r.storeTexts || []).join(" ／ "), stSel, { req: 1, k: "store" }),
+          ...row("コース", [r.courseText || "—", r.coursePrice ? sub(r.coursePrice.toLocaleString() + "円") : null].filter(Boolean), coSel, { req: 1, k: "course" }),
+          ...row("飲み放題", [r.drinkText || "—", r.drinkPrice ? sub(r.drinkPrice.toLocaleString() + "円") : null].filter(Boolean), drSel || h("span", { class: "small muted", text: "店舗を選ぶと出ます" }), { k: "drink" }),
           ...row("添乗員の食事", [[r.docEscortMeal, r.docEscortSeat].filter(Boolean).join("・") || "—", (r.conductors || r.guides || r.drivers) ? sub(["添乗員" + (r.conductors || 0), "ガイド" + (r.guides || 0), "ドライバー" + (r.drivers || 0)].join("・")) : null].filter(Boolean), (() => {
             const st2 = tdiStore(r.storeId), dgl = st2 && st2.dg, setD = (k, v) => { r[k] = v; r.dgManual = true; tdiCheck(r); ch(); };
             const nIn = (k) => h("input", { type: "number", min: 0, value: r[k] || 0, style: "width:70px", onchange: (e) => setD(k, Number(e.target.value) || 0) });
@@ -2422,12 +2475,12 @@ function tdiTable() {
               sel(r.dgMode, [["", "なし（登録しない）"], ["same", "同食（お客様と同じコース）"], ["sep", "別食（添乗員コース）"]], (v) => { r.dgManual = true; r.dgMode = v; if (v && !((Number(r.dgTogether) || 0) + (Number(r.dgSeparate) || 0))) r.dgTogether = (Number(r.conductors) || 0) + (Number(r.guides) || 0) + (Number(r.drivers) || 0); if (v === "sep" && !r.dgMenuId && dgl && dgl.length === 1) r.dgMenuId = dgl[0][0]; tdiCheck(r); ch(); }, { style: W }),
               r.dgMode === "sep" ? (dgl ? sel(r.dgMenuId, [["", dgl.length ? "（添乗員コースを選ぶ）" : "（この店舗に添乗員コースなし）"], ...dgl.map((m) => [m[0], m[1]])], (v) => { r.dgMenuManual = true; setD("dgMenuId", v); }, { style: W }) : h("span", { class: "small muted", text: "TDマスタを取り直すと、添乗員コースを選べます" })) : null,
               r.dgMode ? h("span", { class: "row", style: "gap:6px;align-items:center" }, h("span", { class: "small", text: "同席" }), nIn("dgTogether"), h("span", { class: "small", text: "名　別席" }), nIn("dgSeparate"), h("span", { class: "small", text: "名" })) : null);
-          })()),
-          ...row("支払（コース）", r.payText, h("span", { class: "stack", style: "gap:4px" }, paySel, cpSel), { req: 1 }),
-          ...(payDrinkSel ? row("支払（飲み放題）", r.payText, payDrinkSel, { req: 1 }) : []),
+          })(), { k: "dg" }),
+          ...row("支払（コース）", r.payText, h("span", { class: "stack", style: "gap:4px" }, paySel, cpSel), { req: 1, k: "pay" }),
+          ...(payDrinkSel ? row("支払（飲み放題）", r.payText, payDrinkSel, { req: 1, k: "payDrink" }) : []),
           ...(r.dgMode ? row("支払（添乗員コース）", "", h("span", { class: "stack", style: "gap:4px" },
-            sel(r.payConductor, [["", "コースと同じ"], ...P.methods.map((m) => [m, m])], (v) => { r.payConductor = v; if (!tdiIsCp(v)) r.payConductorCp = ""; tdiCheck(r); ch(); }, { style: W }),
-            tdiIsCp(r.payConductor) ? sel(r.payConductorCp, [["", "（クーポンの種類）"], ...P.cps.map((c) => [c, c])], (v) => { r.payConductorCp = v; tdiCheck(r); ch(); }, { style: W }) : null), { req: 1 }) : []),
+            sel(r.payConductor, [["", "コースと同じ"], ...P.methods.map((m) => [m, m])], (v) => { r.payConductor = v; if (!tdiIsCp(v)) r.payConductorCp = ""; else if (!r.payConductorCp && tdiIsCp(r.payCourse) && r.payCourseCp) r.payConductorCp = r.payCourseCp; tdiCheck(r); ch(); }, { style: W }),
+            tdiIsCp(r.payConductor) ? sel(r.payConductorCp, [["", "（クーポンの種類）"], ...P.cps.map((c) => [c, c])], (v) => { r.payConductorCp = v; tdiCheck(r); ch(); }, { style: W }) : null), { req: 1, k: "payConductor" }) : []),
           ...row("支払（当日追加）", "", sel(r.payAddition || tdi.rules.payAddition, P.methods.filter((m) => !tdiIsCp(m)).map((m) => [m, m]), (v) => { r.payAddition = v; ch(); }, { style: W }), { req: 1 }),
           h("div", { class: "full sec" }, "任意の項目（空でも登録できます）"),
           ...row("社内向けメモ（予約印字なし）", r.notes, h("span", { class: "stack", style: "gap:4px" }, h("textarea", { rows: 3, style: W, placeholder: "要望・コメントなど（予約表には印字されません）", value: r.memo || "", onchange: (e) => { r.memo = e.target.value; ch(); } }),
@@ -2439,15 +2492,17 @@ function tdiTable() {
     }
     const msgs = bad ? h("div", { class: "tdi-msgs", style: "color:var(--bad)" }, ...r.problems.map((p) => h("div", { text: "・" + p })), gen && !M ? (r === rows.find((x) => x.fmt !== "tabiwa") ? tdiNoMasterHelp() : h("div", { style: "color:var(--ink)", text: "やることは1件目の説明を見てください。" })) : null, r.pairs && r.pairs.length ? h("div", { style: "color:var(--ink)", text: `一覧に同じ団体の予約があります：${r.pairs.map((n) => "No." + n).join("、")}（取込対象外にしています）` }) : null, ...(r.warns || []).map((w) => h("div", { style: "color:var(--warn)", text: "・" + w })))
       : pair ? h("div", { class: "tdi-msgs", style: "color:var(--warn);font-weight:700", text: `同じ団体・同じ利用日の${r.pairWith}があります。原本を確認し、取り込む場合は「登録する」にチェックを入れてください。` })
-      : warn ? h("div", { class: "tdi-msgs" }, ...r.warns.map((w) => h("div", { style: "color:var(--warn)", text: "・" + w })), r.include ? null : h("div", { class: "muted", text: "確認して問題なければ「登録する」にチェックを入れてください。" }))
-      : null;
-    const pill = bad ? h("span", { class: "pill bad", text: `要確認 ${r.problems.length}` }) : pair ? h("span", { class: "pill plain", text: r.include ? "取込する（確認済み）" : "対象外" }) : warn ? h("span", { class: r.include ? "pill ok" : "pill warn", text: r.include ? "確認済み" : "要確認" }) : h("span", { class: "pill ok", text: "OK" });
+      : h("div", { class: "tdi-msgs" }, ...(r.warns || []).map((w) => h("div", { style: "color:var(--warn)", text: "・" + w })),
+          r.skip ? h("div", { class: "muted", style: "font-weight:700", text: "この予約は登録しません（「登録する」に戻すと登録対象になります）" }) : h("div", { class: "tdi-ready", text: "✓ 登録準備完了" }));
+    const pill = bad ? h("span", { class: "pill bad", text: `要確認 ${r.problems.length}` }) : pair ? h("span", { class: "pill plain", text: r.include ? "取込する（確認済み）" : "対象外" }) : r.skip ? h("span", { class: "pill plain", text: "登録しない" }) : h("span", { class: "pill ok", text: "登録準備完了" });
     const host = window.claude && window.claude.host, canMail = !!(r.mailId && host && host.openMail);
     const head = h("div", { class: "row", style: "gap:10px;align-items:center" },
-      h("label", { class: "row", style: "gap:6px;font-weight:700;cursor:pointer" }, h("input", { type: "checkbox", style: "width:auto;flex:none", checked: r.include, disabled: !!bad, "aria-label": "登録する", onchange: (e) => { r.include = e.target.checked; ch(); } }), "登録する"),
+      // 不備がなければ自動で登録対象。チェックは、取消・変更と組になった予約を取り込むときだけ使う
+      pair ? h("label", { class: "row", style: "gap:6px;font-weight:700;cursor:pointer" }, h("input", { type: "checkbox", style: "width:auto;flex:none", checked: r.include, "aria-label": "登録する", onchange: (e) => { r.include = e.target.checked; ch(); } }), "登録する") : null,
       h("span", { style: "font-weight:700", text: "No." + (i + 1) }), pill, r.tdRes ? h("span", { class: "pill " + (r.tdRes.st === "ok" ? "ok" : r.tdRes.st === "ng" ? "bad" : "plain"), title: r.tdRes.msg, text: "TD：" + r.tdRes.msg }) : null, r.dinii ? h("span", { class: "pill " + (r.dinii.st === "ok" ? "ok" : r.dinii.st === "ng" ? "bad" : "plain"), title: r.dinii.msg, text: "ダイニー：" + r.dinii.msg }) : null, r.notice ? h("span", { class: "small muted", text: r.notice }) : null,
       r.src && ((tdi.files || []).length > 1 || r.mailId) ? h("span", { class: "small muted", style: "min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap", title: r.src, text: r.src }) : h("span", { style: "flex:1" }),
-      canMail ? h("button", { type: "button", class: "btn sm" + (r.mailShow ? " primary" : ""), text: r.mailShow ? "メールを閉じる" : "メールを表示", onclick: () => { r.mailShow = !r.mailShow; if (r.mailShow) tdiLoadMail(r); ch(); } }) : null);
+      canMail ? h("button", { type: "button", class: "btn sm" + (r.mailShow ? " primary" : ""), text: r.mailShow ? "メールを閉じる" : "メールを表示", onclick: () => { r.mailShow = !r.mailShow; if (r.mailShow) tdiLoadMail(r); ch(); } }) : null,
+      pair ? null : h("button", { type: "button", class: "btn sm", text: r.skip ? "登録するに戻す" : "登録しない", title: "この予約をTravel Dineに登録しない", onclick: () => { r.skip = !r.skip; tdiCheck(r); ch(); } }));
     const num = (k, min = 0) => inp(k, { type: "number", min, style: "width:84px" });
     const top = h("div", { class: "stack", style: "gap:8px" },
       h("div", { class: "tdi-g" }, fld("利用日", inp("date")), gen ? fld("時間", h("span", {}, h("span", { class: "row", style: "gap:4px;flex-wrap:nowrap" }, inp("start", { style: "width:72px", placeholder: "11:00" }), "〜", inp("end", { style: "width:72px", placeholder: "12:30" })), r.endAuto && r.stayWhy ? h("div", { class: "small muted", text: `滞在${r.stayMin % 60 ? r.stayMin + "分" : r.stayMin / 60 + "時間"}：${r.stayWhy}` }) : !r.endAuto && r.end ? h("div", { class: "small muted", text: "終了：資料・手入力" }) : null)) : null,
@@ -2467,10 +2522,10 @@ function tdiTable() {
     const main = gen && M ? mapBox : h("div", { class: "tdi-cols" }, h("div", { class: "tdi-sec" }, h("div", { class: "tdi-h", text: "資料・メールの内容" }), docBox), h("div", { class: "tdi-sec" }, h("div", { class: "tdi-h", text: "Travel Dineに登録する内容" }), mapBox));
     const agc = null; // 旅行会社の候補は、一般様式の表の「旅行会社」の下に出す
     const mailBox = r.mailShow ? h("div", { class: "tdi-sec tdi-mailv" }, h("div", { class: "tdi-h", text: "元のメール" }), tdiMailView(r)) : null;
-    return h("div", { class: "tdi-card" + (pair ? " tdi-pair" : ""), style: bad ? "border-color:var(--bad);background:var(--bad-soft)" : pair ? `background:var(--sunken);${r.include ? "" : "color:var(--muted)"}` : warn && !r.include ? "border-color:var(--warn);background:var(--warn-soft)" : !r.include ? "opacity:.55" : "" },
+    return h("div", { class: "tdi-card" + (pair ? " tdi-pair" : ""), style: bad ? "border:2px solid var(--bad)" : pair ? `background:var(--sunken);${r.include ? "" : "color:var(--muted)"}` : r.skip ? "opacity:.55" : "border:2px solid var(--ok)" },
       head, top, mailBox ? h("div", { class: "tdi-split" }, h("div", { class: "stack", style: "gap:10px;min-width:0" }, main, agc, msgs), mailBox) : h("div", { class: "stack", style: "gap:10px" }, main, agc, msgs));
   }));
-  const needCheck = rows.filter((r) => r.problems.length || (r.warns.length && !r.include)).length;
+  const needCheck = rows.filter((r) => r.problems.length).length;
   return h("div", { class: "panel stack" },
     h("datalist", { id: "tdi-stores" }, ...stores.map((x) => h("option", { value: x }))),
     h("datalist", { id: "tdi-courses" }, ...courses.map((x) => h("option", { value: x }))),
