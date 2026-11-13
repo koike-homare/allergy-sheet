@@ -780,7 +780,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 247</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 250</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1698,7 +1698,7 @@ const TDI_DEFAULT = {
   ],
 };
 const TDI_OWN_TEL = ["0666318814", "0666318846"]; // 自社（HASSIN）の電話・FAX。書類に載っていても旅行会社の判別には使わない
-const tdi = { rules: null, rulesLoaded: false, rulesDirty: false, rows: [], src: "", busy: false, msg: "", showRules: false, master: null, learn: {}, showMaster: false };
+const tdi = { acc: null, accBusy: false, showAcc: false, rules: null, rulesLoaded: false, rulesDirty: false, rows: [], src: "", busy: false, msg: "", showRules: false, master: null, learn: {}, showMaster: false };
 const tdiNorm = (s) => String(s == null ? "" : s).normalize("NFKC").replace(/[\s　]/g, "");
 /** 会社名・店舗名の比較用：表記の揺れ（株式会社・㈱・記号・空白）をそろえる */
 const tdiKey = (s) => tdiNorm(s).toLowerCase().replace(/株式会社|有限会社|\(株\)|\(有\)|㈱|㈲|npo法人|一般社団法人|公益社団法人|御中|様$/g, "").replace(/[・･.,、。「」『』()（）【】\[\]〔〕\-‐－—~〜]/g, "");
@@ -1718,6 +1718,8 @@ async function tdiLoadRules() {
   try { const d = await db.doc("tdimport/rules").get(); if (d.exists) tdi.rules = { ...clone(TDI_DEFAULT), ...clone(d.data()) }; } catch (_) {}
   try { const d = await db.doc("tdimport/master").get(); if (d.exists) tdi.master = clone(d.data()); } catch (_) {}
   try { const d = await db.doc("tdimport/learn").get(); if (d.exists) tdi.learn = clone(d.data()) || {}; } catch (_) {}
+  try { const d = await db.doc("tdimport/accept").get(); if (d.exists) tdi.acc = clone(d.data()); } catch (_) {}
+  if (tdi.acc) tdiRecheck();
   if (view.name === "tdimp" || view.name === "mailtd") render();
 }
 async function tdiSaveRules() {
@@ -1920,12 +1922,15 @@ function tdiCheck(r) {
     if (!/^\d{2}:\d{2}$/.test(r.end || "")) ng("end", "終了時間を入れてください");
     if (r.endAuto) wa.push(`終了時間は書類になく、滞在${r.stayMin || tdi.rules.stay || 90}分（${r.stayWhy || "標準"}）で補っています`);
     if (r.courseId && r.coHow && /コース未定/.test(r.coHow)) wa.push("コースは「コース未定」で登録します（" + r.courseText + "）。決まったらTravel Dineで変更してください");
+    r.acc = tdiAccJudge(r);
+    if (r.acc && r.acc.none && r.storeId) wa.push(`受入れ指標：この店舗（${r.acc.store}）は指標のシートにありません`);
+    else if (r.acc && !r.acc.none && !r.acc.ok) wa.push(`受入れ指標：要相談（${r.acc.why}）。店舗に確認してから手配してください`);
     if (r.notes) wa.push("要望・確認事項：" + r.notes);
     if (r.uncertain && r.uncertain.length) wa.push("読み取りに自信がない項目：" + r.uncertain.join("・"));
   }
   r.problems = pr; r.badKeys = bk; r.warns = (r.mailWarns || []).concat(wa);
   // 不備がなければ自動で登録対象（チェック不要）。「登録しない」にしたものと、取消・変更と組になった予約は除く
-  if (!r.pairWith) r.include = !pr.length && !r.skip; else if (pr.length) r.include = false;
+  if (!r.pairWith) r.include = !pr.length && !r.skip && !(r.chk1m === "no" && tdiWithin1m(r)); else if (pr.length) r.include = false;
   return r;
 }
 /** マスタ・覚えた対応・取込ルールが変わったとき、まだスタッフが選んでいない項目を当てはめ直す */
@@ -2259,10 +2264,11 @@ function viewMailTd() {
   if (!tdi.rulesLoaded) { tdiLoadRules(); }
   tdiMode("mail"); if (tdi.mailOpen === undefined) tdi.mailOpen = true;
   const head = h("div", { class: "row" }, h("h2", { text: "Mail-TD取込" }), h("span", { class: "pill warn", text: "開発中" }), h("span", { style: "margin-left:auto" }),
-    h("button", { type: "button", class: "btn sm", text: tdi.showMaster ? "TDマスタを閉じる" : `TDマスタ${tdi.master ? "" : "（未取込）"}`, onclick: () => { tdi.showMaster = !tdi.showMaster; render(); } }));
+    h("button", { type: "button", class: "btn sm", text: tdi.showAcc ? "受入れ指標を閉じる" : `受入れ指標${tdi.acc ? "" : "（未読込）"}`, onclick: () => { tdi.showAcc = !tdi.showAcc; render(); } }), h("button", { type: "button", class: "btn sm", text: tdi.showMaster ? "TDマスタを閉じる" : `TDマスタ${tdi.master ? "" : "（未取込）"}`, onclick: () => { tdi.showMaster = !tdi.showMaster; render(); } }));
   const noMaster = tdi.rulesLoaded && !tdi.master && !tdi.showMaster ? h("div", { class: "banner warn small stack" }, h("div", { style: "font-weight:700", text: "TDマスタの取り込みが必要です" }), h("div", { text: "TDマスタがないと、メールの予約の旅行会社・店舗・コース・支払方法を決められません。" }), h("div", {}, h("button", { type: "button", class: "btn sm primary", text: "取り込み方を見る", onclick: tdiOpenMaster }))) : null;
   const out = [head, h("div", { class: "small muted", text: "① 手配チェックが読んだメールから、Travel Dineに未登録の新規予約を選ぶ → ②「メールを表示」で原本と見比べ、「要確認」を直す → ③「登録用データをコピー」→ ④ Travel Dineの画面でブックマークの「一括登録」を押し、貼り付けて「開始」" }), noMaster, tdiMailPanel()];
   if (tdi.showMaster) out.push(tdiMasterPanel());
+  if (tdi.showAcc) out.push(tdiAccPanel());
   if (tdi.rows.length) out.push(tdiTable());
   out.push(tdiBookmarkletPanel());
   return out.filter(Boolean);
@@ -2277,13 +2283,14 @@ function viewTdImp() {
     h("div", { style: "font-weight:700", text: tdi.busy ? "読み取り中です…" : tdi.rows.length ? "追加の予約依頼書・通知書をここにドロップ（今の一覧に追加されます）" : "予約の依頼書・通知書（PDF・FAXの写真）をここにドロップ、またはクリックして選ぶ（複数まとめてもOK）" }),
     h("div", { class: "small muted", text: "どの旅行会社の様式でも読み取ります（日本旅行のバウチャー通知は「通知:」〜「END.」を1件）。写真は横向き・逆さまでも構いません。AIの読み取りにクレジットを使います。" }), file);
   const head = h("div", { class: "row" }, h("h2", { text: "FAX-TD取込" }), h("span", { style: "margin-left:auto" }),
-    h("button", { type: "button", class: "btn sm", text: tdi.showMaster ? "TDマスタを閉じる" : `TDマスタ${tdi.master ? "" : "（未取込）"}`, onclick: () => { tdi.showMaster = !tdi.showMaster; render(); } }),
+    h("button", { type: "button", class: "btn sm", text: tdi.showAcc ? "受入れ指標を閉じる" : `受入れ指標${tdi.acc ? "" : "（未読込）"}`, onclick: () => { tdi.showAcc = !tdi.showAcc; render(); } }), h("button", { type: "button", class: "btn sm", text: tdi.showMaster ? "TDマスタを閉じる" : `TDマスタ${tdi.master ? "" : "（未取込）"}`, onclick: () => { tdi.showMaster = !tdi.showMaster; render(); } }),
     h("button", { type: "button", class: "btn sm", text: tdi.showRules ? "取込ルールを閉じる" : "取込ルール", onclick: () => { tdi.showRules = !tdi.showRules; render(); } }));
   const msg = h("div", { id: "tdi-msg", class: "small", style: "min-height:1.4em", text: tdi.msg });
   const busy = tdi.busy ? h("div", { class: "row" }, h("button", { type: "button", class: "btn sm", text: "中止", onclick: () => aiCtl && aiCtl.abort() })) : null;
   const noMaster = tdi.rulesLoaded && !tdi.master && !tdi.showMaster ? h("div", { class: "banner warn small stack" }, h("div", { style: "font-weight:700", text: "最初に1回だけ：TDマスタの取り込みが必要です" }), h("div", { text: "TDマスタは、Travel Dineに登録されている旅行会社・店舗・コース・支払方法の一覧です。これがないと、日本旅行（tabiwa）以外の予約は登録先を決められません。" }), h("div", {}, h("button", { type: "button", class: "btn sm primary", text: "取り込み方を見る", onclick: tdiOpenMaster }))) : null;
   const out = [head, h("div", { class: "small muted", text: "① 資料を読み取る → ② 「要確認」を直し、内容を確認する → ③「登録用データをコピー」→ ④ Travel Dineの画面でブックマークの「一括登録」を押し、貼り付けて「開始」" }), noMaster, drop, msg, busy];
   if (tdi.showMaster) out.push(tdiMasterPanel());
+  if (tdi.showAcc) out.push(tdiAccPanel());
   if (tdi.showRules) out.push(tdiRulesPanel());
   if (tdi.rows.length) out.push(tdiTable());
   out.push(tdiBookmarkletPanel(), diniiBookmarkletPanel());
@@ -2322,28 +2329,169 @@ function jpHoliday(d) {
   return "";
 }
 /** 利用日の曜日（祝日は「月/祝」）と、連休・GW・お盆・年末年始の注意 */
-function tdiDayInfo(s) {
+/** 利用日の事実：曜日・祝日・連休（土日祝が3日以上続く）・GW/お盆/年末年始 */
+function tdiDayFacts(s, area) {
   const m = /^(\d{4})\D(\d{1,2})\D(\d{1,2})/.exec(String(s || "").trim()); if (!m) return null;
   const d = new Date(+m[1], +m[2] - 1, +m[3]); if (isNaN(d)) return null;
-  const W = "日月火水木金土", hol = jpHoliday(d), wd = d.getDay();
+  const hol = jpHoliday(d), wd = d.getDay();
   const off = (x) => x.getDay() === 0 || x.getDay() === 6 || !!jpHoliday(x);
   const md = (x) => `${x.getMonth() + 1}/${x.getDate()}`;
-  const notes = [];
+  const notes = []; let run = 0;
   if (off(d)) { // 土日・祝日が3日以上続く連休の中か
     let a = new Date(d), z = new Date(d);
     while (off(new Date(a.getFullYear(), a.getMonth(), a.getDate() - 1))) a = new Date(a.getFullYear(), a.getMonth(), a.getDate() - 1);
     while (off(new Date(z.getFullYear(), z.getMonth(), z.getDate() + 1))) z = new Date(z.getFullYear(), z.getMonth(), z.getDate() + 1);
-    const n = Math.round((z - a) / 864e5) + 1;
-    if (n >= 3) notes.push(`${n}連休中（${md(a)}〜${md(z)}）`);
+    run = Math.round((z - a) / 864e5) + 1;
+    if (run >= 3) notes.push(`${run}連休中（${md(a)}〜${md(z)}）`);
   }
   const mo = d.getMonth() + 1, dd = d.getDate();
   if ((mo === 4 && dd >= 29) || (mo === 5 && dd <= 6)) notes.push("GW期間中");
   if (mo === 8 && dd >= 10 && dd <= 16) notes.push("お盆期間中");
   if ((mo === 12 && dd >= 28) || (mo === 1 && dd <= 4)) notes.push("年末年始");
+  if (/新世界/.test(area || "") && mo === 1 && dd >= 9 && dd <= 11) notes.push("えべっさん期間中（1/9〜1/11・新世界エリア）");
+  return { d, hol, wd, off: off(d), run, notes, long: notes.length > 0 };
+}
+function tdiDayInfo(s, area) {
+  const f = tdiDayFacts(s, area); if (!f) return null;
+  const W = "日月火水木金土", { hol, wd, notes } = f;
   const col = hol ? "#d9730d" : wd === 0 ? "var(--bad)" : wd === 6 ? "var(--ok)" : "var(--muted)";
   return h("div", { class: "small", style: "line-height:1.4;margin-top:2px" },
     h("span", { style: `font-weight:700;color:${col}`, text: `（${W[wd]}${hol ? "/祝" : ""}）` }), hol ? h("span", { style: `color:${col}`, text: hol }) : null,
     notes.length ? h("div", { style: "color:var(--bad);font-weight:700", text: `⚠ ${notes.join("・")}` }) : null);
+}
+
+/* ----- 受入れ指標 -----
+   Googleスプレッドシート（店舗ごとの受入れ指標）。この条件を満たす予約は、店舗に確認せずに手配してよい。
+   列：店舗名｜…｜平日L｜平日D｜土日祝L｜土日祝D｜3連休/大型L｜3連休/大型D｜優先配席｜その他条件。値は1人あたりの最低単価（空・「要相談」は確認が必要）。
+   区分の決め方：3連休以上・GW・お盆・年末年始、または大型（40名以上）→「3連休/大型」。ただし利用日が1ヵ月以上先なら大型でも通常の区分（指標の注記どおり）。
+   それ以外は土日祝／平日。開始が16:00より前ならランチ（L）、以降はディナー（D）。単価はコース＋飲み放題（1人あたり）。
+   読み込んだ内容は tdimport/accept に保存し、全員で使う。 */
+const TDI_ACC_URL = "https://docs.google.com/spreadsheets/d/1biecUQ4MTqTN2UixaYMMDYyBI0AhezywIX_8ICOIGpk/edit?gid=0";
+const TDI_ACC_BIG = 40;
+/** シートの表（2次元配列）から店舗ごとの指標を取り出す */
+function tdiAccParse(grid) {
+  const N = (x) => String(x == null ? "" : x).normalize("NFKC").replace(/\s+/g, " ").trim();
+  const g = grid.map((row) => (row || []).map(N));
+  const hi = g.findIndex((row) => row.some((c) => c === "店舗名")); if (hi < 0) throw new Error("「店舗名」の見出しが見つかりません");
+  const find = (re) => { for (let i = Math.max(0, hi - 3); i <= Math.min(g.length - 1, hi + 3); i++) { const j = g[i].findIndex((c) => re.test(c)); if (j >= 0) return j; } return -1; };
+  const cName = g[hi].indexOf("店舗名"), cX = find(/3連休.*L$/i), cSeat = find(/優先配席/), cNote = find(/その他条件/), cArea = find(/^エリア$/), cBuf = find(/食べ放題/);
+  const x = cX >= 0 ? cX : cName + 13;
+  const stores = [];
+  for (let i = hi + 1; i < g.length; i++) {
+    const r = g[i], name = r[cName] || ""; if (!name || /店舗名|平日|土日/.test(name)) continue;
+    const at = (j) => (j >= 0 ? r[j] || "" : "");
+    stores.push({ name, area: at(cArea), buffet: /✔|○|〇|可|TRUE/i.test(at(cBuf)), wl: at(x - 4), wd: at(x - 3), hl: at(x - 2), hd: at(x - 1), xl: at(x), xd: at(x + 1), seat: at(cSeat >= 0 ? cSeat : x + 2), note: at(cNote >= 0 ? cNote : x + 3) });
+  }
+  if (!stores.length) throw new Error("店舗の行が見つかりません");
+  return stores;
+}
+/** gviz（JSONP）で読む。ログイン中のGoogleアカウントで見られるシートなら、許可の画面なしで読める */
+function tdiAccGviz(id, gid) {
+  return new Promise((ok, ng) => {
+    const cb = "__tdiAcc" + Date.now(), sc = document.createElement("script"), tm = setTimeout(() => done(new Error("時間切れ")), 10000);
+    const done = (e, v) => { clearTimeout(tm); try { delete window[cb]; } catch (_) {} sc.remove(); e ? ng(e) : ok(v); };
+    window[cb] = (res) => {
+      if (!res || res.status === "error") return done(new Error((res && res.errors && res.errors[0] && (res.errors[0].detailed_message || res.errors[0].reason)) || "読み込めません"));
+      const rows = ((res.table && res.table.rows) || []).map((rw) => (rw.c || []).map((c) => (c ? (c.f != null ? c.f : c.v) : "")));
+      done(null, rows);
+    };
+    sc.onerror = () => done(new Error("読み込めません（シートを見る権限がない可能性があります）"));
+    sc.src = `https://docs.google.com/spreadsheets/d/${id}/gviz/tq?tqx=responseHandler:${cb}&headers=0` + (gid != null ? "&gid=" + gid : "");
+    document.head.appendChild(sc);
+  });
+}
+async function tdiAccFetch() {
+  const url = String((tdi.rules && tdi.rules.accUrl) || TDI_ACC_URL), m = /\/d\/([\w-]+)/.exec(url), g = /gid=(\d+)/.exec(url);
+  if (!m) return toast("受入れ指標のシートのURLが正しくありません");
+  tdi.accBusy = true; render();
+  try {
+    let grid;
+    try { grid = await tdiAccGviz(m[1], g ? g[1] : null); tdiAccParse(grid); }
+    catch (e1) { // Googleの許可（共通設定のGoogle連携）で読む
+      const meta = await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${m[1]}?fields=sheets.properties`);
+      const sh = (meta.sheets || []).map((s) => s.properties).find((p) => g && String(p.sheetId) === g[1]) || (meta.sheets || [])[0].properties;
+      grid = (await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${m[1]}/values/${encodeURIComponent("'" + sh.title.replace(/'/g, "''") + "'!A1:Z400")}`)).values || [];
+    }
+    const stores = tdiAccParse(grid);
+    tdi.acc = { url, at: new Date().toISOString(), stores };
+    if (db && !localOnly && !readOnly) { try { await db.doc("tdimport/accept").set(clone(tdi.acc)); } catch (_) { toast("受入れ指標を保存できませんでした（この画面では使えます）"); } }
+    toast(`受入れ指標を読み込みました（${stores.length}店舗）`); tdiRecheck();
+  } catch (e) { toast("受入れ指標を読み込めませんでした：" + (e && e.message || e)); }
+  finally { tdi.accBusy = false; render(); }
+}
+/** 店舗のエリア（受入れ指標のシート。なければ店舗名に「新世界」があるか） */
+function tdiAreaOf(r) {
+  const st = tdiStore(r.storeId), names = [st && st.name, ...(r.storeTexts || []), r.store].filter(Boolean);
+  for (const n of names) { const a = tdiAccStore(n); if (a && a.area) return a.area; }
+  return names.some((n) => /新世界|通天閣/.test(n)) ? "新世界" : "";
+}
+/** シートの店舗名と、Travel Dineの店舗名（または資料の店舗名）を合わせる */
+function tdiAccStore(name) {
+  const A = tdi.acc && tdi.acc.stores; if (!A || !name) return null;
+  const k = tdiKey(name), ex = A.find((s) => tdiKey(s.name) === k); if (ex) return ex;
+  let best = null, bs = 0; for (const s of A) { const v = tdiSim(s.name, name); if (v > bs) { bs = v; best = s; } }
+  return bs >= 0.8 ? best : null;
+}
+/** 指標のセル1つ → { min:最低単価 | null（確認が必要）, text } */
+function tdiAccCell(v, kind) {
+  const t = String(v || "").normalize("NFKC").trim();
+  if (kind) { const m = new RegExp((kind === "big" ? "大型" : "3連休") + "\\s*[:：]\\s*([\\d,]+)").exec(t); if (m) return { min: Number(m[1].replace(/,/g, "")), text: t }; }
+  if (!t) return { min: null, text: "指標なし" };
+  if (/要相談|要確認|不可|NG/i.test(t)) return { min: null, text: t };
+  const n = /(\d[\d,]{2,})/.exec(t); if (n) return { min: Number(n[1].replace(/,/g, "")), text: t };
+  if (/可|OK/i.test(t)) return { min: 0, text: t };
+  return { min: null, text: t };
+}
+/** 1件の判定。{ ok, label, min, price, why, seat, note, store } / 指標がなければ null */
+function tdiAccJudge(r) {
+  if (!tdi.acc || r.fmt === "tabiwa") return null;
+  const st = tdiStore(r.storeId), a = tdiAccStore(st ? st.name : (r.storeTexts || [])[0]); if (!a) return { none: true, store: st ? st.name : "" };
+  const f = tdiDayFacts(r.date, a.area); if (!f) return { store: a.name, seat: a.seat, note: a.note, ok: false, why: "利用日がわからないため判定できません" };
+  const dinner = String(r.start || "") >= String((tdi.rules && tdi.rules.dinnerFrom) || "16:00"), LD = dinner ? "ディナー" : "ランチ";
+  const ppl = (Number(r.adults) || 0) + (Number(r.children) || 0) + (Number(r.infants) || 0);
+  const today = new Date(), lim = new Date(today.getFullYear(), today.getMonth() + 1, today.getDate());
+  const far = f.d >= lim, big = ppl >= TDI_ACC_BIG && !far;
+  const co = st && (st.main || []).find((m) => m[0] === r.courseId), dr = st && r.drinkId && (st.drink || []).find((m) => m[0] === r.drinkId);
+  const cp = (co && Number(co[2])) || Number(r.coursePrice) || 0, dp = r.drinkId ? (dr && Number(dr[2])) || Number(r.drinkPrice) || 0 : 0, price = cp + dp;
+  let label, cell;
+  if (f.long || big) {
+    const why = [f.long ? f.notes.map((x) => x.replace(/（.*$/, "")).join("・") : "", big ? `大型（${ppl}名）` : ""].filter(Boolean).join("・");
+    const raw = dinner ? a.xd : a.xl, c1 = tdiAccCell(raw, f.long ? "hol" : "big"), c2 = f.long && big ? tdiAccCell(raw, "big") : null;
+    cell = c2 && (c2.min == null || (c1.min != null && c2.min > c1.min)) ? c2 : c1; label = `3連休/大型${LD}（${why}）`;
+  } else if (f.off) { cell = tdiAccCell(dinner ? a.hd : a.hl); label = `土日祝${LD}`; }
+  else { cell = tdiAccCell(dinner ? a.wd : a.wl); label = `平日${LD}`; }
+  const base = { store: a.name, seat: a.seat, note: a.note, label, min: cell.min, price, far: far && ppl >= TDI_ACC_BIG, ppl };
+  if (cell.min == null) return { ...base, ok: false, why: `${label}は「${cell.text}」` };
+  if (!price && cell.min > 0) return { ...base, ok: false, why: "コースの単価が決まっていないため判定できません" };
+  if (price < cell.min) return { ...base, ok: false, why: `単価${price.toLocaleString()}円が基準（${label}：${cell.min.toLocaleString()}円以上）に届きません` };
+  return { ...base, ok: true, why: cell.min ? `単価${price.toLocaleString()}円 ≧ 基準${cell.min.toLocaleString()}円（${label}）` : `${label}：${cell.text}` };
+}
+/** 受入れ指標の画面（読み込み・一覧） */
+function tdiAccPanel() {
+  const A = tdi.acc, url = (tdi.rules && tdi.rules.accUrl) || TDI_ACC_URL;
+  const urlIn = h("input", { value: url, style: "flex:1;min-width:240px", onchange: (e) => { tdi.rules.accUrl = e.target.value.trim(); tdi.rulesDirty = true; } });
+  const fmt = (v) => v || "—";
+  return h("div", { class: "panel stack" },
+    h("div", { class: "row" }, h("h3", { text: "受入れ指標" }), h("span", { class: "small muted", text: A ? `${A.stores.length}店舗・読込 ${new Date(A.at).toLocaleString("ja-JP")}` : "未読込" })),
+    h("div", { class: "small muted", text: `この条件を満たす予約は、店舗に確認せずに手配できます。区分：3連休以上・GW・お盆・年末年始・えべっさん（新世界エリア 1/9〜1/11）、または${TDI_ACC_BIG}名以上は「3連休/大型」（利用日が1ヵ月以上先なら大型でも通常の区分）。16:00より前はランチ。単価はコース＋飲み放題。` }),
+    h("div", { class: "row", style: "gap:6px" }, urlIn,
+      h("button", { type: "button", class: "btn sm primary", disabled: !!tdi.accBusy, text: tdi.accBusy ? "読み込み中…" : "シートから読み込む", onclick: () => { if (tdi.rulesDirty) tdiSaveRules(); tdiAccFetch(); } }),
+      h("a", { class: "btn sm", href: url, target: "_blank", rel: "noopener", text: "シートを開く" })),
+    A ? h("div", { style: "overflow:auto;max-height:420px" }, h("table", { class: "small", style: "border-collapse:collapse;width:100%" },
+      h("thead", {}, h("tr", {}, ...["店舗名", "エリア", "平日L", "平日D", "土日祝L", "土日祝D", "3連休/大型L", "3連休/大型D", "優先配席", "その他条件"].map((t) => h("th", { style: "text-align:left;padding:4px 6px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0;background:var(--surface)", text: t })))),
+      h("tbody", {}, ...A.stores.map((s) => h("tr", {}, ...[s.name, s.area, s.wl, s.wd, s.hl, s.hd, s.xl, s.xd, s.seat, s.note].map((v, j) => h("td", { style: `padding:4px 6px;border-bottom:1px solid var(--line);${j >= 2 && j <= 7 ? "white-space:nowrap;" : ""}${/要相談/.test(v || "") ? "color:var(--warn)" : ""}`, text: fmt(v) }))))))) : null);
+}
+/** カードの「受入れ指標」欄 */
+function tdiAccBox(r) {
+  const a = r.acc;
+  if (!tdi.acc) return h("span", { class: "small muted", text: "受入れ指標が未読込です（上の「受入れ指標」から読み込めます）" });
+  if (!a) return h("span", { class: "small muted", text: "—" });
+  if (a.none) return h("span", { class: "small muted", text: r.storeId ? "この店舗は指標のシートにありません" : "店舗を選ぶと判定します" });
+  return h("span", { class: "stack", style: "gap:3px" },
+    h("div", { class: "row", style: "gap:8px;align-items:center" }, h("span", { class: "pill " + (a.ok ? "ok" : "warn"), text: a.ok ? "✓ 即手配OK" : "⚠ 要相談" }), h("span", { class: "small", text: a.why })),
+    a.far ? h("div", { class: "small muted", text: `${a.ppl}名ですが、利用日が1ヵ月以上先のため通常の区分で判定（大型でも自動で入れる）` }) : null,
+    a.seat ? h("div", { class: "small" }, h("span", { class: "muted", text: "優先配席：" }), a.seat) : null,
+    a.note ? h("div", { class: "small" }, h("span", { class: "muted", text: "その他条件：" }), a.note) : null);
 }
 function tdiPick(r, what, v, v2) {
   const P = tdiPays();
@@ -2523,6 +2671,7 @@ function tdiTable() {
           ...row("店舗", (r.storeTexts || []).join(" ／ "), stSel, { req: 1, k: "store" }),
           ...row("コース", [r.courseText || "—", r.coursePrice ? sub(r.coursePrice.toLocaleString() + "円") : null].filter(Boolean), coSel, { req: 1, k: "course" }),
           ...row("飲み放題", [r.drinkText || "—", r.drinkPrice ? sub(r.drinkPrice.toLocaleString() + "円") : null].filter(Boolean), drSel || h("span", { class: "small muted", text: "店舗を選ぶと出ます" }), { k: "drink" }),
+          ...row("受入れ指標", r.acc && !r.acc.none && r.acc.price ? [h("div", { text: `単価 ${r.acc.price.toLocaleString()}円` }), sub(`${(Number(r.adults) || 0) + (Number(r.children) || 0) + (Number(r.infants) || 0)}名`)] : "", tdiAccBox(r)),
           ...row("添乗員の食事", [[r.docEscortMeal, r.docEscortSeat].filter(Boolean).join("・") || "—", (r.conductors || r.guides || r.drivers) ? sub(["添乗員" + (r.conductors || 0), "ガイド" + (r.guides || 0), "ドライバー" + (r.drivers || 0)].join("・")) : null].filter(Boolean), (() => {
             const st2 = tdiStore(r.storeId), dgl = st2 && st2.dg, setD = (k, v) => { r[k] = v; r.dgManual = true; tdiCheck(r); ch(); };
             const nIn = (k) => h("input", { type: "number", min: 0, value: r[k] || 0, style: "width:70px", onchange: (e) => setD(k, Number(e.target.value) || 0) });
@@ -2548,19 +2697,21 @@ function tdiTable() {
     const msgs = bad ? h("div", { class: "tdi-msgs", style: "color:var(--bad)" }, ...r.problems.map((p) => h("div", { text: "・" + p })), gen && !M ? (r === rows.find((x) => x.fmt !== "tabiwa") ? tdiNoMasterHelp() : h("div", { style: "color:var(--ink)", text: "やることは1件目の説明を見てください。" })) : null, r.pairs && r.pairs.length ? h("div", { style: "color:var(--ink)", text: `一覧に同じ団体の予約があります：${r.pairs.map((n) => "No." + n).join("、")}（取込対象外にしています）` }) : null, ...(r.warns || []).map((w) => h("div", { style: "color:var(--warn)", text: "・" + w })))
       : pair ? h("div", { class: "tdi-msgs", style: "color:var(--warn);font-weight:700", text: `同じ団体・同じ利用日の${r.pairWith}があります。原本を確認し、取り込む場合は「登録する」にチェックを入れてください。` })
       : h("div", { class: "tdi-msgs" }, ...(r.warns || []).map((w) => h("div", { style: "color:var(--warn)", text: "・" + w })),
-          r.skip ? h("div", { class: "muted", style: "font-weight:700", text: "この予約は登録しません（「登録する」に戻すと登録対象になります）" }) : h("div", { class: "tdi-ready", text: "✓ 登録準備完了" }));
-    const pill = bad ? h("span", { class: "pill bad", text: `要確認 ${r.problems.length}` }) : pair ? h("span", { class: "pill plain", text: r.include ? "取込する（確認済み）" : "対象外" }) : r.skip ? h("span", { class: "pill plain", text: "登録しない" }) : h("span", { class: "pill ok", text: "登録準備完了" });
+          r.skip ? h("div", { class: "muted", style: "font-weight:700", text: "この予約は登録しません（「登録する」に戻すと登録対象になります）" })
+          : r.chk1m === "no" && tdiWithin1m(r) ? h("div", { class: "row", style: "gap:8px;align-items:center" }, h("span", { style: "font-weight:700;color:var(--muted)", text: "1か月以内の手配で、店舗への確認ができていないため登録できません。" }), h("button", { type: "button", class: "btn sm", text: "店舗に確認した（登録できるようにする）", onclick: () => { r.chk1m = "yes"; tdiCheck(r); ch(); } }))
+          : h("div", { class: "tdi-ready", text: "✓ 登録準備完了" + (r.chk1m === "yes" && tdiWithin1m(r) ? "（1か月以内：店舗確認済み）" : "") }));
+    const pill = bad ? h("span", { class: "pill bad", text: `要確認 ${r.problems.length}` }) : pair ? h("span", { class: "pill plain", text: r.include ? "取込する（確認済み）" : "対象外" }) : r.skip ? h("span", { class: "pill plain", text: "登録しない" }) : r.chk1m === "no" && tdiWithin1m(r) ? h("span", { class: "pill plain", text: "店舗未確認（登録できません）" }) : h("span", { class: "pill ok", text: "登録準備完了" });
     const host = window.claude && window.claude.host, canMail = !!(r.mailId && host && host.openMail);
     const head = h("div", { class: "row", style: "gap:10px;align-items:center" },
       // 不備がなければ自動で登録対象。チェックは、取消・変更と組になった予約を取り込むときだけ使う
       pair ? h("label", { class: "row", style: "gap:6px;font-weight:700;cursor:pointer" }, h("input", { type: "checkbox", style: "width:auto;flex:none", checked: r.include, "aria-label": "登録する", onchange: (e) => { r.include = e.target.checked; ch(); } }), "登録する") : null,
-      h("span", { style: "font-weight:700", text: "No." + (i + 1) }), pill, r.tdRes ? h("span", { class: "pill " + (r.tdRes.st === "ok" ? "ok" : r.tdRes.st === "ng" ? "bad" : "plain"), title: r.tdRes.msg, text: "TD：" + r.tdRes.msg }) : null, r.dinii ? h("span", { class: "pill " + (r.dinii.st === "ok" ? "ok" : r.dinii.st === "ng" ? "bad" : "plain"), title: r.dinii.msg, text: "ダイニー：" + r.dinii.msg }) : null, r.notice ? h("span", { class: "small muted", text: r.notice }) : null,
+      h("span", { style: "font-weight:700", text: "No." + (i + 1) }), pill, gen && r.acc && !r.acc.none ? h("span", { class: "pill " + (r.acc.ok ? "ok" : "warn"), title: r.acc.why, text: r.acc.ok ? "受入れOK" : "受入れ要相談" }) : null, r.tdRes ? h("span", { class: "pill " + (r.tdRes.st === "ok" ? "ok" : r.tdRes.st === "ng" ? "bad" : "plain"), title: r.tdRes.msg, text: "TD：" + r.tdRes.msg }) : null, r.dinii ? h("span", { class: "pill " + (r.dinii.st === "ok" ? "ok" : r.dinii.st === "ng" ? "bad" : "plain"), title: r.dinii.msg, text: "ダイニー：" + r.dinii.msg }) : null, r.notice ? h("span", { class: "small muted", text: r.notice }) : null,
       r.src && ((tdi.files || []).length > 1 || r.mailId) ? h("span", { class: "small muted", style: "min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap", title: r.src, text: r.src }) : h("span", { style: "flex:1" }),
       canMail ? h("button", { type: "button", class: "btn sm" + (r.mailShow ? " primary" : ""), text: r.mailShow ? "メールを閉じる" : "メールを表示", onclick: () => { r.mailShow = !r.mailShow; if (r.mailShow) tdiLoadMail(r); ch(); } }) : null,
       pair ? null : h("button", { type: "button", class: "btn sm", text: r.skip ? "登録するに戻す" : "登録しない", title: "この予約をTravel Dineに登録しない", onclick: () => { r.skip = !r.skip; tdiCheck(r); ch(); } }));
     const num = (k, min = 0) => inp(k, { type: "number", min, style: "width:84px" });
     const top = h("div", { class: "stack", style: "gap:8px" },
-      h("div", { class: "tdi-g" }, fld("利用日", h("span", {}, inp("date", { style: "width:100%" }), tdiDayInfo(r.date))), gen ? fld("時間", h("span", {}, h("span", { class: "row", style: "gap:4px;flex-wrap:nowrap" }, inp("start", { style: "width:72px", placeholder: "11:00" }), "〜", inp("end", { style: "width:72px", placeholder: "12:30" })), r.endAuto && r.stayWhy ? h("div", { class: "small muted", text: `滞在${r.stayMin % 60 ? r.stayMin + "分" : r.stayMin / 60 + "時間"}：${r.stayWhy}` }) : !r.endAuto && r.end ? h("div", { class: "small muted", text: "終了：資料・手入力" }) : null)) : null,
+      h("div", { class: "tdi-g" }, fld("利用日", h("span", {}, inp("date", { style: "width:100%" }), tdiDayInfo(r.date, tdiAreaOf(r)))), gen ? fld("時間", h("span", {}, h("span", { class: "row", style: "gap:4px;flex-wrap:nowrap" }, inp("start", { style: "width:72px", placeholder: "11:00" }), "〜", inp("end", { style: "width:72px", placeholder: "12:30" })), r.endAuto && r.stayWhy ? h("div", { class: "small muted", text: `滞在${r.stayMin % 60 ? r.stayMin + "分" : r.stayMin / 60 + "時間"}：${r.stayWhy}` }) : !r.endAuto && r.end ? h("div", { class: "small muted", text: "終了：資料・手入力" }) : null)) : null,
         fld("団体名", h("span", {}, inp("groupName", { style: "width:100%" }), (gen ? r.groupKana : r.kanji) ? h("div", { class: "small muted", text: gen ? r.groupKana : r.kanji }) : null), 2),
         tySelTop ? fld("区分 *", h("span", {}, tySelTop, r.isSchool ? h("div", { class: "small muted", text: "資料：学校・教育旅行" }) : null)) : null,
         ctSelTop ? fld("国籍 *", h("span", {}, ctSelTop, r.nationality ? h("div", { class: "small muted", text: "資料：" + r.nationality }) : null)) : null,
@@ -2577,7 +2728,7 @@ function tdiTable() {
     const main = gen && M ? mapBox : h("div", { class: "tdi-cols" }, h("div", { class: "tdi-sec" }, h("div", { class: "tdi-h", text: "資料・メールの内容" }), docBox), h("div", { class: "tdi-sec" }, h("div", { class: "tdi-h", text: "Travel Dineに登録する内容" }), mapBox));
     const agc = null; // 旅行会社の候補は、一般様式の表の「旅行会社」の下に出す
     const mailBox = r.mailShow ? h("div", { class: "tdi-sec tdi-mailv" }, h("div", { class: "tdi-h", text: "元のメール" }), tdiMailView(r)) : null;
-    return h("div", { class: "tdi-card" + (pair ? " tdi-pair" : ""), style: bad ? "border:2px solid var(--bad)" : pair ? `background:var(--sunken);${r.include ? "" : "color:var(--muted)"}` : r.skip ? "opacity:.55" : "border:2px solid var(--ok)" },
+    return h("div", { class: "tdi-card" + (pair ? " tdi-pair" : ""), style: bad ? "border:2px solid var(--bad)" : pair ? `background:var(--sunken);${r.include ? "" : "color:var(--muted)"}` : r.skip ? "opacity:.55" : r.chk1m === "no" && tdiWithin1m(r) ? "border:2px solid var(--line);background:var(--sunken);opacity:.6" : "border:2px solid var(--ok)" },
       head, top, mailBox ? h("div", { class: "tdi-split" }, h("div", { class: "stack", style: "gap:10px;min-width:0" }, main, agc, msgs), mailBox) : h("div", { class: "stack", style: "gap:10px" }, main, agc, msgs));
   }));
   const needCheck = rows.filter((r) => r.problems.length).length;
@@ -2595,7 +2746,7 @@ function tdiTable() {
     tb,
     h("div", { class: "row" },
       h("button", { type: "button", class: "btn primary", id: "tdb-open", text: `Travel Dineへ登録（${inc.length}件）`, disabled: !inc.length, onclick: tdbOpen }),
-      h("button", { type: "button", class: "btn sm", text: "登録用データをコピー", disabled: !inc.length, onclick: () => tdiCopy(JSON.stringify(tdiPayload()), "登録用データ") }),
+      h("button", { type: "button", class: "btn sm", text: "登録用データをコピー", disabled: !inc.length, onclick: () => tdi1mGate(() => { const p = tdiPayload(); if (!p.records.length) return toast("登録する予約がありません（店舗未確認の予約は除いています）"); tdiCopy(JSON.stringify(p), "登録用データ"); }) }),
       h("span", { class: "small muted", text: "「Travel Dineへ登録」を押すとTravel Dineが開きます。開いた画面でブックマークの「一括登録」を押すと、データが自動で入ります（貼り付け不要）。内容を確認して「開始」を押してください。" })),
     diniiPanel(),
     h("div", { class: "row" },
@@ -2678,7 +2829,32 @@ function tdiBookmarkletPanel() {
    「Travel Dineへ登録」でTravel Dineの予約登録画面を開き、そこでブックマーク「一括登録」が押されたら、
    ブックマークの求めに応じて登録用データを直接渡す（window.postMessage。URLやクリップボードは使わない）。結果は各カードに表示する。 */
 const TDB = { win: "tcore-tdbulk", payload: null };
-function tdbOpen() {
+/** 一般の団体で、利用日が今日から1ヵ月以内（tabiwa・EXは除く） */
+function tdiWithin1m(r) {
+  if (!r || r.fmt === "tabiwa") return false;
+  const f = tdiDayFacts(r.date); if (!f) return false;
+  const t = new Date(), lim = new Date(t.getFullYear(), t.getMonth() + 1, t.getDate());
+  return f.d < lim;
+}
+/** 登録の前に、1ヵ月以内の手配について店舗への確認をたずねる。YES→登録へ、NO→その予約は登録できなくする（グレー） */
+function tdi1mGate(next) {
+  const q = tdi.rows.filter((r) => r.include && !r.problems.length && tdiWithin1m(r) && r.chk1m !== "yes");
+  if (!q.length) return next();
+  const r = q[0], i = tdi.rows.indexOf(r), dlg = $("#dlg"), f = tdiDayFacts(r.date), W = "日月火水木金土";
+  const st = tdiStore(r.storeId), ppl = (Number(r.adults) || 0) + (Number(r.children) || 0) + (Number(r.infants) || 0);
+  const ans = (v) => { r.chk1m = v; tdiCheck(r); dlg.close(); render(); tdi1mGate(next); };
+  dlg.replaceChildren(h("div", { class: "dlg stack" },
+    h("h3", { text: "1か月以内の手配です。店舗への確認はできていますか？" }),
+    h("div", { class: "tdi-kv" }, ...[["No.", String(i + 1)], ["団体名", r.groupName || "—"], ["利用日", `${r.date}（${W[f.wd]}${f.hol ? "/祝" : ""}） ${r.start || ""}〜${r.end || ""}`], ["店舗", st ? st.name : (r.storeTexts || []).join(" ／ ")], ["人数", ppl + "名"]].flatMap(([k, v]) => [h("span", { class: "tdi-l", text: k }), h("span", { text: v })])),
+    q.length > 1 ? h("div", { class: "small muted", text: `ほかに${q.length - 1}件、同じ確認があります` }) : null,
+    h("div", { class: "small muted", text: "「いいえ」の予約はグレーになり、登録されません（店舗に確認したあと、カードのボタンで登録できるように戻せます）。" }),
+    h("div", { class: "row", style: "justify-content:flex-end;gap:8px" },
+      h("button", { type: "button", class: "btn", text: "いいえ（NO）", onclick: () => ans("no") }),
+      h("button", { type: "button", class: "btn primary", text: "はい（YES）", onclick: () => ans("yes") }))));
+  if (!dlg.open) dlg.showModal();
+}
+function tdbOpen() { tdi1mGate(() => { if (!tdiPayload().records.length) return toast("登録する予約がありません（店舗未確認の予約は除いています）"); tdbOpenGo(); }); }
+function tdbOpenGo() {
   const p = tdiPayload(); if (!p.records.length) return toast("登録する予約がありません");
   TDB.payload = p;
   window.open(`${MC_TD_ORIGIN}/admin/reservations/create?travel_agency_id=${encodeURIComponent(p.agencyId || "371")}`, TDB.win);
