@@ -22,6 +22,7 @@
 .tdi-mailbody{white-space:pre-wrap;word-break:break-word;font:13px/1.6 inherit;font-family:inherit;max-height:520px;overflow:auto;margin:0;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
 @media (max-width:900px){.tdi-cols,.tdi-split{grid-template-columns:1fr}}
 .tdi-cmp{display:grid;grid-template-columns:120px minmax(0,1fr) minmax(0,1.3fr);border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.tdi-drop{border:2px dashed var(--accent)!important;background:var(--accent-soft)!important;color:var(--accent);transition:background .15s}.tdi-drop:hover,.tdi-drop:focus-visible,.tdi-drop.over{background:color-mix(in srgb,var(--accent) 20%,var(--surface))!important;border-style:solid!important}.tdi-drop .small{color:var(--ink);opacity:.75}
 .tdi-cmp>.tdi-ng{background:var(--bad-soft)}.tdi-cmp>.lb.tdi-ng{box-shadow:inset 3px 0 0 var(--bad);color:var(--bad)}.tdi-ngi{border-color:var(--bad)!important;background:var(--bad-soft)!important}.tdi-ready{color:var(--ok);font-weight:700;font-size:14px}
 .tdi-cmp>div{padding:7px 10px;border-top:1px solid var(--line);min-width:0;font-size:13px}
 .tdi-cmp>.hd{border-top:0;background:var(--sunken);font-size:11px;font-weight:700;color:var(--muted)}
@@ -780,7 +781,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 250</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 252</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1715,11 +1716,14 @@ async function tdiLoadRules() {
   if (tdi.rulesLoaded) return;
   tdi.rulesLoaded = true; tdi.rules = clone(TDI_DEFAULT);
   if (!db || localOnly) return;
+  tdi.accLoading = true;
   try { const d = await db.doc("tdimport/rules").get(); if (d.exists) tdi.rules = { ...clone(TDI_DEFAULT), ...clone(d.data()) }; } catch (_) {}
   try { const d = await db.doc("tdimport/master").get(); if (d.exists) tdi.master = clone(d.data()); } catch (_) {}
   try { const d = await db.doc("tdimport/learn").get(); if (d.exists) tdi.learn = clone(d.data()) || {}; } catch (_) {}
   try { const d = await db.doc("tdimport/accept").get(); if (d.exists) tdi.acc = clone(d.data()); } catch (_) {}
+  tdi.accLoading = false;
   if (tdi.acc) tdiRecheck();
+  if (view.name === "tdimp" || view.name === "mailtd") tdiAccAuto();
   if (view.name === "tdimp" || view.name === "mailtd") render();
 }
 async function tdiSaveRules() {
@@ -2261,7 +2265,7 @@ function tdiMode(m) {
   tdi.rows = s.rows; tdi.files = s.files; tdi.src = s.src; tdi.msg = s.msg; tdi.mode = m;
 }
 function viewMailTd() {
-  if (!tdi.rulesLoaded) { tdiLoadRules(); }
+  if (!tdi.rulesLoaded) { tdiLoadRules(); } else tdiAccAuto();
   tdiMode("mail"); if (tdi.mailOpen === undefined) tdi.mailOpen = true;
   const head = h("div", { class: "row" }, h("h2", { text: "Mail-TD取込" }), h("span", { class: "pill warn", text: "開発中" }), h("span", { style: "margin-left:auto" }),
     h("button", { type: "button", class: "btn sm", text: tdi.showAcc ? "受入れ指標を閉じる" : `受入れ指標${tdi.acc ? "" : "（未読込）"}`, onclick: () => { tdi.showAcc = !tdi.showAcc; render(); } }), h("button", { type: "button", class: "btn sm", text: tdi.showMaster ? "TDマスタを閉じる" : `TDマスタ${tdi.master ? "" : "（未取込）"}`, onclick: () => { tdi.showMaster = !tdi.showMaster; render(); } }));
@@ -2274,12 +2278,12 @@ function viewMailTd() {
   return out.filter(Boolean);
 }
 function viewTdImp() {
-  if (!tdi.rulesLoaded) { tdiLoadRules(); }
+  if (!tdi.rulesLoaded) { tdiLoadRules(); } else tdiAccAuto();
   tdiMode("fax");
   const file = h("input", { type: "file", accept: "application/pdf,.pdf,image/*", multiple: true, hidden: true, onchange: (e) => { const fs = [...e.target.files]; e.target.value = ""; tdiRead(fs); } });
-  const drop = h("div", { class: "panel", style: "border-style:dashed;text-align:center;padding:28px 16px;cursor:pointer", tabindex: "0",
+  const drop = h("div", { class: "panel tdi-drop", style: "text-align:center;padding:28px 16px;cursor:pointer", tabindex: "0",
     onclick: () => !tdi.busy && file.click(), onkeydown: (e) => { if ((e.key === "Enter" || e.key === " ") && !tdi.busy) { e.preventDefault(); file.click(); } },
-    ondragover: (e) => { e.preventDefault(); }, ondrop: (e) => { e.preventDefault(); e.stopPropagation(); if (!tdi.busy) tdiRead([...(e.dataTransfer.files || [])]); } },
+    ondragover: (e) => { e.preventDefault(); e.currentTarget.classList.add("over"); }, ondragleave: (e) => e.currentTarget.classList.remove("over"), ondrop: (e) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.classList.remove("over"); if (!tdi.busy) tdiRead([...(e.dataTransfer.files || [])]); } },
     h("div", { style: "font-weight:700", text: tdi.busy ? "読み取り中です…" : tdi.rows.length ? "追加の予約依頼書・通知書をここにドロップ（今の一覧に追加されます）" : "予約の依頼書・通知書（PDF・FAXの写真）をここにドロップ、またはクリックして選ぶ（複数まとめてもOK）" }),
     h("div", { class: "small muted", text: "どの旅行会社の様式でも読み取ります（日本旅行のバウチャー通知は「通知:」〜「END.」を1件）。写真は横向き・逆さまでも構いません。AIの読み取りにクレジットを使います。" }), file);
   const head = h("div", { class: "row" }, h("h2", { text: "FAX-TD取込" }), h("span", { style: "margin-left:auto" }),
@@ -2400,14 +2404,22 @@ function tdiAccGviz(id, gid) {
     document.head.appendChild(sc);
   });
 }
-async function tdiAccFetch() {
+/** その日はじめて取込画面を開いたとき、受入れ指標を自動で読み直す（ログイン中のGoogleで読めるときだけ。許可の画面は出さない） */
+function tdiAccAuto() {
+  const today = new Date().toLocaleDateString("ja-JP");
+  if (!tdi.rulesLoaded || tdi.accLoading || tdi.accBusy || tdi.accAutoDay === today) return;
+  if (tdi.acc && tdi.acc.at && new Date(tdi.acc.at).toLocaleDateString("ja-JP") === today) { tdi.accAutoDay = today; return; }
+  tdi.accAutoDay = today; tdiAccFetch({ auto: true });
+}
+async function tdiAccFetch(o = {}) {
   const url = String((tdi.rules && tdi.rules.accUrl) || TDI_ACC_URL), m = /\/d\/([\w-]+)/.exec(url), g = /gid=(\d+)/.exec(url);
-  if (!m) return toast("受入れ指標のシートのURLが正しくありません");
-  tdi.accBusy = true; render();
+  if (!m) return o.auto ? null : toast("受入れ指標のシートのURLが正しくありません");
+  tdi.accBusy = true; if (!o.auto) render();
   try {
     let grid;
     try { grid = await tdiAccGviz(m[1], g ? g[1] : null); tdiAccParse(grid); }
-    catch (e1) { // Googleの許可（共通設定のGoogle連携）で読む
+    catch (e1) { // Googleの許可（共通設定のGoogle連携）で読む。自動のときは許可の画面を出せないのでやめる
+      if (o.auto) throw e1;
       const meta = await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${m[1]}?fields=sheets.properties`);
       const sh = (meta.sheets || []).map((s) => s.properties).find((p) => g && String(p.sheetId) === g[1]) || (meta.sheets || [])[0].properties;
       grid = (await gApi(`https://sheets.googleapis.com/v4/spreadsheets/${m[1]}/values/${encodeURIComponent("'" + sh.title.replace(/'/g, "''") + "'!A1:Z400")}`)).values || [];
@@ -2415,8 +2427,8 @@ async function tdiAccFetch() {
     const stores = tdiAccParse(grid);
     tdi.acc = { url, at: new Date().toISOString(), stores };
     if (db && !localOnly && !readOnly) { try { await db.doc("tdimport/accept").set(clone(tdi.acc)); } catch (_) { toast("受入れ指標を保存できませんでした（この画面では使えます）"); } }
-    toast(`受入れ指標を読み込みました（${stores.length}店舗）`); tdiRecheck();
-  } catch (e) { toast("受入れ指標を読み込めませんでした：" + (e && e.message || e)); }
+    tdi.accErr = ""; toast(o.auto ? `受入れ指標を最新にしました（${stores.length}店舗）` : `受入れ指標を読み込みました（${stores.length}店舗）`); tdiRecheck();
+  } catch (e) { const t = "受入れ指標を読み込めませんでした：" + (e && e.message || e); tdi.accErr = (o.auto ? "（自動）" : "") + t; if (!o.auto) toast(t); }
   finally { tdi.accBusy = false; render(); }
 }
 /** 店舗のエリア（受入れ指標のシート。なければ店舗名に「新世界」があるか） */
@@ -2472,7 +2484,8 @@ function tdiAccPanel() {
   const urlIn = h("input", { value: url, style: "flex:1;min-width:240px", onchange: (e) => { tdi.rules.accUrl = e.target.value.trim(); tdi.rulesDirty = true; } });
   const fmt = (v) => v || "—";
   return h("div", { class: "panel stack" },
-    h("div", { class: "row" }, h("h3", { text: "受入れ指標" }), h("span", { class: "small muted", text: A ? `${A.stores.length}店舗・読込 ${new Date(A.at).toLocaleString("ja-JP")}` : "未読込" })),
+    h("div", { class: "row" }, h("h3", { text: "受入れ指標" }), h("span", { class: "small muted", text: A ? `${A.stores.length}店舗・読込 ${new Date(A.at).toLocaleString("ja-JP")}（毎日、その日はじめて取込画面を開いたときに自動で読み直します）` : "未読込" })),
+    tdi.accErr ? h("div", { class: "small", style: "color:var(--bad)", text: tdi.accErr + "。「シートから読み込む」を押してください" }) : null,
     h("div", { class: "small muted", text: `この条件を満たす予約は、店舗に確認せずに手配できます。区分：3連休以上・GW・お盆・年末年始・えべっさん（新世界エリア 1/9〜1/11）、または${TDI_ACC_BIG}名以上は「3連休/大型」（利用日が1ヵ月以上先なら大型でも通常の区分）。16:00より前はランチ。単価はコース＋飲み放題。` }),
     h("div", { class: "row", style: "gap:6px" }, urlIn,
       h("button", { type: "button", class: "btn sm primary", disabled: !!tdi.accBusy, text: tdi.accBusy ? "読み込み中…" : "シートから読み込む", onclick: () => { if (tdi.rulesDirty) tdiSaveRules(); tdiAccFetch(); } }),
