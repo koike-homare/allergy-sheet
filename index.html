@@ -786,7 +786,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 270</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 271</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -2580,7 +2580,7 @@ function tdiTdMatch(r, rows, det) {
     return { id: String(x.id), status: String(x.status || ""), group: String(x.group || d.name || ""), agency: String(x.agency || ""), agencyId: String(x.agencyId || ""), name: String(d.name || ""),
       date: String(d.date || "").replace(/-/g, "/"), start: String(d.start || "").slice(0, 5), end: String(d.end || "").slice(0, 5), adults: Number(d.adults) || 0, children: Number(d.children) || 0, infants: Number(d.infants) || 0,
       storeId: String(d.storeId || ""), store: String(d.store || x.store || ""), mainId: main ? main.id : "", main: main ? main.name : String(x.course || ""), drinkIds: drinks.map((f) => f.id), drinks: drinks.map((f) => f.name),
-      pay: String(d.pay || ""), payCp: String(d.payCp || ""), dg: (() => { // 添乗員の食事：別食は添乗員コース（種類5）、同食はメインコースの同席・別席の人数
+      pay: String(d.pay || ""), payCp: String(d.payCp || ""), logs: Array.isArray(d.logs) ? d.logs.slice(0, 40) : [], dg: (() => { // 添乗員の食事：別食は添乗員コース（種類5）、同食はメインコースの同席・別席の人数
         const dgf = foods.filter((f) => String(f.type) === "5"), mode = d.dgHave && d.dgSame ? "both" : d.dgHave ? "sep" : d.dgSame ? "same" : "";
         const part = (arr) => ({ tog: arr.reduce((a, f) => a + (Number(f.dt) || 0), 0), sep: arr.reduce((a, f) => a + (Number(f.mt) || 0), 0) }); // 同席＝dining_together、別席＝meal_together（新規登録と同じ対応）
         return { mode, menuIds: dgf.map((f) => f.id), menus: dgf.map((f) => f.name), same: d.dgSame ? part(main ? [main] : []) : null, sepP: d.dgHave ? part(dgf) : null, pay: String(d.payConductor || ""), payCp: String(d.payConductorCp || "") };
@@ -2590,6 +2590,29 @@ function tdiTdMatch(r, rows, det) {
   const live = cands.filter((c) => !/キャンセル/.test(c.status));
   r.tdId = live.length === 1 ? live[0].id : live.length > 1 && live[0].score - live[1].score >= 0.5 ? live[0].id : "";
 }
+/** Travel Dineの変更履歴から、資料の変更と食い違いそうなものを出す。
+    資料の値が「途中で変えられる前の値」と同じなら、古い回答書をもとにした依頼の可能性が高い（例：電話で18:30→19:00に変えたあと、古い回答書で依頼が来た） */
+function tdiLogHints(b, RS) {
+  const L = (b && b.logs) || [], out = {}, at = (x) => String(x || "").slice(0, 16), n = (x) => String(x ?? "").normalize("NFKC").replace(/\s/g, "");
+  const pay = /CP|ＣＰ|請求|当日払|現金|カード|クーポン/i;
+  const one = (g, items, docVals, eq = (a, c) => n(a) === n(c), skipPay = false) => {
+    const hs = L.filter((x) => items.includes(x.item) && !(skipPay && (pay.test(x.from) || pay.test(x.to)))); if (!hs.length) return;
+    const vs = docVals.filter((v) => v != null && v !== ""), stale = hs.find((x) => vs.some((v) => eq(x.from, v)));
+    out[g] = stale ? { stale: true, text: `⚠ Travel Dineでは ${at(stale.at)} に${stale.item}が「${stale.from}」→「${stale.to}」に変更されています。資料の「${stale.from}」は変更前の値です（古い回答書をもとにした依頼の可能性）。旅行会社に確認し、違っていれば「変更しない」を押してください。` }
+      : { stale: false, text: `⚠ Travel Dineでは ${hs.slice(0, 3).map((x) => `${at(x.at)} に${x.item}を「${x.from}」→「${x.to}」`).join("、")}に変更しています。資料と食い違っていないか確認してください。` };
+  };
+  if (RS.date) one("date", ["予約日付"], [RS.date]);
+  if (RS.start || RS.end) one("time", ["予約開始時間", "予約終了時間"], [RS.start, RS.end]);
+  if ("adults" in RS) one("people", ["大人", "小人", "幼児"], [String(RS.adults), String(RS.children), String(RS.infants)], (a, c) => n(a) === n(c) && n(a) !== "0");
+  if (RS.course) one("course", ["コース"], [RS.course], (a, c) => tdiCoKey(a) === tdiCoKey(c), true);
+  if (RS.drink) one("drink", ["飲み放題"], [RS.drink], (a, c) => tdiCoKey(a) === tdiCoKey(c), true);
+  return out;
+}
+/** 「変更しない」にできる項目：［名前, 項目キー, 書き換える値のキー, 確かめる値のキー］ */
+const TDI_CHG_GRP = [["date", ["date"], ["date"], ["date"]], ["time", ["start", "end"], ["start", "end"], ["start", "end"]], ["people", ["people"], ["adults", "children", "infants"], ["adults", "children", "infants"]],
+  ["course", ["course"], ["courseId", "course"], ["courseId"]], ["drink", ["drink"], ["drinkId", "drink", "payDrink", "payDrinkCp", "noDrink"], ["drinkIds"]], ["dg", ["dg"], ["dg"], ["dgMode"]], ["pay", ["pay"], ["payCourse", "payCourseCp"], ["pay"]]];
+const TDI_CHG_LBL = { 利用日: "date", 時間: "time", 人数: "people", コース: "course", 飲み放題: "drink", 添乗員の食事: "dg", "支払（コース）": "pay" };
+function tdiChgSkip(r, g, on) { const a = new Set(r.chgSkip || []); if (on) a.add(g); else a.delete(g); r.chgSkip = [...a]; tdiCheck(r); render(); }
 /** 資料のコース名が、Travel Dineの今のコースと同じか（「コース」の有無・金額の付き方の違いは許す）。同じなら、マスタで選び直さずに「変更なし」にする */
 const tdiCoKey = (x) => tdiKey(String(x || "").replace(/\s*[(（][^)）]*円[^)）]*[)）]\s*$/, "")).replace(/コース$/, "");
 function tdiCoSame(r, b) {
@@ -2601,7 +2624,7 @@ function tdiCoSame(r, b) {
 function tdiCoGone(b) { const st = b && tdiStore(b.storeId); return !!(b && b.mainId && st && !(st.main || []).some((m) => m[0] === b.mainId)); }
 const tdiCoAuto = (r, b) => !r.coManual && (tdiCoSame(r, b) || tdiCoGone(b)); // スタッフが選んでいなければ、コースは変えない
 /** 今のTravel Dineの登録（照合した値）と資料を比べ、変わる項目・書き換える値・確かめる値を出す */
-function tdiChgDiff(r) {
+function tdiChgDiff(r, raw) {
   const b = tdiTdSel(r); if (!b) return null;
   const items = [], set = {}, expect = {}, un = [], add = (k, label, from, to) => items.push({ k, label, from, to });
   if (/^\d{4}\/\d{2}\/\d{2}$/.test(r.date || "") && r.date !== b.date) { add("date", "利用日", b.date, r.date); set.date = r.date; expect.date = b.date; }
@@ -2639,7 +2662,11 @@ function tdiChgDiff(r) {
     const to = r.payCourse + (r.payCourseCp ? "・" + r.payCourseCp : ""), from = b.pay + (b.payCp ? "・" + b.payCp : "");
     if (tdiNorm(to) !== tdiNorm(from)) { add("pay", "支払（コース）", from || "—", to); set.payCourse = r.payCourse; set.payCourseCp = r.payCourseCp || ""; expect.pay = b.pay; }
   }
-  return { b, items, set, expect, un };
+  // スタッフが「変更しない」にした項目は外す（資料と違っていても、Travel Dineの今の値のまま。例：手作業ですでに直してある）
+  const skip = raw ? [] : TDI_CHG_GRP.filter(([g]) => (r.chgSkip || []).includes(g));
+  for (const [, ik, sk, ek] of skip) { for (const k of sk) delete set[k]; for (const k of ek) delete expect[k]; }
+  const sk = new Set(skip.flatMap((x) => x[1]));
+  return { b, items: items.filter((x) => !sk.has(x.k)), set, expect, un, skipped: skip.map((x) => x[0]) };
 }
 /** 大幅な減員：利用日の7日前以降に、合計人数が10名以上減る変更（店舗へのアナウンスが必要） */
 function tdiBigDrop(r) {
@@ -2670,6 +2697,7 @@ function tdiCheckChg(r, pr, wa, bk) {
   if (d.un.length) ng("chg", "自動で変更できない項目があります：" + d.un.join("、") + "。Travel Dineで手作業で変更してください");
   else if (!d.items.length) ng("chg", "Travel Dineの今の登録と同じで、変更点が見つかりません");
   if (d.set.payCourse && tdiIsCp(d.set.payCourse) && !d.set.payCourseCp) ng("pay", "クーポンの種類を選んでください");
+  { const hn = Object.values(tdiLogHints(d.b, tdiChgDiff(r, true).set)); if (hn.some((x) => x.stale)) wa.unshift("Travel Dineで途中に変更されています。古い回答書をもとにした依頼の可能性があります（変更内容の赤い注意を確認してください）"); else if (hn.length) wa.unshift("Travel Dineで途中に変更された項目があります（変更内容の注意を確認してください）"); }
   const bd = tdiBigDrop(r); if (bd) wa.unshift(`大幅な人数変更があります。店舗へアナウンスしてください。（${bd.before}名→${bd.after}名・${bd.drop}名減、利用日の${bd.days > 0 ? bd.days + "日前" : bd.days === 0 ? "当日" : "後"}）`);
   const tt = (x) => (x ? x.tog + x.sep : 0);
   if (d.set.dg && d.set.dg.same && !tt(d.set.dg.same)) ng("dg", "添乗員の食事：同食の同席・別席の人数を入れてください");
@@ -2699,13 +2727,21 @@ function tdiChgBox(r) {
       ["飲み放題", b.drinks.join("・") || "なし", S.noDrink ? "なし（やめる）" : S.drink || "", ch("drink")],
       ["添乗員の食事", tdiDgTxt(b.dg, b.dg ? b.dg.menus.join("・") : ""), S.dg ? tdiDgTxt(S.dg, S.dg.menu) : "", ch("dg")], ["支払（コース）", b.pay + (b.payCp ? "・" + b.payCp : ""), S.payCourse ? S.payCourse + (S.payCourseCp ? "・" + S.payCourseCp : "") : "", ch("pay")]];
     const ctl = op === "change" ? tdiChgCtl(r, b, S) : {};
+    const R = op === "change" ? tdiChgDiff(r, true) : null, RS = R ? R.set : {}; // 「変更しない」にした項目の、資料どおりなら変わる値
+    const rawTxt = { 利用日: RS.date, 時間: RS.start || RS.end ? `${RS.start || b.start}〜${RS.end || b.end}` : "", 人数: "adults" in RS ? tdiPpl(RS.adults, RS.children, RS.infants) : "", コース: RS.course, 飲み放題: RS.noDrink ? "なし（やめる）" : RS.drink, 添乗員の食事: RS.dg ? tdiDgTxt(RS.dg, RS.dg.menu) : "", "支払（コース）": RS.payCourse ? RS.payCourse + (RS.payCourseCp ? "・" + RS.payCourseCp : "") : "" };
+    const skipped = (k) => !!(TDI_CHG_LBL[k] && (r.chgSkip || []).includes(TDI_CHG_LBL[k]));
+    const LH = R ? tdiLogHints(b, RS) : {}, logAlert = (k) => { const x = TDI_CHG_LBL[k] && LH[TDI_CHG_LBL[k]]; return x ? h("div", { class: "tdi-alert", text: x.text }) : null; };
+    const keepBtn = (k) => h("button", { type: "button", class: "btn sm", style: "align-self:flex-start", text: "変更しない（今のままにする）", onclick: () => tdiChgSkip(r, TDI_CHG_LBL[k], true) });
     tbl = h("div", { class: "tdi-cmp" }, h("div", { class: "hd" }, "項目"), h("div", { class: "hd" }, "Travel Dine（今）"), h("div", { class: "hd" }, op === "cancel" ? "取消後" : "変更後（ここで直せます）"),
       ...lines.flatMap(([k, a, z, c]) => [h("div", { class: "lb" + (c ? " tdi-chgd" : "") }, k), h("div", { class: "doc" + (c ? " tdi-chgd" : "") }, a || "—"),
         h("div", { class: "td" + (c ? " tdi-chgd" : "") }, op === "cancel" ? h("span", { style: "color:var(--bad);font-weight:700", text: "キャンセル" })
-          : ctl[k] ? h("span", { class: "stack", style: "gap:4px" }, ctl[k], c ? h("span", { class: "small", style: "font-weight:700", text: "→ " + z }) : h("span", { class: "small muted", text: "（変更なし）" }),
+          : skipped(k) ? h("span", { class: "stack", style: "gap:4px" }, h("span", { style: "font-weight:700", text: "変更しない（Travel Dineの今のまま）" }),
+              rawTxt[k] ? h("span", { class: "small muted", text: `資料では「${rawTxt[k]}」` }) : null, logAlert(k),
+              h("button", { type: "button", class: "btn sm", style: "align-self:flex-start", text: "資料どおりに変更する（戻す）", onclick: () => tdiChgSkip(r, TDI_CHG_LBL[k], false) }))
+          : ctl[k] ? h("span", { class: "stack", style: "gap:4px" }, ctl[k], c ? h("span", { class: "small", style: "font-weight:700", text: "→ " + z }) : h("span", { class: "small muted", text: "（変更なし）" }), c ? logAlert(k) : null, c && TDI_CHG_LBL[k] ? keepBtn(k) : null,
               k === "コース" && tdiCoGone(b) ? h("div", { class: "tdi-alert", text: S.courseId ? `⚠ コースを「${S.course || ""}」に変えます。元のコース「${b.main}」は販売停止のため、内容が違う可能性があります。クレームの元になるので、旅行会社・店舗に確認してから登録してください。` : `⚠ 元のコース「${b.main}」はTDマスタにありません（販売停止の可能性）。コースは変えずに登録します（Travel Dineでは停止前のコースのまま残ります）。似た名前のコースでも内容が違うことがあるので、選び直さないでください。` }) : null,
               k === "人数" && tdiBigDrop(r) ? h("div", { class: "tdi-alert", text: `⚠ 大幅な人数変更があります。店舗へアナウンスしてください。（${tdiBigDrop(r).drop}名減・利用日まで${Math.max(0, tdiBigDrop(r).days)}日）` }) : null)
-          : c ? h("span", { style: "font-weight:700", text: z }) : h("span", { class: "muted", text: "（変更なし）" }))]));
+          : c ? h("span", { class: "stack", style: "gap:4px" }, h("span", { style: "font-weight:700", text: z }), logAlert(k), TDI_CHG_LBL[k] ? keepBtn(k) : null) : h("span", { class: "muted", text: "（変更なし）" }))]));
   }
   return h("div", { class: "tdi-chg stack" + (b ? "" : " tdi-chg-ng"), style: "gap:8px" }, head, pick, tbl);
 }
@@ -2827,7 +2863,7 @@ function tdiCancelGate(next) {
 const TDF = { win: "tcore-tdfind", req: null, busy: "" };
 function tdiFindReq() {
   const rows = tdi.rows.filter((r) => r.fmt !== "tabiwa"); // 新規も調べる（同じ団体・利用日の予約がすでにあれば、変更・取消の資料かもしれないと知らせる）
-  return { type: "tdfind-req", v: 1, items: rows.map((r) => ({ key: r.id, agencyId: r.agencyId || "", name: String(r.groupName || "").replace(/(様|御一行様?|ご一行様?)$/, "").trim().slice(0, 30), dates: [...new Set([r.prevDate, r.date].filter((s) => /^\d{4}\/\d{2}\/\d{2}$/.test(s || "")).map((s) => s.replace(/\//g, "-")))] })).filter((x) => x.dates.length) };
+  return { type: "tdfind-req", v: 1, items: rows.map((r) => ({ key: r.id, chg: tdiOp(r) !== "new", agencyId: r.agencyId || "", name: String(r.groupName || "").replace(/(様|御一行様?|ご一行様?)$/, "").trim().slice(0, 30), dates: [...new Set([r.prevDate, r.date].filter((s) => /^\d{4}\/\d{2}\/\d{2}$/.test(s || "")).map((s) => s.replace(/\//g, "-")))] })).filter((x) => x.dates.length) };
 }
 function tdiFindOpen() {
   if (tdcAlive()) { for (const r of tdi.rows) if (tdiOp(r) !== "new") r.td = null; tdiRecheck(); return tdiAutoFind(true); }
