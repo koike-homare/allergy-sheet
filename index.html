@@ -786,7 +786,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 269</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 270</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1818,7 +1818,12 @@ function tdiMatchMenu(store, kind, text, price) {
   if (kind === "drink") { const m = mins(text); pool = list.filter((x) => (!m || mins(x[1]) === m) && soft(x[1]) === soft(text)); }
   const sc = pool.map((m) => [m, tdiSim(m[1].replace(/\s*\([^)]*円[^)]*\)\s*$/, ""), text) + (price && m[2] === Number(price) ? 0.25 : 0)]).sort((a, b) => b[1] - a[1]);
   const top = sc[0], second = sc[1] || [null, 0];
-  if (top && top[1] >= 0.85 && top[1] - second[1] >= 0.15 && (!price || !top[0][2] || top[0][2] === Number(price) || kind === "drink")) return { id: top[0][0], cands: [], how: "名前" };
+  if (top && top[1] >= 0.85 && top[1] - second[1] >= 0.15 && (!price || !top[0][2] || top[0][2] === Number(price) || kind === "drink")) {
+    // コース：名前が少し違うだけ（年度・「～」付きなど）の新しいコースは、内容が変わっていることがあるので自動では選ばない
+    const nm = top[0][1], tk = tdiCoKey(text), mk = tdiCoKey(nm);
+    if (kind === "main" && tk !== mk && !(mk.includes(tk) && !/20\d{2}|[～〜~]|新|改/.test(mk.replace(tk, "")))) return { id: "", cands: [top[0][0], ...sc.slice(1, 6).map((x) => x[0][0])], how: `名前が少し違うコース「${nm}」があります（資料：${text}）。販売停止になった旧コースの後継で内容が違う可能性があるので、確認して選んでください` };
+    return { id: top[0][0], cands: [], how: "名前" };
+  }
   if (kind === "drink" && pool.length === 1 && (!price || pool[0][2] === Number(price))) return { id: pool[0][0], cands: [], how: "時間・種類" };
   const samePrice = price ? list.filter((m) => m[2] === Number(price)) : [];
   const cands = [...new Set([...samePrice, ...sc.slice(0, 6).map((x) => x[0])].map((m) => m[0]))].slice(0, 8);
@@ -2000,9 +2005,9 @@ const TDI_PROMPT = `旅行会社から飲食店（株式会社HASSIN）に届い
 ・notes：席の要望（個室・貸切など）、返答の依頼、確認してほしいことなど。groupName は団体名（「様」は付けない）、groupKana はふりがながあれば。
 ・tabiwa（EXを含む）のときは、series、kana（予約者の氏名のカナ。例：ﾜﾀﾅﾍﾞ/ｷﾖﾐｻﾏ）・kanji・reserveNo（予約#の番号）・product（商品名）・facility（施設名）・adults（人数）も入れる。
 ・tabiwa（バウチャー通知）の product は「ｺｰｽ#」の行の番号の後ろの商品名。「回答書#」の行の番号の後ろに商品名や時刻（例：お好み焼き１２：００）があれば、それも半角にして後ろにつなげる（例：【tabiwa】大阪(赤い風船九州事業部) お好み焼き12:00）。facility は「殿」の行の施設名（前の番号と「殿」は除く）。adults は「仕入単価:大人 3,300x001」の「x」の後ろの数（x001なら1、x002なら2）。商品名・回答書に時刻があれば start に "HH:MM" で入れる（なければ空）。「割付」のテーブル数は人数に使わない。
-・一般様式（general）のときは、tourNo（ツアー番号・コース番号・受付番号など旅行会社の管理番号。なければ空）、agentStaff（旅行会社側でこの手配を担当している人の名前。例：溝渕 治史。なければ空）、agentRole（その人の役割：営業・手配・担当など書かれているとおり。なければ空）、agentTel（その担当者の電話番号。直通・携帯があればそれ、なければ担当者欄の電話。会社のFAXは入れない。なければ空）、agentMail（その担当者のメールアドレス。なければ空）、escortMeal（添乗員・ガイド・乗務員の食事：お客様と同じ食事なら"同食"、別の食事なら"別食"、同食の人と別食の人がいるなら"同食・別食"、食事なし・書かれていなければ空）、escortSameN・escortSepN（同食の人数・別食の人数。書かれていなければ0）、escortSeat（"同席"・"別席"・空）、contactName・contactTel（当日の添乗員・ガイド・幹事など現地の担当者の名前と連絡先。旅行会社の事務担当者は入れない。なければ空）、infants（幼児の人数。なければ0）も入れる。
+・一般様式（general）のときは、tourNo（ツアー番号・コース番号・受付番号など旅行会社の管理番号。なければ空）、agentStaff（旅行会社側でこの手配を担当している人の名前。例：溝渕 治史。なければ空）、agentRole（その人の役割：営業・手配・担当など書かれているとおり。なければ空）、agentTel（その担当者の電話番号。直通・携帯があればそれ、なければ担当者欄の電話。会社のFAXは入れない。なければ空）、agentMail（その担当者のメールアドレス。なければ空）、escortMeal（添乗員・ガイド・乗務員の食事：お客様と同じ食事なら"同食"、別の食事なら"別食"、同食の人と別食の人がいるなら"同食・別食"、食事なし・書かれていなければ空）、escortSameN・escortSepN（同食の人数・別食の人数。書かれていなければ0）、escortSeat（"同席"・"別席"・空）、contactRole・contactName・contactTel（当日の添乗員・ガイド・幹事など現地の担当者。contactRoleは役割を「添乗員」「ガイド」「幹事」「ドライバー」「乗務員」のどれかで（書かれていなければ空）、contactNameは名前だけ（「幹事　小池」なら contactRole「幹事」・contactName「小池」。「様」「さん」や役割の語は入れない）、contactTelは連絡先。旅行会社の事務担当者は入れない。なければ空）、infants（幼児の人数。なければ0）も入れる。
 ・uncertain：読み取りに自信がない項目名（例：["店舗","人数"]）。
-返答はJSONだけ。形式：{"bookings":[{"format":"general","series":"","notice":"","kind":"予約","complete":true,"agency":{"name":"","branch":"","tel":"","fax":"","faxHeader":""},"groupName":"","groupKana":"","useDate":"","start":"","end":"","adults":0,"children":0,"conductors":0,"guides":0,"drivers":0,"isSchool":false,"nationality":"","storeCandidates":[],"courseText":"","coursePrice":0,"drinkText":"","drinkPrice":0,"payText":"","notes":"","changeText":"","prevDate":"","tourNo":"","agentStaff":"","agentRole":"","agentTel":"","agentMail":"","escortMeal":"","escortSameN":0,"escortSepN":0,"escortSeat":"","contactName":"","contactTel":"","infants":0,"kana":"","kanji":"","reserveNo":"","product":"","facility":"","uncertain":[]}]}
+返答はJSONだけ。形式：{"bookings":[{"format":"general","series":"","notice":"","kind":"予約","complete":true,"agency":{"name":"","branch":"","tel":"","fax":"","faxHeader":""},"groupName":"","groupKana":"","useDate":"","start":"","end":"","adults":0,"children":0,"conductors":0,"guides":0,"drivers":0,"isSchool":false,"nationality":"","storeCandidates":[],"courseText":"","coursePrice":0,"drinkText":"","drinkPrice":0,"payText":"","notes":"","changeText":"","prevDate":"","tourNo":"","agentStaff":"","agentRole":"","agentTel":"","agentMail":"","escortMeal":"","escortSameN":0,"escortSepN":0,"escortSeat":"","contactRole":"","contactName":"","contactTel":"","infants":0,"kana":"","kanji":"","reserveNo":"","product":"","facility":"","uncertain":[]}]}
 complete は、その予約の内容が渡された資料の中にすべて含まれていれば true、途中で切れていれば false にする。
 書かれていない項目は空文字（数値は0）にし、推測で補わない。`;
 async function tdiPdfPages(f) {
@@ -2112,12 +2117,11 @@ function tdiRowOf(b, id) {
       drinkText: String(b.drinkText || "").trim(), drinkPrice: tdiNum(b.drinkPrice), payText: String(b.payText || "").trim(), notes: String(b.notes || "").trim(),
       isSchool: !!b.isSchool, nationality: String(b.nationality || "").trim(), manager: "",
       // 任意の項目（空でも登録できる）
-      docTourNo: String(b.tourNo || "").trim(), docInfants: tdiNum(b.infants), docContact: [b.contactName, b.contactTel].map((x) => String(x || "").trim()).filter(Boolean).join("　"),
+      docTourNo: String(b.tourNo || "").trim(), docInfants: tdiNum(b.infants), docContact: [b.contactRole, b.contactName, b.contactTel].map((x) => String(x || "").trim()).filter(Boolean).join("　"),
       agentStaff: String(b.agentStaff || "").trim(), agentRole: String(b.agentRole || "").trim(), agentTel: String(b.agentTel || "").trim(), agentMail: String(b.agentMail || "").trim(),
       docEscortMeal: String(b.escortMeal || "").trim(), docEscSameN: tdiNum(b.escortSameN), docEscSepN: tdiNum(b.escortSepN), dgSepTogether: 0, dgSepSeparate: 0, docEscortSeat: String(b.escortSeat || "").trim(), dgMode: "", dgMenuId: "", dgTogether: 0, dgSeparate: 0, payConductor: "", payConductorCp: "",
       changeText: String(b.changeText || "").trim(), prevDate: tdiDate(b.prevDate) || "",
-      groupNo: String(b.tourNo || "").trim(), reserveMgmtNo: "", infants: tdiNum(b.infants), contactName: String(b.contactName || "").trim(), contactTel: String(b.contactTel || "").trim(),
-      contactRole: tdiNum(b.conductors) ? "添乗員" : tdiNum(b.guides) ? "ガイド" : String(b.contactName || "").trim() ? "未定" : "", comment: "", memo: "", payDrink: "", payDrinkCp: "", // 要望・確認事項は「社内向けメモ（予約印字なし）」に入れる
+      groupNo: String(b.tourNo || "").trim(), reserveMgmtNo: "", infants: tdiNum(b.infants), ...tdiContact(b), comment: "", memo: "", payDrink: "", payDrinkCp: "", // 要望・確認事項は「社内向けメモ（予約印字なし）」に入れる
     });
   }
   if (r.fmt !== "tabiwa") { const mp = tdiMemoParts(r); r.memoStaff = mp.staff; r.memo = mp.note; }
@@ -2335,6 +2339,20 @@ function viewTdImp() {
   if (tdi.rows.length) out.push(tdiTable());
   out.push(tdiBookmarkletPanel(), diniiBookmarkletPanel());
   return out.filter(Boolean);
+}
+/** 当日の担当者：役割（区分）と名前を分ける。「幹事　小池」→ 区分「幹事」・名前「小池」。役割が書かれていなければ、添乗員・ガイドの人数から決める */
+const TDI_ROLES = [[/^(添乗員|添乗|ツアーリーダー|ツアーコンダクター|TC|TL)$/i, "添乗員"], [/^(ガイド|通訳ガイド|バスガイド)$/, "ガイド"], [/^(幹事|代表者?|ご?担当者?)$/, "幹事"], [/^(ドライバー|運転手|運転士)$/, "ドライバー"], [/^(乗務員|乗務)$/, "乗務員"]];
+const tdiRoleOf = (t) => { const x = String(t || "").normalize("NFKC").replace(/[\s　]/g, "").replace(/(様|さん)$/, ""); const m = TDI_ROLES.find(([re]) => re.test(x)); return m ? m[1] : ""; };
+function tdiContact(b) {
+  const clean = (s) => String(s || "").normalize("NFKC").replace(/[　]/g, " ").replace(/\s*(様|さま|さん)\s*$/, "").trim();
+  let name = clean(b.contactName), role = tdiRoleOf(b.contactRole), tel = String(b.contactTel || "").trim();
+  const RW = "添乗員|添乗|ツアーリーダー|ツアーコンダクター|TC|TL|通訳ガイド|バスガイド|ガイド|幹事|代表者?|ドライバー|運転手|運転士|乗務員";
+  const m = new RegExp(`^(${RW})(?:(?:様|さん)[\\s:：・/／()（）]*|[\\s:：・/／()（）]+)(.*)$`, "i").exec(name); // 名前の前に役割が付いている（「幹事　小池」「添乗員：竹坂様」）
+  if (m) { role = role || tdiRoleOf(m[1]); name = clean(m[2]); }
+  if (tdiRoleOf(name)) { role = role || tdiRoleOf(name); name = ""; } // 名前の欄が役割だけ（「幹事」）
+  if (!name && tel) { const t = new RegExp(`^(?:(${RW})(?:様|さん)?[\\s:：・]*)?([^0-9０-９(（+＋]+?)\\s*(様|さん)?\\s*([0-9０-９(（+＋].*)$`, "i").exec(tel.normalize("NFKC")); if (t && t[2] && t[2].trim()) { role = role || tdiRoleOf(t[1]); name = clean(t[2]); tel = t[4].trim(); } } // 連絡先の欄に「幹事 小鍛様 090-…」
+  if (!role) role = tdiNum(b.conductors) ? "添乗員" : tdiNum(b.guides) ? "ガイド" : name || tel ? "未定" : "";
+  return { contactRole: role, contactName: name, contactTel: tel };
 }
 /** 一般様式の行で、スタッフが選んだときの処理（選んだ対応は覚える） */
 /** 日本の祝日名（振替休日・国民の休日を含む）。祝日でなければ "" */
@@ -2572,6 +2590,16 @@ function tdiTdMatch(r, rows, det) {
   const live = cands.filter((c) => !/キャンセル/.test(c.status));
   r.tdId = live.length === 1 ? live[0].id : live.length > 1 && live[0].score - live[1].score >= 0.5 ? live[0].id : "";
 }
+/** 資料のコース名が、Travel Dineの今のコースと同じか（「コース」の有無・金額の付き方の違いは許す）。同じなら、マスタで選び直さずに「変更なし」にする */
+const tdiCoKey = (x) => tdiKey(String(x || "").replace(/\s*[(（][^)）]*円[^)）]*[)）]\s*$/, "")).replace(/コース$/, "");
+function tdiCoSame(r, b) {
+  if (!b || !b.main || !r.courseText) return false;
+  const A = tdiCoKey(b.main), B = tdiCoKey(r.courseText);
+  return !!A && !!B && (A === B || (Math.min(A.length, B.length) >= 4 && (A.includes(B) || B.includes(A))));
+}
+/** 今のコースがTDマスタにない（販売停止になったコース。Travel Dineでは、停止前に手配した予約はそのコースのまま残る） */
+function tdiCoGone(b) { const st = b && tdiStore(b.storeId); return !!(b && b.mainId && st && !(st.main || []).some((m) => m[0] === b.mainId)); }
+const tdiCoAuto = (r, b) => !r.coManual && (tdiCoSame(r, b) || tdiCoGone(b)); // スタッフが選んでいなければ、コースは変えない
 /** 今のTravel Dineの登録（照合した値）と資料を比べ、変わる項目・書き換える値・確かめる値を出す */
 function tdiChgDiff(r) {
   const b = tdiTdSel(r); if (!b) return null;
@@ -2590,7 +2618,7 @@ function tdiChgDiff(r) {
   if (r.storeId && b.storeId && r.storeId !== b.storeId) un.push(`店舗（${b.store} → ${S ? S.name : r.storeId}）`);
   else {
     const co = S && (S.main || []).find((m) => m[0] === r.courseId);
-    if (!r.courseKeep && r.courseText && r.courseId && r.courseId !== b.mainId) { add("course", "コース", b.main || "—", co ? co[1] : r.courseId); set.courseId = r.courseId; set.course = co ? co[1] : ""; expect.courseId = b.mainId; }
+    if (!r.courseKeep && !tdiCoAuto(r, b) && r.courseText && r.courseId && r.courseId !== b.mainId) { add("course", "コース", b.main || "—", co ? co[1] : r.courseId); set.courseId = r.courseId; set.course = co ? co[1] : ""; expect.courseId = b.mainId; }
     const dr = S && r.drinkId && (S.drink || []).find((m) => m[0] === r.drinkId), dIds = b.drinkIds.slice().sort().join(",");
     const noDr = !r.drinkKeep && (r.noDrink || /^(なし|無し)$|取りやめ|取止め|中止|不要|キャンセル|取消/.test(String(r.drinkText || "").trim()));
     if (noDr && b.drinkIds.length) { add("drink", "飲み放題", b.drinks.join("・"), "なし"); set.noDrink = true; expect.drinkIds = dIds; }
@@ -2648,7 +2676,7 @@ function tdiCheckChg(r, pr, wa, bk) {
   if (d.set.dg && d.set.dg.sepP && !tt(d.set.dg.sepP)) ng("dg", "添乗員の食事：別食の同席・別席の人数を入れてください");
   if (d.set.dg && d.set.dg.sepP && !d.set.dg.menuId) ng("dg", "添乗員コース（別食）を選んでください");
   if (d.set.dg && d.set.dg.sepP && !r.payConductor) ng("dg", "添乗員コース（別食）の支払方法を選んでください（変更後の欄）");
-  if (!r.courseKeep && r.courseText && !/^（/.test(r.courseText) && !r.courseId) ng("course", `コースが決まりません（資料：${r.courseText}）。変更後の欄でコースを選ぶか、「（変更なし）」を選んでください`);
+  if (!r.courseKeep && !tdiCoAuto(r, d.b) && r.courseText && !/^（/.test(r.courseText) && !r.courseId) ng("course", `コースが決まりません（資料：${r.courseText}）。変更後の欄でコースを選ぶか、「（変更なし）」を選んでください`);
   if (d.set.dg && d.set.dg.mode && tdiIsCp(d.set.dg.pay) && !d.set.dg.payCp) ng("dg", "添乗員コースのクーポンの種類を選んでください");
   if (r.notes) wa.push("要望・確認事項：" + r.notes);
 }
@@ -2675,6 +2703,7 @@ function tdiChgBox(r) {
       ...lines.flatMap(([k, a, z, c]) => [h("div", { class: "lb" + (c ? " tdi-chgd" : "") }, k), h("div", { class: "doc" + (c ? " tdi-chgd" : "") }, a || "—"),
         h("div", { class: "td" + (c ? " tdi-chgd" : "") }, op === "cancel" ? h("span", { style: "color:var(--bad);font-weight:700", text: "キャンセル" })
           : ctl[k] ? h("span", { class: "stack", style: "gap:4px" }, ctl[k], c ? h("span", { class: "small", style: "font-weight:700", text: "→ " + z }) : h("span", { class: "small muted", text: "（変更なし）" }),
+              k === "コース" && tdiCoGone(b) ? h("div", { class: "tdi-alert", text: S.courseId ? `⚠ コースを「${S.course || ""}」に変えます。元のコース「${b.main}」は販売停止のため、内容が違う可能性があります。クレームの元になるので、旅行会社・店舗に確認してから登録してください。` : `⚠ 元のコース「${b.main}」はTDマスタにありません（販売停止の可能性）。コースは変えずに登録します（Travel Dineでは停止前のコースのまま残ります）。似た名前のコースでも内容が違うことがあるので、選び直さないでください。` }) : null,
               k === "人数" && tdiBigDrop(r) ? h("div", { class: "tdi-alert", text: `⚠ 大幅な人数変更があります。店舗へアナウンスしてください。（${tdiBigDrop(r).drop}名減・利用日まで${Math.max(0, tdiBigDrop(r).days)}日）` }) : null)
           : c ? h("span", { style: "font-weight:700", text: z }) : h("span", { class: "muted", text: "（変更なし）" }))]));
   }
@@ -2692,7 +2721,7 @@ function tdiChgCtl(r, b, S) {
   const P = "adults" in S ? S : b;
   out["人数"] = h("span", { class: "row", style: "gap:6px;align-items:center;flex-wrap:wrap" }, lab("大人"), num(P.adults, (v) => { r.adults = v; up(); }), lab("小人"), num(P.children, (v) => { r.children = v; if (!(Number(r.adults) > 0)) r.adults = P.adults; up(); }), lab("幼児"), num(P.infants, (v) => { r.infants = v; if (!(Number(r.adults) > 0)) r.adults = P.adults; up(); }));
   if (st) {
-    out["コース"] = sel(S.courseId || "", [["", "（変更なし）"], ...(st.main || []).map((m) => [m[0], m[1]])], (v) => { r.coManual = true; r.courseKeep = !v; r.courseId = v; if (v && !r.courseText) r.courseText = "（スタッフが選択）"; up(); });
+    out["コース"] = sel(S.courseId || "", [["", `（変更なし${b.main ? "：" + b.main : ""}）`], ...(st.main || []).map((m) => [m[0], m[1]])], (v) => { r.coManual = true; r.courseKeep = !v; r.courseId = v; if (v && !r.courseText) r.courseText = "（スタッフが選択）"; up(); });
     const PM = tdiPays(), paySel = (val, k, kcp, first) => h("span", { class: "stack", style: "gap:4px" },
       h("span", { class: "row", style: "gap:6px;align-items:center" }, lab("支払"), sel(val || "", [["", first], ...PM.methods.map((m) => [m, m])], (v) => { r[k] = v; if (!tdiIsCp(v)) r[kcp] = ""; up(); }, "flex:1;min-width:0")),
       tdiIsCp(val) ? sel(r[kcp] || "", [["", "（クーポンの種類）"], ...PM.cps.map((c) => [c, c])], (v) => { r[kcp] = v; up(); }) : null);
