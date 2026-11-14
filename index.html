@@ -26,7 +26,8 @@
 .tdi-alert{color:var(--bad);font-weight:700;background:var(--bad-soft);border-radius:6px;padding:4px 8px;font-size:12.5px}
 .tdi-kind{width:auto;font-weight:700;padding:2px 6px;border-radius:99px;font-size:12px}.tdi-kind-change{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}.tdi-kind-cancel{background:var(--bad-soft);color:var(--bad);border-color:var(--bad)}.tdi-kind-new{background:var(--accent-soft);color:var(--accent)}
 .tdi-chg.tdi-chg-ng{background:var(--bad-soft);border:2px solid var(--bad)}.tdi-chg.tdi-chg-ng select{border-color:var(--bad)}
-.tdi-cmp>.tdi-chgd{background:var(--warn-soft)}.tdi-cmp>.lb.tdi-chgd{box-shadow:inset 3px 0 0 var(--warn);color:var(--warn)}.tdi-chg{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--surface)}.btn.danger.primary,.dlg .btn.danger{border-color:var(--bad)}
+.tdi-cmp>.tdi-chgd{background:var(--bad-soft)}.tdi-cmp>.lb.tdi-chgd{box-shadow:inset 3px 0 0 var(--bad);color:var(--bad);font-weight:700}
+.tdi-chgi{border-color:var(--bad)!important;background:var(--bad-soft)!important;color:var(--bad);font-weight:700}.tdi-chg{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--surface)}.btn.danger.primary,.dlg .btn.danger{border-color:var(--bad)}
 .tdi-cmp>.tdi-ng{background:var(--bad-soft)}.tdi-cmp>.lb.tdi-ng{box-shadow:inset 3px 0 0 var(--bad);color:var(--bad)}.tdi-ngi{border-color:var(--bad)!important;background:var(--bad-soft)!important}.tdi-ready{color:var(--ok);font-weight:700;font-size:14px}
 .tdi-cmp>div{padding:7px 10px;border-top:1px solid var(--line);min-width:0;font-size:13px}
 .tdi-cmp>.hd{border-top:0;background:var(--sunken);font-size:11px;font-weight:700;color:var(--muted)}
@@ -786,7 +787,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 271</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 272</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1994,7 +1995,7 @@ const TDI_PROMPT = `旅行会社から飲食店（株式会社HASSIN）に届い
 ・日本旅行のバウチャー通知（「通知:#…」の行から「END.」の行までが1件）のときは format を "tabiwa"、series を "tabiwa" にする。
 ・日本旅行（EX）の通知（「○予約通知 EXNTA」「○取消通知 EXNTA」などで始まり「***」で終わる。1枚に1件）のときも format を "tabiwa" にし、series を "EX" にする。kind は「○予約通知」なら「予約」、「○取消通知」なら「取消」、「○変更通知」なら「変更」。reserveNo は「受付NO」、kana は「旅行中代表者」のカナを「姓/名」の形で（例：マツヤマ/カナメ）、kanji は「申込者」、product は「プラン」の次の行の商品名（例：4月以降　新世界特得パック【串カツ9本】　基本）、facility は宛先の店舗名（「様」と番号は除く）、useDate は「利用年月日」、adults は「大人合計」の人数。
 ・それ以外は format を "general" にする（1枚に1件のことが多い）。
-・kind：新規の予約なら「予約」、取消・キャンセルなら「取消」、変更なら「変更」。印刷された予約確認書・御予約確認表（すでに予約済みの内容）に、手書きの修正・取り消し線・「変更」「キャンセル」「CXL」「取消」などの書き込みがあるときは、新規ではなく「変更」または「取消」にする（全体に×や斜線があり取消の書き込みがあれば「取消」）。「人数変更」「〜に変更お願いします」などの文言があれば「変更」。すでに予約している団体を、別の店舗で手配し直す依頼（店舗の変更・再手配）なら「店舗変更」にし、各項目には新しい店舗での内容を入れる。変更・取消のときは changeText（何がどう変わるか。書かれているとおりに短く。例：人数 80名→75名、時間 12:00→12:30）と prevDate（利用日が変わる変更のときの、変更前の利用日。YYYY-MM-DD。変わらなければ空）も入れる。変更の資料は、各項目に変更後の内容を入れる（資料に書かれていない項目は空・0のまま）。通知:#番号のすぐ後ろの［］の中に書かれていればそれを使う。
+・kind：新規の予約なら「予約」、取消・キャンセルなら「取消」、変更なら「変更」。印刷された予約確認書・御予約確認表（すでに予約済みの内容）に、手書きの修正・取り消し線・「変更」「キャンセル」「CXL」「取消」などの書き込みがあるときは、新規ではなく「変更」または「取消」にする（全体に×や斜線があり取消の書き込みがあれば「取消」）。「人数変更」「〜に変更お願いします」などの文言があれば「変更」。すでに予約している団体を、別の店舗で手配し直す依頼（店舗の変更・再手配）なら「店舗変更」にし、各項目には新しい店舗での内容を入れる。変更・取消のときは changeText（何がどう変わるか。書かれているとおりに短く。例：人数 80名→75名、時間 12:00→12:30）と prevDate（利用日が変わる変更のときの、変更前の利用日。YYYY-MM-DD。変わらなければ空）も入れる。docDate は資料そのものの作成日・発行日（「御予約確認表 2026年07月24日」のように用紙に印字された日付。FAXの送信日時の印字でもよい。手書きの追記の日付ではない。YYYY-MM-DD。なければ空）。変更の資料は、各項目に変更後の内容を入れる（資料に書かれていない項目は空・0のまま）。通知:#番号のすぐ後ろの［］の中に書かれていればそれを使う。
 ・agency：予約を依頼してきた旅行会社（発信元）。name は会社名（例：株式会社日本旅行）、branch は支店・営業所名（例：岩国支店）。tel・fax は発信元の番号。faxHeader は用紙のいちばん上に印字された送信元の番号（例：0827217183）。宛先の飲食店（HASSIN・06-6631-8814・06-6631-8846）の情報は入れない。
 ・useDate は西暦 YYYY-MM-DD（令和8年＝2026年、令和9年＝2027年）。start・end は "HH:MM"。終了時刻が書かれていなければ end は空。
 ・人数：生徒・児童・学生・教員・職員・引率・お客様・大人は adults に数える。小学生未満などの子供料金は children。添乗員は conductors、ガイドは guides、ドライバー・乗務員は drivers に入れ、adults には含めない。
@@ -2007,7 +2008,7 @@ const TDI_PROMPT = `旅行会社から飲食店（株式会社HASSIN）に届い
 ・tabiwa（バウチャー通知）の product は「ｺｰｽ#」の行の番号の後ろの商品名。「回答書#」の行の番号の後ろに商品名や時刻（例：お好み焼き１２：００）があれば、それも半角にして後ろにつなげる（例：【tabiwa】大阪(赤い風船九州事業部) お好み焼き12:00）。facility は「殿」の行の施設名（前の番号と「殿」は除く）。adults は「仕入単価:大人 3,300x001」の「x」の後ろの数（x001なら1、x002なら2）。商品名・回答書に時刻があれば start に "HH:MM" で入れる（なければ空）。「割付」のテーブル数は人数に使わない。
 ・一般様式（general）のときは、tourNo（ツアー番号・コース番号・受付番号など旅行会社の管理番号。なければ空）、agentStaff（旅行会社側でこの手配を担当している人の名前。例：溝渕 治史。なければ空）、agentRole（その人の役割：営業・手配・担当など書かれているとおり。なければ空）、agentTel（その担当者の電話番号。直通・携帯があればそれ、なければ担当者欄の電話。会社のFAXは入れない。なければ空）、agentMail（その担当者のメールアドレス。なければ空）、escortMeal（添乗員・ガイド・乗務員の食事：お客様と同じ食事なら"同食"、別の食事なら"別食"、同食の人と別食の人がいるなら"同食・別食"、食事なし・書かれていなければ空）、escortSameN・escortSepN（同食の人数・別食の人数。書かれていなければ0）、escortSeat（"同席"・"別席"・空）、contactRole・contactName・contactTel（当日の添乗員・ガイド・幹事など現地の担当者。contactRoleは役割を「添乗員」「ガイド」「幹事」「ドライバー」「乗務員」のどれかで（書かれていなければ空）、contactNameは名前だけ（「幹事　小池」なら contactRole「幹事」・contactName「小池」。「様」「さん」や役割の語は入れない）、contactTelは連絡先。旅行会社の事務担当者は入れない。なければ空）、infants（幼児の人数。なければ0）も入れる。
 ・uncertain：読み取りに自信がない項目名（例：["店舗","人数"]）。
-返答はJSONだけ。形式：{"bookings":[{"format":"general","series":"","notice":"","kind":"予約","complete":true,"agency":{"name":"","branch":"","tel":"","fax":"","faxHeader":""},"groupName":"","groupKana":"","useDate":"","start":"","end":"","adults":0,"children":0,"conductors":0,"guides":0,"drivers":0,"isSchool":false,"nationality":"","storeCandidates":[],"courseText":"","coursePrice":0,"drinkText":"","drinkPrice":0,"payText":"","notes":"","changeText":"","prevDate":"","tourNo":"","agentStaff":"","agentRole":"","agentTel":"","agentMail":"","escortMeal":"","escortSameN":0,"escortSepN":0,"escortSeat":"","contactRole":"","contactName":"","contactTel":"","infants":0,"kana":"","kanji":"","reserveNo":"","product":"","facility":"","uncertain":[]}]}
+返答はJSONだけ。形式：{"bookings":[{"format":"general","series":"","notice":"","kind":"予約","complete":true,"agency":{"name":"","branch":"","tel":"","fax":"","faxHeader":""},"groupName":"","groupKana":"","useDate":"","start":"","end":"","adults":0,"children":0,"conductors":0,"guides":0,"drivers":0,"isSchool":false,"nationality":"","storeCandidates":[],"courseText":"","coursePrice":0,"drinkText":"","drinkPrice":0,"payText":"","notes":"","changeText":"","prevDate":"","docDate":"","tourNo":"","agentStaff":"","agentRole":"","agentTel":"","agentMail":"","escortMeal":"","escortSameN":0,"escortSepN":0,"escortSeat":"","contactRole":"","contactName":"","contactTel":"","infants":0,"kana":"","kanji":"","reserveNo":"","product":"","facility":"","uncertain":[]}]}
 complete は、その予約の内容が渡された資料の中にすべて含まれていれば true、途中で切れていれば false にする。
 書かれていない項目は空文字（数値は0）にし、推測で補わない。`;
 async function tdiPdfPages(f) {
@@ -2120,7 +2121,7 @@ function tdiRowOf(b, id) {
       docTourNo: String(b.tourNo || "").trim(), docInfants: tdiNum(b.infants), docContact: [b.contactRole, b.contactName, b.contactTel].map((x) => String(x || "").trim()).filter(Boolean).join("　"),
       agentStaff: String(b.agentStaff || "").trim(), agentRole: String(b.agentRole || "").trim(), agentTel: String(b.agentTel || "").trim(), agentMail: String(b.agentMail || "").trim(),
       docEscortMeal: String(b.escortMeal || "").trim(), docEscSameN: tdiNum(b.escortSameN), docEscSepN: tdiNum(b.escortSepN), dgSepTogether: 0, dgSepSeparate: 0, docEscortSeat: String(b.escortSeat || "").trim(), dgMode: "", dgMenuId: "", dgTogether: 0, dgSeparate: 0, payConductor: "", payConductorCp: "",
-      changeText: String(b.changeText || "").trim(), prevDate: tdiDate(b.prevDate) || "",
+      changeText: String(b.changeText || "").trim(), prevDate: tdiDate(b.prevDate) || "", docDate: tdiDate(b.docDate) || "",
       groupNo: String(b.tourNo || "").trim(), reserveMgmtNo: "", infants: tdiNum(b.infants), ...tdiContact(b), comment: "", memo: "", payDrink: "", payDrinkCp: "", // 要望・確認事項は「社内向けメモ（予約印字なし）」に入れる
     });
   }
@@ -2580,7 +2581,7 @@ function tdiTdMatch(r, rows, det) {
     return { id: String(x.id), status: String(x.status || ""), group: String(x.group || d.name || ""), agency: String(x.agency || ""), agencyId: String(x.agencyId || ""), name: String(d.name || ""),
       date: String(d.date || "").replace(/-/g, "/"), start: String(d.start || "").slice(0, 5), end: String(d.end || "").slice(0, 5), adults: Number(d.adults) || 0, children: Number(d.children) || 0, infants: Number(d.infants) || 0,
       storeId: String(d.storeId || ""), store: String(d.store || x.store || ""), mainId: main ? main.id : "", main: main ? main.name : String(x.course || ""), drinkIds: drinks.map((f) => f.id), drinks: drinks.map((f) => f.name),
-      pay: String(d.pay || ""), payCp: String(d.payCp || ""), logs: Array.isArray(d.logs) ? d.logs.slice(0, 40) : [], dg: (() => { // 添乗員の食事：別食は添乗員コース（種類5）、同食はメインコースの同席・別席の人数
+      pay: String(d.pay || ""), payCp: String(d.payCp || ""), logs: Array.isArray(d.logs) ? d.logs.slice(0, 40) : null, contact: "ctName" in d ? { role: String(d.ctRole || ""), name: String(d.ctName || ""), tel: String(d.ctTel || "") } : null, dg: (() => { // 添乗員の食事：別食は添乗員コース（種類5）、同食はメインコースの同席・別席の人数
         const dgf = foods.filter((f) => String(f.type) === "5"), mode = d.dgHave && d.dgSame ? "both" : d.dgHave ? "sep" : d.dgSame ? "same" : "";
         const part = (arr) => ({ tog: arr.reduce((a, f) => a + (Number(f.dt) || 0), 0), sep: arr.reduce((a, f) => a + (Number(f.mt) || 0), 0) }); // 同席＝dining_together、別席＝meal_together（新規登録と同じ対応）
         return { mode, menuIds: dgf.map((f) => f.id), menus: dgf.map((f) => f.name), same: d.dgSame ? part(main ? [main] : []) : null, sepP: d.dgHave ? part(dgf) : null, pay: String(d.payConductor || ""), payCp: String(d.payConductorCp || "") };
@@ -2592,12 +2593,14 @@ function tdiTdMatch(r, rows, det) {
 }
 /** Travel Dineの変更履歴から、資料の変更と食い違いそうなものを出す。
     資料の値が「途中で変えられる前の値」と同じなら、古い回答書をもとにした依頼の可能性が高い（例：電話で18:30→19:00に変えたあと、古い回答書で依頼が来た） */
-function tdiLogHints(b, RS) {
+function tdiLogHints(b, RS, docDate) {
   const L = (b && b.logs) || [], out = {}, at = (x) => String(x || "").slice(0, 16), n = (x) => String(x ?? "").normalize("NFKC").replace(/\s/g, "");
   const pay = /CP|ＣＰ|請求|当日払|現金|カード|クーポン/i;
   const one = (g, items, docVals, eq = (a, c) => n(a) === n(c), skipPay = false) => {
     const hs = L.filter((x) => items.includes(x.item) && !(skipPay && (pay.test(x.from) || pay.test(x.to)))); if (!hs.length) return;
     const vs = docVals.filter((v) => v != null && v !== ""), stale = hs.find((x) => vs.some((v) => eq(x.from, v)));
+    const dd = String(docDate || "").replace(/-/g, "/"), after = dd ? hs.filter((x) => String(x.at).slice(0, 10) > dd) : []; // 資料の日付より後に、Travel Dineで変更されている
+    if (after.length) { const x = stale && after.includes(stale) ? stale : after[0]; out[g] = { stale: true, text: `⚠ 資料は${dd}付けですが、Travel Dineではそのあと ${at(x.at)} に${x.item}が「${x.from}」→「${x.to}」に変更されています。${stale && after.includes(stale) ? `資料の「${x.from}」は変更前の値です。` : ""}古い回答書をもとにした依頼の可能性があります。旅行会社に確認し、違っていれば「変更しない」を押してください。` }; return; }
     out[g] = stale ? { stale: true, text: `⚠ Travel Dineでは ${at(stale.at)} に${stale.item}が「${stale.from}」→「${stale.to}」に変更されています。資料の「${stale.from}」は変更前の値です（古い回答書をもとにした依頼の可能性）。旅行会社に確認し、違っていれば「変更しない」を押してください。` }
       : { stale: false, text: `⚠ Travel Dineでは ${hs.slice(0, 3).map((x) => `${at(x.at)} に${x.item}を「${x.from}」→「${x.to}」`).join("、")}に変更しています。資料と食い違っていないか確認してください。` };
   };
@@ -2610,8 +2613,8 @@ function tdiLogHints(b, RS) {
 }
 /** 「変更しない」にできる項目：［名前, 項目キー, 書き換える値のキー, 確かめる値のキー］ */
 const TDI_CHG_GRP = [["date", ["date"], ["date"], ["date"]], ["time", ["start", "end"], ["start", "end"], ["start", "end"]], ["people", ["people"], ["adults", "children", "infants"], ["adults", "children", "infants"]],
-  ["course", ["course"], ["courseId", "course"], ["courseId"]], ["drink", ["drink"], ["drinkId", "drink", "payDrink", "payDrinkCp", "noDrink"], ["drinkIds"]], ["dg", ["dg"], ["dg"], ["dgMode"]], ["pay", ["pay"], ["payCourse", "payCourseCp"], ["pay"]]];
-const TDI_CHG_LBL = { 利用日: "date", 時間: "time", 人数: "people", コース: "course", 飲み放題: "drink", 添乗員の食事: "dg", "支払（コース）": "pay" };
+  ["course", ["course"], ["courseId", "course"], ["courseId"]], ["drink", ["drink"], ["drinkId", "drink", "payDrink", "payDrinkCp", "noDrink"], ["drinkIds"]], ["dg", ["dg"], ["dg"], ["dgMode"]], ["pay", ["pay"], ["payCourse", "payCourseCp"], ["pay"]], ["contact", ["contact"], ["contact"], ["ctName"]]];
+const TDI_CHG_LBL = { 利用日: "date", 時間: "time", 人数: "people", コース: "course", 飲み放題: "drink", 添乗員の食事: "dg", "支払（コース）": "pay", 当日の担当者: "contact" };
 function tdiChgSkip(r, g, on) { const a = new Set(r.chgSkip || []); if (on) a.add(g); else a.delete(g); r.chgSkip = [...a]; tdiCheck(r); render(); }
 /** 資料のコース名が、Travel Dineの今のコースと同じか（「コース」の有無・金額の付き方の違いは許す）。同じなら、マスタで選び直さずに「変更なし」にする */
 const tdiCoKey = (x) => tdiKey(String(x || "").replace(/\s*[(（][^)）]*円[^)）]*[)）]\s*$/, "")).replace(/コース$/, "");
@@ -2636,6 +2639,14 @@ function tdiChgDiff(r, raw) {
   if (Number(r.adults) > 0) {
     const A = [Number(r.adults) || 0, Number(r.children) || 0, Number(r.infants) || 0], B = [b.adults, b.children, b.infants];
     if (A.some((x, i) => x !== B[i])) { add("people", "人数", tdiPpl(...B), tdiPpl(...A)); Object.assign(set, { adults: A[0], children: A[1], infants: A[2] }); Object.assign(expect, { adults: B[0], children: B[1], infants: B[2] }); }
+  }
+  if (b.contact && (r.contactRole || r.contactName || r.contactTel)) { // 当日の担当者（区分・名前・連絡先）。書かれている項目だけ比べる
+    const C = b.contact, tel = (x) => String(x || "").normalize("NFKC").replace(/\D/g, ""), nm = (x) => tdiKey(String(x || "").replace(/(様|さん)$/, "")), Z = {};
+    if (r.contactRole && r.contactRole !== "未定" && r.contactRole !== C.role) Z.role = r.contactRole;
+    if (r.contactName && nm(r.contactName) !== nm(C.name)) Z.name = r.contactName;
+    if (r.contactTel && tel(r.contactTel) !== tel(C.tel)) Z.tel = r.contactTel;
+    const tx = (x) => [x.role, x.name, x.tel].filter(Boolean).join("　") || "なし";
+    if (Object.keys(Z).length) { add("contact", "当日の担当者", tx(C), tx({ ...C, ...Z }) + (Z.tel && tel(C.tel) && tel(Z.tel) === "0" + tel(C.tel) ? "（Travel Dineは先頭の0が抜けています）" : "")); set.contact = Z; expect.ctName = C.name; }
   }
   const S = tdiStore(r.storeId);
   if (r.storeId && b.storeId && r.storeId !== b.storeId) un.push(`店舗（${b.store} → ${S ? S.name : r.storeId}）`);
@@ -2685,6 +2696,7 @@ function tdiDgOf(r) {
 }
 const tdiDgTxt = (g, menu) => (!g || !g.mode ? "なし" : [g.same ? `同食 同席${g.same.tog}・別席${g.same.sep}名` : "", g.sepP ? `別食${menu ? "（" + menu + "）" : ""} 同席${g.sepP.tog}・別席${g.sepP.sep}名` : ""].filter(Boolean).join("／"));
 function tdiCheckChg(r, pr, wa, bk) {
+  { const dd = tdiTdSel(r) && tdiChgDiff(r), K = { date: ["date"], start: ["start"], end: ["end"], people: ["adults", "children", "infants"], contact: ["contactRole", "contactName", "contactTel"] }; r.chgKeys = dd ? dd.items.flatMap((x) => x.k === "contact" ? Object.keys(dd.set.contact || {}).map((k) => ({ role: "contactRole", name: "contactName", tel: "contactTel" })[k]) : x.k === "people" ? ["adults", "children", "infants"].filter((k) => Number(dd.set[k] || 0) !== Number(dd.b[k] || 0)) : K[x.k] || []) : []; } // 変わる項目の入力欄を赤くする
   const op = tdiOp(r), ng = (k, m) => { pr.push(m); bk.push(k); };
   if (r.changeText) wa.push("資料の変更内容：" + r.changeText);
   if (!r.td) return ng("match", "Travel Dineの元の予約と照合してください（一覧の上の「変更・取消をTravel Dineで照合」）");
@@ -2697,7 +2709,7 @@ function tdiCheckChg(r, pr, wa, bk) {
   if (d.un.length) ng("chg", "自動で変更できない項目があります：" + d.un.join("、") + "。Travel Dineで手作業で変更してください");
   else if (!d.items.length) ng("chg", "Travel Dineの今の登録と同じで、変更点が見つかりません");
   if (d.set.payCourse && tdiIsCp(d.set.payCourse) && !d.set.payCourseCp) ng("pay", "クーポンの種類を選んでください");
-  { const hn = Object.values(tdiLogHints(d.b, tdiChgDiff(r, true).set)); if (hn.some((x) => x.stale)) wa.unshift("Travel Dineで途中に変更されています。古い回答書をもとにした依頼の可能性があります（変更内容の赤い注意を確認してください）"); else if (hn.length) wa.unshift("Travel Dineで途中に変更された項目があります（変更内容の注意を確認してください）"); }
+  { const hn = Object.values(tdiLogHints(d.b, tdiChgDiff(r, true).set, r.docDate)); if (hn.some((x) => x.stale)) wa.unshift("Travel Dineで途中に変更されています。古い回答書をもとにした依頼の可能性があります（変更内容の赤い注意を確認してください）"); else if (hn.length) wa.unshift("Travel Dineで途中に変更された項目があります（変更内容の注意を確認してください）"); }
   const bd = tdiBigDrop(r); if (bd) wa.unshift(`大幅な人数変更があります。店舗へアナウンスしてください。（${bd.before}名→${bd.after}名・${bd.drop}名減、利用日の${bd.days > 0 ? bd.days + "日前" : bd.days === 0 ? "当日" : "後"}）`);
   const tt = (x) => (x ? x.tog + x.sep : 0);
   if (d.set.dg && d.set.dg.same && !tt(d.set.dg.same)) ng("dg", "添乗員の食事：同食の同席・別席の人数を入れてください");
@@ -2725,12 +2737,13 @@ function tdiChgBox(r) {
     const lines = [["利用日", b.date, S.date, ch("date")], ["時間", `${b.start}〜${b.end}`, S.start || S.end ? `${S.start || b.start}〜${S.end || b.end}` : "", ch("start") || ch("end")],
       ["人数", tdiPpl(b.adults, b.children, b.infants), "adults" in S ? tdiPpl(S.adults, S.children, S.infants) : "", ch("people")], ["店舗", b.store, "", false], ["コース", b.main || "—", S.course || "", ch("course")],
       ["飲み放題", b.drinks.join("・") || "なし", S.noDrink ? "なし（やめる）" : S.drink || "", ch("drink")],
-      ["添乗員の食事", tdiDgTxt(b.dg, b.dg ? b.dg.menus.join("・") : ""), S.dg ? tdiDgTxt(S.dg, S.dg.menu) : "", ch("dg")], ["支払（コース）", b.pay + (b.payCp ? "・" + b.payCp : ""), S.payCourse ? S.payCourse + (S.payCourseCp ? "・" + S.payCourseCp : "") : "", ch("pay")]];
+      ["添乗員の食事", tdiDgTxt(b.dg, b.dg ? b.dg.menus.join("・") : ""), S.dg ? tdiDgTxt(S.dg, S.dg.menu) : "", ch("dg")], ["支払（コース）", b.pay + (b.payCp ? "・" + b.payCp : ""), S.payCourse ? S.payCourse + (S.payCourseCp ? "・" + S.payCourseCp : "") : "", ch("pay")],
+      ...(b.contact ? [["当日の担当者", [b.contact.role, b.contact.name, b.contact.tel].filter(Boolean).join("　") || "なし", d && ch("contact") ? (d.items.find((x) => x.k === "contact") || {}).to : "", ch("contact")]] : [])];
     const ctl = op === "change" ? tdiChgCtl(r, b, S) : {};
     const R = op === "change" ? tdiChgDiff(r, true) : null, RS = R ? R.set : {}; // 「変更しない」にした項目の、資料どおりなら変わる値
-    const rawTxt = { 利用日: RS.date, 時間: RS.start || RS.end ? `${RS.start || b.start}〜${RS.end || b.end}` : "", 人数: "adults" in RS ? tdiPpl(RS.adults, RS.children, RS.infants) : "", コース: RS.course, 飲み放題: RS.noDrink ? "なし（やめる）" : RS.drink, 添乗員の食事: RS.dg ? tdiDgTxt(RS.dg, RS.dg.menu) : "", "支払（コース）": RS.payCourse ? RS.payCourse + (RS.payCourseCp ? "・" + RS.payCourseCp : "") : "" };
+    const rawTxt = { 利用日: RS.date, 時間: RS.start || RS.end ? `${RS.start || b.start}〜${RS.end || b.end}` : "", 人数: "adults" in RS ? tdiPpl(RS.adults, RS.children, RS.infants) : "", コース: RS.course, 飲み放題: RS.noDrink ? "なし（やめる）" : RS.drink, 添乗員の食事: RS.dg ? tdiDgTxt(RS.dg, RS.dg.menu) : "", "支払（コース）": RS.payCourse ? RS.payCourse + (RS.payCourseCp ? "・" + RS.payCourseCp : "") : "", 当日の担当者: R && R.items.find((x) => x.k === "contact") ? R.items.find((x) => x.k === "contact").to : "" };
     const skipped = (k) => !!(TDI_CHG_LBL[k] && (r.chgSkip || []).includes(TDI_CHG_LBL[k]));
-    const LH = R ? tdiLogHints(b, RS) : {}, logAlert = (k) => { const x = TDI_CHG_LBL[k] && LH[TDI_CHG_LBL[k]]; return x ? h("div", { class: "tdi-alert", text: x.text }) : null; };
+    const LH = R ? tdiLogHints(b, RS, r.docDate) : {}, logAlert = (k) => { const x = TDI_CHG_LBL[k] && LH[TDI_CHG_LBL[k]]; return x ? h("div", { class: "tdi-alert", text: x.text }) : null; };
     const keepBtn = (k) => h("button", { type: "button", class: "btn sm", style: "align-self:flex-start", text: "変更しない（今のままにする）", onclick: () => tdiChgSkip(r, TDI_CHG_LBL[k], true) });
     tbl = h("div", { class: "tdi-cmp" }, h("div", { class: "hd" }, "項目"), h("div", { class: "hd" }, "Travel Dine（今）"), h("div", { class: "hd" }, op === "cancel" ? "取消後" : "変更後（ここで直せます）"),
       ...lines.flatMap(([k, a, z, c]) => [h("div", { class: "lb" + (c ? " tdi-chgd" : "") }, k), h("div", { class: "doc" + (c ? " tdi-chgd" : "") }, a || "—"),
@@ -2743,7 +2756,8 @@ function tdiChgBox(r) {
               k === "人数" && tdiBigDrop(r) ? h("div", { class: "tdi-alert", text: `⚠ 大幅な人数変更があります。店舗へアナウンスしてください。（${tdiBigDrop(r).drop}名減・利用日まで${Math.max(0, tdiBigDrop(r).days)}日）` }) : null)
           : c ? h("span", { class: "stack", style: "gap:4px" }, h("span", { style: "font-weight:700", text: z }), logAlert(k), TDI_CHG_LBL[k] ? keepBtn(k) : null) : h("span", { class: "muted", text: "（変更なし）" }))]));
   }
-  return h("div", { class: "tdi-chg stack" + (b ? "" : " tdi-chg-ng"), style: "gap:8px" }, head, pick, tbl);
+  const noLog = op === "change" && b && b.logs == null ? h("div", { class: "small", style: "color:var(--warn);font-weight:700", text: "Travel Dineの変更履歴をまだ読んでいません（途中で変更されていないかを確かめられません）。上の「変更・取消をTravel Dineで照合し直す」を押してください。" }) : null;
+  return h("div", { class: "tdi-chg stack" + (b ? "" : " tdi-chg-ng"), style: "gap:8px" }, head, pick, noLog, tbl);
 }
 /** 変更後の欄で直せるようにする（手書きで読み違えたときなど）。選んだ値は資料の読み取りより優先する */
 function tdiChgCtl(r, b, S) {
@@ -3007,7 +3021,7 @@ function tdiTable() {
   const kv = (list) => h("div", { class: "tdi-kv" }, ...list.filter((x) => x && x[1]).flatMap(([k, v, cls]) => [h("span", { class: "tdi-l", text: k }), h("span", { class: cls || "", text: v })]));
   const tb = h("div", { class: "stack", style: "gap:10px" }, ...rows.map((r, i) => {
     const bad = r.problems.length, warn = !bad && r.warns.length, gen = r.fmt !== "tabiwa";
-    const ngK = (k) => (r.badKeys || []).includes(k), ngC = (k) => (ngK(k) ? { class: "tdi-ngi" } : {});
+    const ngK = (k) => (r.badKeys || []).includes(k), ngC = (k) => (ngK(k) ? { class: "tdi-ngi" } : tdiOp(r) === "change" && (r.chgKeys || []).includes(k) ? { class: "tdi-chgi", title: "Travel Dineの今の登録から変わる項目" } : {});
     const inp = (key, attrs = {}) => h("input", { value: r[key] ?? "", ...ngC(key), ...attrs, oninput: (e) => { r[key] = attrs.type === "number" ? Number(e.target.value) : e.target.value; if (key === "store" || key === "course") r.manualMap = true; if (key === "end") r.endAuto = false; tdiCheck(r); }, onchange: () => { if (key === "date") r.date = tdiDate(r.date) || r.date; if (key === "start") tdiApplyStay(r); tdiCheck(r); ch(); } });
     const pair = !bad && r.pairWith;
     const staff = [["添乗員", r.conductors], ["ガイド", r.guides], ["ドライバー", r.drivers]].filter((x) => x[1] > 0).map((x) => x[0] + x[1]).join("・");
@@ -3298,6 +3312,7 @@ window.addEventListener("message", (e) => {
 /* ----- Travel Dineとつなぎっぱなし -----
    「Travel Dineと接続」で開いたタブで一括登録のブックマークを1回押すと、そのタブを開いている間はT-COREとつながる。
    つながっている間は、変更・取消の照合を自動で行い、「Travel Dineへ登録」はブックマークや「開始」を押さずにそのタブで処理する。 */
+const TDC_VER = 21; // 一括登録ブックマークの中身（bm_td.js）の版。つながっているタブがこれより古ければ、押し直しを案内する
 const TDC = { win: "tcore-td", src: null, ok: false, wait: false, pongAt: 0, busy: false, findId: "" };
 function tdcConnect() {
   const w = window.open(MC_TD_ORIGIN + "/admin/reservations", TDC.win);
@@ -3353,13 +3368,13 @@ function tdbRunConnected() {
 function tdcBar() {
   // Travel Dine・ダイニーとの接続。つながっていないときは目立たせる（取り込んだ予約があるときは黄色の帯）
   const on = tdcAlive(), dOn = dcAlive(), anyD = [...S.stores.values()].some((x) => x.dinii);
-  const needD = anyD && diniiEntries().length > 0, warn = (!on && tdi.rows.length > 0) || (!dOn && needD);
+  const needD = anyD && diniiEntries().length > 0, old = on && (TDC.ver || 0) < TDC_VER, warn = (!on && tdi.rows.length > 0) || (!dOn && needD) || old;
   const item = (ok, busy, name, btn, wait, waitTxt, onclick, desc) => h("div", { class: "row", style: "gap:8px;align-items:center" },
     h("span", { class: "pill " + (ok ? "ok" : "bad"), style: "font-weight:700", text: ok ? (busy ? `● ${name} 処理中` : `● ${name} 接続中`) : `✕ ${name} 未接続` }),
     ok ? null : h("button", { type: "button", class: "btn sm" + (wait ? "" : " primary"), text: wait ? waitTxt : btn, onclick }),
     ok ? null : h("span", { class: "small", text: desc }));
   return h("div", { class: warn ? "banner warn stack" : "stack", style: "gap:6px" + (warn ? "" : ";padding:2px 0") },
-    warn ? h("div", { style: "font-weight:700", text: "つながっていないと、照合・登録・ダイニー反映のたびに、開いたタブでブックマークを押す手間が増えます。最初に接続してください。" }) : null,
+    old ? h("div", { style: "font-weight:700;color:var(--bad)", text: "Travel Dineのタブのプログラムが古いままです。つながっているTravel Dineのタブで、ブックマーク「一括登録」をもう一度押してください（押し直すと新しい動きになります）。" }) : warn ? h("div", { style: "font-weight:700", text: "つながっていないと、照合・登録・ダイニー反映のたびに、開いたタブでブックマークを押す手間が増えます。最初に接続してください。" }) : null,
     item(on, TDC.busy, "Travel Dine", "Travel Dineと接続", TDC.wait, "接続を待っています…（開いたタブでブックマーク「一括登録」を押す）", tdcConnect,
       "1日1回、開いたTravel Dineのタブでブックマーク「一括登録」を押します（タブは開いたまま）。変更・取消の照合と登録がボタン1つで進みます。"),
     anyD ? item(dOn, DC.busy, "ダイニー", "ダイニーと接続", DC.wait, "接続を待っています…（開いたタブでブックマーク「ダイニー登録」を押す）", diniiConnect,
@@ -3368,7 +3383,7 @@ function tdcBar() {
 window.addEventListener("message", (ev) => {
   if (ev.origin !== MC_TD_ORIGIN || !ev.data || typeof ev.data !== "object") return;
   const d = ev.data;
-  if (d.type === "tdconn-ready") { TDC.src = ev.source; TDC.ok = true; TDC.wait = false; TDC.pongAt = Date.now(); toast("Travel Dineとつながりました"); tdiAutoFind(); render(); return; }
+  if (d.type === "tdconn-ready") { TDC.ver = Number(d.v) || 0; TDC.src = ev.source; TDC.ok = true; TDC.wait = false; TDC.pongAt = Date.now(); toast("Travel Dineとつながりました"); tdiAutoFind(); render(); return; }
   if (d.type === "tdconn-pong") { TDC.pongAt = Date.now(); TDC.busy = !!d.busy; return; }
   if (d.type === "tdfind-error") { TDF.busy = ""; TDF.req = null; toast(String(d.msg || "照合に失敗しました")); render(); return; }
   if (d.type === "tdbulk-busy") { TDC.busy = true; toast("Travel Dineのタブで処理中です。終わってから、もう一度押してください"); return; }
