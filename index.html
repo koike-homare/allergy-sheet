@@ -210,6 +210,14 @@ window.APP_CONFIG = {
           return await r.json().catch(() => ({ code: "connect" }));
         } catch (_) { return { code: "connect" }; }
       },
+/** 催行確認チェックの元データ（今日以降の予約一覧）を今すぐ読み直す（結果は tourchk/latest に書かれる） */
+      buildTourchk: async () => {
+        try {
+          const { data: se } = await sb.auth.getSession(); if (!se || !se.session) return false;
+          const r = await fetch(CFG.url + "/functions/v1/tour-check", { method: "POST", headers: { "Content-Type": "application/json", apikey: CFG.key, Authorization: "Bearer " + se.session.access_token }, body: JSON.stringify({ mode: "run" }) });
+          return r.ok;
+        } catch (_) { return false; }
+      },
 /** 朝礼シートを今すぐ作り直す（結果は mailchk/morning に書かれ、画面に届く） */
       buildMorning: async () => {
         try {
@@ -788,7 +796,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 275</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 276</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -3580,7 +3588,21 @@ function diniiBookmarkletPanel() {
    毎日、利用日が「今日から○日後」（初期値14日後）の予約をTravel Dineの予約一覧から読み、
    更新日時が○日（初期値30日）以上前のもの（しばらく誰も触っていない予約）を、旅行会社への催行確認の対象として出す。
    読むのは、つながっているTravel Dineのタブ（読むだけ。何も書き換えない）。確認済みの印は tourchk/d_利用日 に保存する */
-const TCK = { days: 14, stale: 30, date: "", rows: null, at: "", busy: "", reqId: "", checks: {}, checksGot: false, range: null, loadedFor: "" };
+const TCK = { days: 14, stale: 30, date: "", rows: null, at: "", busy: "", reqId: "", checks: {}, checksGot: false, range: null, loadedFor: "", scope: "day", srv: null, job: null, srvAt: 0, poll: null };
+/** 毎朝サーバーが読んだ予約一覧（tourchk/latest）と、その進み具合（tourchk/job）を読む */
+async function tckLoadSrv(force) {
+  if (!db || localOnly || (!force && Date.now() - TCK.srvAt < 60e3)) return; TCK.srvAt = Date.now();
+  try { const a = await db.doc("tourchk/latest").get(), b = await db.doc("tourchk/job").get(); TCK.srv = (a.exists && a.data()) || null; TCK.job = (b.exists && b.data()) || null; } catch (_) {}
+  if (TCK.job && TCK.job.running && !TCK.poll) TCK.poll = setInterval(() => { tckLoadSrv(true); if (!(TCK.job && TCK.job.running)) { clearInterval(TCK.poll); TCK.poll = null; } }, 10000);
+  if (view.name === "tourchk") render();
+}
+async function tckRebuild() {
+  const host = window.claude && window.claude.host;
+  if (!host || !host.buildTourchk) return toast("この表示環境では使えません（Travel Dineとつないで「Travel Dineから直接読む」を使ってください）");
+  TCK.job = { ...(TCK.job || {}), running: true }; render();
+  const ok = await host.buildTourchk(); toast(ok ? "読み直しを始めました（1〜3分）。終わると自動で表示が変わります" : "読み直しを始められませんでした");
+  setTimeout(() => tckLoadSrv(true), 3000); if (!TCK.poll) TCK.poll = setInterval(() => { tckLoadSrv(true); if (!(TCK.job && TCK.job.running)) { clearInterval(TCK.poll); TCK.poll = null; } }, 10000);
+}
 try { const v = JSON.parse(localStorage.getItem("tcore-tck") || "{}"); if (v.days >= 0) TCK.days = Number(v.days); if (v.stale > 0) TCK.stale = Number(v.stale); } catch (_) {}
 const tckSave = () => { try { localStorage.setItem("tcore-tck", JSON.stringify({ days: TCK.days, stale: TCK.stale })); } catch (_) {} };
 const tckDate = () => TCK.date || mcAdd(mcToday(), TCK.days);
@@ -3624,28 +3646,35 @@ function tckCsv(list) {
   a.download = `催行確認_${TCK.range ? TCK.range.from + "_" + TCK.range.to : mcToday()}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 function viewTourChk() {
-  tckLoadChecks();
+  tckLoadChecks(); tckLoadSrv(false);
   const d = tckDate(), W = (n) => `width:${n}px`, today = mcToday();
   const num = (val, on, w = 64) => h("input", { type: "number", min: 0, value: val, style: W(w), onchange: (e) => on(Number(e.target.value) || 0) });
   const setDate = (v) => { TCK.date = v; render(); };
+  const R = TCK.scope === "all" ? { from: today, to: mcAdd(today, 400) } : TCK.scope === "upto" ? { from: today, to: d } : { from: d, to: d };
+  const seg = (k, t) => h("button", { type: "button", class: "btn sm" + (TCK.scope === k ? " primary" : ""), text: t, onclick: () => { TCK.scope = k; render(); } });
+  const J = TCK.job, S = TCK.srv;
   const ctl = h("div", { class: "panel stack", style: "gap:8px" },
     h("div", { class: "row", style: "gap:8px;align-items:center;flex-wrap:wrap" },
       h("span", { text: "利用日" }), h("button", { type: "button", class: "btn sm", text: "◀ 前日", onclick: () => setDate(mcAdd(d, -1)) }),
       h("input", { type: "date", value: d, style: W(150), onchange: (e) => e.target.value && setDate(e.target.value) }),
       h("button", { type: "button", class: "btn sm", text: "翌日 ▶", onclick: () => setDate(mcAdd(d, 1)) }),
       h("b", { text: mcFmt(d) }), TCK.date ? h("button", { type: "button", class: "btn sm", text: `今日から${TCK.days}日後に戻す`, onclick: () => setDate("") }) : null),
+    h("div", { class: "row", style: "gap:6px;align-items:center;flex-wrap:wrap" }, h("span", { class: "small", text: "表示する範囲：" }), seg("day", `この日だけ（${mcFmt(d)}）`), seg("upto", `今日〜${mcFmt(d)}`), seg("all", "登録されている予約すべて（今日以降）")),
     h("div", { class: "row small", style: "gap:8px;align-items:center;flex-wrap:wrap" },
       h("span", { text: "ふだんの利用日：今日から" }), num(TCK.days, (v) => { TCK.days = v; TCK.date = ""; tckSave(); render(); }, 56), h("span", { text: "日後　／　更新日時が" }),
       num(TCK.stale, (v) => { TCK.stale = Math.max(1, v); tckSave(); render(); }, 56), h("span", { text: "日以上前の予約を「要確認」にする" })),
     h("div", { class: "row", style: "gap:8px;align-items:center;flex-wrap:wrap" },
-      h("button", { type: "button", class: "btn primary", text: `この日を読み込む（${mcFmt(d)}）`, disabled: !!TCK.busy, onclick: () => tckLoad(d, d) }),
-      h("button", { type: "button", class: "btn", text: `今日〜${mcFmt(d)}をまとめて`, disabled: !!TCK.busy, onclick: () => tckLoad(today, d) }),
-      h("button", { type: "button", class: "btn", text: "登録されている予約をすべて（今日以降）", disabled: !!TCK.busy, onclick: () => tckLoad(today, mcAdd(today, 400)) }),
-      h("span", { class: "small muted", text: "Travel Dineの予約一覧（更新日時）を読むだけです。Travel Dineには何も書き込みません。すべて読むときは数分かかります。" })),
+      h("span", { class: "small", style: "font-weight:700", text: J && J.running ? "Travel Dineを読み直しています…（1〜3分）" : S ? `毎朝自動でTravel Dineを読んでいます（最終：${mrAt(S.at)}・${S.rows.length}件）` : "まだ自動の読み込みがありません（毎朝6時台に読みます）" }),
+      h("button", { type: "button", class: "btn sm", text: "今すぐ読み直す", disabled: !!(J && J.running), onclick: tckRebuild }),
+      h("button", { type: "button", class: "btn sm", text: "Travel Dineから直接読む（接続中のタブで）", disabled: !!TCK.busy, onclick: () => tckLoad(R.from, R.to) }),
+      J && J.error ? h("span", { class: "small", style: "color:var(--bad)", text: J.error }) : null),
     TCK.busy ? h("div", { style: "font-weight:700", text: TCK.busy }) : null);
-  const out = [h("div", { class: "row" }, h("h2", { text: "催行確認チェック" })), tdcBar(), ctl];
-  if (TCK.rows) {
-    const R = TCK.range, multi = R.from !== R.to, live = TCK.rows.filter((r) => !/キャンセル|辞退|取消/.test(r.status)), ago = (r) => tckDaysAgo(r.updated);
+  const out = [h("div", { class: "row" }, h("h2", { text: "催行確認チェック" })), ctl];
+  if (!S) out.splice(1, 0, tdcBar());
+  const direct = TCK.rows && TCK.loadedFor === R.from + "~" + R.to;
+  const src = direct ? TCK.rows.filter((r) => !/キャンセル|辞退|取消/.test(r.status)) : S ? S.rows.filter((r) => { const y = tckYmd(r.dt); return y >= R.from && y <= R.to; }) : null;
+  if (src) {
+    const multi = R.from !== R.to, live = src, ago = (r) => tckDaysAgo(r.updated);
     const stale = live.filter((r) => ago(r) == null || ago(r) >= TCK.stale).sort((a, b) => multi ? (a.dt < b.dt ? -1 : a.dt > b.dt ? 1 : 0) : (ago(b) ?? 9999) - (ago(a) ?? 9999)), fresh = live.filter((r) => !stale.includes(r));
     const done = stale.filter((r) => TCK.checks[r.id]).length;
     const tbl = (list, mark) => h("table", { class: "small", style: "width:100%;border-collapse:collapse" },
@@ -3657,14 +3686,15 @@ function viewTourChk() {
           h("td", { style: "padding:4px 6px;white-space:nowrap" + (mark ? ";color:var(--bad);font-weight:700" : "") }, h("div", { text: r.updated || "（なし）" }), a != null ? h("div", { class: "small", text: `${a}日前${r.updater ? "・" + r.updater : ""}` }) : null),
           h("td", { style: "padding:4px 6px" }, h("a", { class: "btn sm", href: `${MC_TD_ORIGIN}/admin/reservations/detail/${r.id}`, target: "_blank", rel: "noopener", text: "Travel Dineで開く" }))); }));
     const span = `${mcFmt(R.from)}${multi ? "〜" + mcFmt(R.to) : ""}`;
+    TCK.range = R;
     out.push(h("div", { class: "panel stack", style: "gap:8px" },
       h("div", { class: "row", style: "gap:10px;align-items:center;flex-wrap:wrap" }, h("b", { style: "font-size:16px", text: `要確認 ${stale.length}件` }),
-        h("span", { class: "small muted", text: `${span}の予約 ${live.length}件のうち、更新日時が${TCK.stale}日以上前のもの（${multi ? "利用日順" : "古い順"}）。旅行会社に催行の確認をしたら、チェックを入れてください（確認済み ${done}/${stale.length}件）。` }),
+        h("span", { class: "small muted", text: `${TCK.scope === "all" ? "今日以降" : span}の予約 ${live.length}件のうち、更新日時が${TCK.stale}日以上前のもの（${multi ? "利用日順" : "古い順"}）。旅行会社に催行の確認をしたら、チェックを入れてください（確認済み ${done}/${stale.length}件）。` }),
         stale.length ? h("button", { type: "button", class: "btn sm", text: "CSVで保存", onclick: () => tckCsv(stale) }) : null),
       stale.length ? tbl(stale, true) : h("div", { class: "muted", text: "要確認の予約はありません。" }),
-      h("details", {}, h("summary", { style: "cursor:pointer", text: `最近更新されている予約 ${fresh.length}件（キャンセル ${TCK.rows.length - live.length}件は除く）` }), fresh.length ? tbl(fresh, false) : h("div", { class: "muted small", text: "ありません。" })),
-      h("div", { class: "small muted", text: `読み込み：${new Date(TCK.at).toLocaleString("ja-JP")}` })));
-  } else if (!TCK.busy) out.push(h("div", { class: "muted", text: tdcAlive() ? "「この日を読み込む」を押すと、この日の予約を確認します。" : "Travel Dineとつないでから読み込んでください。" }));
+      h("details", {}, h("summary", { style: "cursor:pointer", text: `最近更新されている予約 ${fresh.length}件（キャンセルは除く）` }), fresh.length ? tbl(fresh, false) : h("div", { class: "muted small", text: "ありません。" })),
+      h("div", { class: "small muted", text: direct ? `Travel Dineから直接読み込み：${new Date(TCK.at).toLocaleString("ja-JP")}` : `毎朝の自動読み込み：${mrAt(S.at)}（それ以降の更新は「今すぐ読み直す」で反映）` })));
+  } else if (!TCK.busy) out.push(h("div", { class: "muted", text: "まだデータがありません。「今すぐ読み直す」を押すか、明朝の自動読み込みをお待ちください。" }));
   return out;
 }
 /* ---------- 手配チェック ----------
