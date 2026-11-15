@@ -796,7 +796,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 277</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 278</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -2238,10 +2238,10 @@ function tdiMailCands() {
   const items = mcItems(), cmp = mcCompare(items), today = new Date(Date.now() + 9 * 36e5).toISOString().slice(0, 10);
   const have = new Set(tdi.rows.map((r) => r.key)), skip = tdi.mailSkip || (tdi.mailSkip = new Set());
   const list = !cmp.checkedAt ? [] : items.filter((it) => {
-    if (it.superseded || !it.date || it.date < today || /取消|変更/.test(it.b.kind || "") || /見積/.test(it.b.phase || "")) return false;
+    if (it.superseded || !it.date || it.date < today || /見積/.test(it.b.phase || "")) return false;
     if (/@8sin\.co\.jp/i.test(it.mail.from || "")) return false; // 自社から送った確認書は除く
     const r = cmp.res.get(it.key);
-    if (r && (r.row || r.stale)) return false; // Travel Dineに登録済み／後のメールで変わった
+    if (tdiMailKind(it.b) === "new" && r && (r.row || r.stale)) return false; // 新規：Travel Dineに登録済み／後のメールで変わった（変更・キャンセルは、登録済みの予約に対するものなので出す）
     return !have.has("mail:" + it.key) && !skip.has(it.key);
   }).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   return { list, checked: !!cmp.checkedAt, checkedAt: cmp.checkedAt };
@@ -2255,8 +2255,8 @@ function tdiMailFlags(it) {
 }
 function tdiAddFromMail(its) {
   const n0 = tdi.rows.length, added = its.map((it, i) => {
-    const r = tdiRowOf({ ...it.b, format: "general", __key: "mail:" + it.key, __src: "メール：" + (it.mail.subject || "") }, "m" + (n0 + i) + "_" + Date.now().toString(36));
-    r.mailId = it.mail.id; r.mailAt = it.mail.at; r.mailShow = false;
+    const r = tdiRowOf({ ...it.b, kind: tdiMailKind(it.b) === "change" && !/変更/.test(it.b.kind || "") ? "変更（" + (it.b.kind || "人数連絡") + "）" : it.b.kind, format: "general", __key: "mail:" + it.key, __src: "メール：" + (it.mail.subject || "") }, "m" + (n0 + i) + "_" + Date.now().toString(36));
+    r.mailId = it.mail.id; r.mailAt = it.mail.at; r.mailBox = tdiBoxOf(it.mail); r.mailShow = false;
     // メールの差出人を担当者として使う（資料に担当者がないとき）
     if (!r.agentMail && /@/.test(it.mail.from || "")) { if (!r.agentStaff && it.mail.fromName) r.agentStaff = String(it.mail.fromName).trim(); r.agentMail = (/[\w.+-]+@[\w.-]+/.exec(it.mail.from) || [""])[0]; r.memoStaff = tdiMemoParts(r).staff; }
     const extra = ["メールから取り込みました。原本のメールと照合してください"];
@@ -2268,22 +2268,37 @@ function tdiAddFromMail(its) {
   tdi.rows = tdi.rows.concat(added); tdiPair(); tdi.mailOpen = false;
   toast(`${added.length}件をメールから取込一覧に追加しました。「要確認」を確認してください`); render();
 }
+/** メールの内容の種類：新規依頼・変更（人数連絡を含む）・キャンセル */
+const tdiMailKind = (b) => { const k = String((b && b.kind) || ""); return /取消|取り消|キャンセル/.test(k) ? "cancel" : /変更|人数連絡/.test(k) ? "change" : "new"; };
+const TDI_MK = { new: ["＋", "新規依頼", "background:#e3edfb;color:#1f4e8c"], change: ["✎", "変更", "background:#fdf3d6;color:#8f5a00"], cancel: ["✕", "キャンセル", "background:#fbe3e1;color:#b0261f"] };
+const tdiKindIcon = (k, extra) => { const x = TDI_MK[k] || TDI_MK.new; return h("span", { class: "pill", style: "font-weight:700;white-space:nowrap;" + x[2], title: extra || "", text: `${x[0]} ${x[1]}` }); };
+/** メールの受信箱（tour@・inbound@）。手配チェックのメールの記録に box が入っている */
+const TDI_BOX = { tour: "tour@", inbound: "inbound@" };
+const tdiBoxOf = (m) => String((m && (m.box || String(m.id || "").split(":")[0])) || "");
+const tdiBoxPill = (key) => key && TDI_BOX[key] ? h("span", { class: "pill", style: "font-weight:700;" + (key === "inbound" ? "background:#fdeee0;color:#a35200" : "background:#e3edfb;color:#1f4e8c"), title: "受け取ったメールアドレス", text: TDI_BOX[key] }) : null;
 function tdiMailPanel() {
-  const { list, checked, checkedAt } = tdiMailCands();
+  const all = tdiMailCands(), { checked, checkedAt } = all;
   if (!S.mc) return null;
+  const B = tdi.mailBox || "all", K = tdi.mailKind || "all", inB = (it) => B === "all" || tdiBoxOf(it.mail) === B, cnt = (k) => all.list.filter((it) => tdiBoxOf(it.mail) === k).length;
+  const byB = all.list.filter(inB), kc = (k) => byB.filter((it) => tdiMailKind(it.b) === k).length;
+  const list = byB.filter((it) => K === "all" || tdiMailKind(it.b) === K);
+  const tabs = h("div", { class: "row", style: "gap:6px;align-items:center" }, h("span", { class: "small", text: "受信箱：" }),
+    ...[["all", `すべて ${all.list.length}件`], ["tour", `tour@ ${cnt("tour")}件`], ["inbound", `inbound@ ${cnt("inbound")}件`]].map(([k, t]) => h("button", { type: "button", class: "btn sm" + (B === k ? " primary" : ""), text: t, onclick: () => { tdi.mailBox = k; render(); } })),
+    h("span", { class: "small", style: "margin-left:14px", text: "種類：" }),
+    ...[["all", `すべて ${byB.length}件`], ["new", `＋ 新規依頼 ${kc("new")}件`], ["change", `✎ 変更 ${kc("change")}件`], ["cancel", `✕ キャンセル ${kc("cancel")}件`]].map(([k, t]) => h("button", { type: "button", class: "btn sm" + (K === k ? " primary" : ""), text: t, onclick: () => { tdi.mailKind = k; render(); } })));
   const head = h("div", { class: "row" },
-    h("div", { style: "font-weight:700", text: `メールから届いた新規予約（Travel Dine未登録）${list.length}件` }),
+    h("div", { style: "font-weight:700", text: `メールから届いた予約の依頼 ${list.length}件${B === "all" ? "" : `（${TDI_BOX[B]}）`}` }),
     h("span", { class: "small muted", text: checked ? `Travel Dine照合：${new Date(checkedAt).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}` : "Travel Dineとまだ照合していません" }),
     h("span", { style: "margin-left:auto" }),
     list.length ? h("button", { type: "button", class: "btn sm", id: "tdi-mail-toggle", text: tdi.mailOpen ? "閉じる" : "一覧を見る", onclick: () => { tdi.mailOpen = !tdi.mailOpen; render(); } }) : null,
     list.length && tdi.mailOpen ? h("button", { type: "button", class: "btn sm primary", id: "tdi-mail-all", text: `${list.length}件まとめて取込一覧に追加`, disabled: tdi.busy, onclick: () => tdiAddFromMail(list) }) : null);
-  if (!tdi.mailOpen || !list.length) return h("div", { class: "panel stack", id: "tdi-mail" }, head, list.length ? null : h("div", { class: "small muted", text: checked ? "未登録の新規予約メールはありません。" : "手配チェックでTravel Dineの予約を読み込むと、未登録の新規予約がここに出ます。" }));
+  if (!tdi.mailOpen || !list.length) return h("div", { class: "panel stack", id: "tdi-mail" }, head, all.list.length ? tabs : null, list.length ? null : h("div", { class: "small muted", text: checked ? "該当するメール（未登録の新規依頼・変更・キャンセル）はありません。" : "手配チェックでTravel Dineの予約を読み込むと、未登録の新規予約がここに出ます。" }));
   const fmtAt = (s) => new Date(s).toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
   const tb = h("tbody", {}, ...list.map((it) => {
     const b = it.b, fl = tdiMailFlags(it), ppl = [`大人${b.adults || 0}`, b.children ? `子供${b.children}` : "", b.conductors ? `添乗${b.conductors}` : "", b.guides ? `ガイド${b.guides}` : "", b.drivers ? `乗務${b.drivers}` : ""].filter(Boolean).join("・");
     return h("tr", {},
-      h("td", { class: "small" }, fmtAt(it.mail.at), h("div", { class: "muted", style: "max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap", title: it.mail.subject, text: it.mail.subject })),
-      h("td", {}, h("div", { style: "font-weight:700", text: `${it.date.slice(5).replace("-", "/")}${b.weekday ? "（" + b.weekday + "）" : ""} ${b.start || ""}` })),
+      h("td", { class: "small" }, h("div", { class: "row", style: "gap:4px;flex-wrap:nowrap" }, tdiBoxPill(tdiBoxOf(it.mail)), fmtAt(it.mail.at)), h("div", { class: "muted", style: "max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap", title: it.mail.subject, text: it.mail.subject })),
+      h("td", {}, tdiKindIcon(tdiMailKind(b), b.kind), h("div", { style: "font-weight:700;margin-top:2px", text: `${it.date.slice(5).replace("-", "/")}${b.weekday ? "（" + b.weekday + "）" : ""} ${b.start || ""}` })),
       h("td", { class: "small" }, h("div", { text: it.agName }), h("div", { style: "font-weight:700", text: b.groupName || "（団体名なし）" })),
       h("td", { class: "small", text: ppl }),
       h("td", { class: "small" }, h("div", { text: (b.storeCandidates || []).join("／") }), h("div", { class: "muted", text: [b.courseText, b.coursePrice ? b.coursePrice.toLocaleString() + "円" : "", b.drinkText].filter(Boolean).join(" ") })),
@@ -2293,9 +2308,9 @@ function tdiMailPanel() {
         window.claude && window.claude.host && window.claude.host.openMail ? h("button", { type: "button", class: "btn sm", text: "メールを開く", onclick: () => mcMailDialog(it.mail) }) : null, " ",
         h("button", { type: "button", class: "btn sm", text: "対象外", title: "新規予約ではないので、この一覧に出さない", onclick: () => { tdi.mailSkip.add(it.key); render(); } })));
   }));
-  return h("div", { class: "panel stack", id: "tdi-mail" }, head,
-    h("div", { class: "small muted", text: "手配チェックが読んだメールのうち、Travel Dineにまだ登録がない新規予約です。「取込一覧に追加」を押すと下の一覧に入ります。そこで旅行会社・店舗・コースを確かめてから登録してください。" }),
-    h("div", { style: "overflow-x:auto" }, h("table", { class: "list small" }, h("thead", {}, h("tr", {}, ...["受信", "利用日", "旅行会社／団体名", "人数", "店舗・コース", "確認すること", ""].map((t) => h("th", { text: t })))), tb)));
+  return h("div", { class: "panel stack", id: "tdi-mail" }, head, tabs,
+    h("div", { class: "small muted", text: "手配チェックが読んだメールのうち、Travel Dineにまだ登録がない新規依頼と、変更・キャンセルの連絡です（種類はAIがメールの内容から判断。違っていれば取込一覧で切り替えられます）。「取込一覧に追加」を押すと下の一覧に入ります。そこで旅行会社・店舗・コースを確かめてから登録してください。" }),
+    h("div", { style: "overflow-x:auto" }, h("table", { class: "list small" }, h("thead", {}, h("tr", {}, ...["受信", "種類・利用日", "旅行会社／団体名", "人数", "店舗・コース", "確認すること", ""].map((t) => h("th", { text: t })))), tb)));
 }
 /** 取込一覧の行に、元のメールを並べて表示する（メールサーバーから読むだけ。T-COREには保存しない） */
 const tdiMailCache = new Map();
@@ -3186,7 +3201,7 @@ function tdiTable() {
     const head = h("div", { class: "row", style: "gap:10px;align-items:center" },
       // 不備がなければ自動で登録対象。チェックは、取消・変更と組になった予約を取り込むときだけ使う
       pair ? h("label", { class: "row", style: "gap:6px;font-weight:700;cursor:pointer" }, h("input", { type: "checkbox", style: "width:auto;flex:none", checked: r.include, "aria-label": "登録する", onchange: (e) => { r.include = e.target.checked; ch(); } }), "登録する") : null,
-      h("span", { style: "font-weight:700", text: "No." + (i + 1) }), tdiKindSel(r), (() => { const L = (tdiOp(r) === "new" || tdiOp(r) === "move") ? tdiLinkOf(r) : null; return L && (L.dinii || L.resty) ? h("span", { class: "pill plain", title: "店舗マスタの設定で、予約台帳にも登録する店舗です", text: [L.dinii ? "ダイニー連携" : "", L.resty ? "Resty連携" : ""].filter(Boolean).join("・") }) : null; })(), tdiBigDrop(r) ? h("span", { class: "pill bad", text: "大幅な減員：店舗へアナウンス" }) : null, pill, gen && r.acc && !r.acc.none ? h("span", { class: "pill " + (r.acc.ok ? "ok" : "warn"), title: r.acc.why, text: r.acc.ok ? "受入れOK" : "受入れ要相談" }) : null, r.tdRes ? h("span", { class: "pill " + (r.tdRes.st === "ok" ? "ok" : r.tdRes.st === "ng" ? "bad" : "plain"), title: r.tdRes.msg, text: "TD：" + r.tdRes.msg }) : null,
+      h("span", { style: "font-weight:700", text: "No." + (i + 1) }), r.mailBox ? tdiBoxPill(r.mailBox) : null, tdiKindSel(r), (() => { const L = (tdiOp(r) === "new" || tdiOp(r) === "move") ? tdiLinkOf(r) : null; return L && (L.dinii || L.resty) ? h("span", { class: "pill plain", title: "店舗マスタの設定で、予約台帳にも登録する店舗です", text: [L.dinii ? "ダイニー連携" : "", L.resty ? "Resty連携" : ""].filter(Boolean).join("・") }) : null; })(), tdiBigDrop(r) ? h("span", { class: "pill bad", text: "大幅な減員：店舗へアナウンス" }) : null, pill, gen && r.acc && !r.acc.none ? h("span", { class: "pill " + (r.acc.ok ? "ok" : "warn"), title: r.acc.why, text: r.acc.ok ? "受入れOK" : "受入れ要相談" }) : null, r.tdRes ? h("span", { class: "pill " + (r.tdRes.st === "ok" ? "ok" : r.tdRes.st === "ng" ? "bad" : "plain"), title: r.tdRes.msg, text: "TD：" + r.tdRes.msg }) : null,
       r.tdRes && r.tdRes.st === "ng" && !r.tdDone ? h("button", { type: "button", class: "btn sm", title: "Travel Dineの画面で手作業で登録・変更・取消を済ませたとき。T-COREからは送らず、ダイニーなど次の作業の対象にします", text: "Travel Dineで手作業で済ませた", onclick: () => { if (!confirm("Travel Dineで手作業で済ませましたか？\n（T-COREからはこの予約をTravel Dineに送らなくなり、ダイニー登録などの次の作業の対象になります）")) return; r.tdDone = true; r.tdRes = { st: "ok", msg: "手作業で済み" }; render(); setTimeout(diniiAuto, 300); } }) : null,
       r.tdResCx && r.tdResCx.st === "ng" && !r.cxDone ? h("button", { type: "button", class: "btn sm", text: "元の予約の取消を手作業で済ませた", onclick: () => { if (!confirm("Travel Dineで元の予約を手作業で取り消しましたか？")) return; r.cxDone = true; r.tdResCx = { st: "ok", msg: "手作業で取消済み" }; render(); setTimeout(diniiAuto, 300); } }) : null, r.dinii ? h("span", { class: "pill " + (r.dinii.st === "ok" ? "ok" : r.dinii.st === "ng" ? "bad" : "plain"), title: r.dinii.msg, text: "ダイニー：" + r.dinii.msg }) : null, r.diniiCx ? h("span", { class: "pill " + (r.diniiCx.st === "ok" ? "ok" : r.diniiCx.st === "ng" ? "bad" : "plain"), title: r.diniiCx.msg, text: "ダイニー（元の店舗）：" + r.diniiCx.msg }) : null, r.notice ? h("span", { class: "small muted", text: r.notice }) : null,
       r.src && ((tdi.files || []).length > 1 || r.mailId) ? h("span", { class: "small muted", style: "min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap", title: r.src, text: r.src }) : h("span", { style: "flex:1" }),
