@@ -782,12 +782,13 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
       <button type="button" data-v="tdimp">FAX-TD取込</button>
       <button type="button" data-v="mailtd">Mail-TD取込（開発中）</button>
       <button type="button" data-v="mailchk">手配チェック</button>
+      <button type="button" data-v="tourchk">催行確認チェック</button>
       <button type="button" data-v="morning">朝礼シート</button>
     </nav>
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 274</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 275</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -3353,7 +3354,7 @@ window.addEventListener("message", (e) => {
 /* ----- Travel Dineとつなぎっぱなし -----
    「Travel Dineと接続」で開いたタブで一括登録のブックマークを1回押すと、そのタブを開いている間はT-COREとつながる。
    つながっている間は、変更・取消の照合を自動で行い、「Travel Dineへ登録」はブックマークや「開始」を押さずにそのタブで処理する。 */
-const TDC_VER = 22; // 一括登録ブックマークの中身（bm_td.js）の版。つながっているタブがこれより古ければ、押し直しを案内する
+const TDC_VER = 23; // 一括登録ブックマークの中身（bm_td.js）の版。つながっているタブがこれより古ければ、押し直しを案内する
 const TDC = { win: "tcore-td", src: null, ok: false, wait: false, pongAt: 0, busy: false, findId: "" };
 function tdcConnect() {
   const w = window.open(MC_TD_ORIGIN + "/admin/reservations", TDC.win);
@@ -3574,6 +3575,97 @@ function diniiBookmarkletPanel() {
         h("li", { text: "ふだんは、FAX-TD取込の上の「ダイニーと接続」を押し、開いたダイニーのタブでこのブックマークを1回押します（1日1回。タブは開いたまま）。あとはTravel Dineの処理が終わるたびに、自動でダイニーにも反映します。" }), h("li", { text: "接続していないときは、Travel Dineの画面やT-COREの「ダイニーに反映」を押すとダイニーが開きます。その画面でこのブックマークを押すと、右下に予約の一覧が出て、そのまま反映が始まります。" })),
       h("div", { class: "row" }, a, h("button", { type: "button", class: "btn sm", text: "ドラッグできないとき：中身をコピー", onclick: () => tdiCopy(DINII_BM, "ダイニー登録の中身") })),
       h("div", { class: "small muted", text: "処理中はダイニーの画面を操作しないでください。同じ日に同じお客様名の予約がすでにあるものは、登録せずに「登録済み」と表示します。変更・取消は、元の予約（利用日とお客様名）を探して書き換え・取消をします（取消理由：お客様都合）。ダイニーの予約一覧の店舗が味の大丸になっていないときは、自動で味の大丸に切り替えます。" })));
+}
+/* ---------- 催行確認チェック ----------
+   毎日、利用日が「今日から○日後」（初期値14日後）の予約をTravel Dineの予約一覧から読み、
+   更新日時が○日（初期値30日）以上前のもの（しばらく誰も触っていない予約）を、旅行会社への催行確認の対象として出す。
+   読むのは、つながっているTravel Dineのタブ（読むだけ。何も書き換えない）。確認済みの印は tourchk/d_利用日 に保存する */
+const TCK = { days: 14, stale: 30, date: "", rows: null, at: "", busy: "", reqId: "", checks: {}, checksGot: false, range: null, loadedFor: "" };
+try { const v = JSON.parse(localStorage.getItem("tcore-tck") || "{}"); if (v.days >= 0) TCK.days = Number(v.days); if (v.stale > 0) TCK.stale = Number(v.stale); } catch (_) {}
+const tckSave = () => { try { localStorage.setItem("tcore-tck", JSON.stringify({ days: TCK.days, stale: TCK.stale })); } catch (_) {} };
+const tckDate = () => TCK.date || mcAdd(mcToday(), TCK.days);
+const tckYmd = (s) => { const m = /(\d{4})\/(\d{1,2})\/(\d{1,2})/.exec(String(s || "")); return m ? `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}` : ""; };
+const tckDaysAgo = (s) => { const y = tckYmd(s); return y ? Math.round((Date.parse(mcToday() + "T00:00:00Z") - Date.parse(y + "T00:00:00Z")) / 864e5) : null; };
+/** 読む範囲：from〜to（1日だけ、または まとめて）。キーは画面の表示切り替えに使う */
+function tckLoad(from, to) {
+  if (!tdcAlive()) return toast("先に「Travel Dineと接続」を押して、Travel Dineとつないでください");
+  from = from || tckDate(); to = to || from;
+  TCK.reqId = "s" + Date.now(); TCK.range = { from, to }; TCK.loadedFor = from + "~" + to; TCK.rows = null;
+  TCK.busy = `Travel Dineの予約一覧（${mcFmt(from)}${to !== from ? "〜" + mcFmt(to) : ""}）を読んでいます…`;
+  if (!tdcPost({ type: "tdstale-req", id: TCK.reqId, from, to })) { TCK.busy = ""; toast("Travel Dineとの接続が切れています。もう一度「Travel Dineと接続」を押してください"); }
+  tckLoadChecks(); render();
+}
+/** 確認済みの印（予約IDごと。tourchk/all）。利用日が過ぎたものは、保存のときに消す */
+async function tckLoadChecks() {
+  if (TCK.checksGot || !db || localOnly) return; TCK.checksGot = true;
+  try { const x = await db.doc("tourchk/all").get(); TCK.checks = (x.exists && x.data()) || {}; } catch (_) {}
+  if (view.name === "tourchk") render();
+}
+function tckMark(r, on) {
+  if (on) TCK.checks[r.id] = { at: new Date().toISOString(), date: tckYmd(r.dt) }; else delete TCK.checks[r.id];
+  const today = mcToday(); for (const [k, v] of Object.entries(TCK.checks)) if (v && v.date && v.date < today) delete TCK.checks[k];
+  if (db && !localOnly && !readOnly) db.doc("tourchk/all").set(clone(TCK.checks)).catch(() => toast("確認済みの印を保存できませんでした"));
+  render();
+}
+window.addEventListener("message", (ev) => {
+  if (ev.origin !== MC_TD_ORIGIN || !ev.data || typeof ev.data !== "object" || !/^tdstale-/.test(ev.data.type || "")) return;
+  const d = ev.data; if (d.id && d.id !== TCK.reqId) return;
+  if (d.type === "tdstale-progress") TCK.busy = TCK.busy.replace(/（\d+件）$/, "") + `（${d.n}件）`;
+  if (d.type === "tdstale-result") { TCK.busy = ""; TCK.rows = Array.isArray(d.rows) ? d.rows : []; TCK.at = new Date().toISOString(); }
+  if (d.type === "tdstale-error") { TCK.busy = ""; toast(String(d.msg || "読み込めませんでした")); }
+  if (view.name === "tourchk") render();
+});
+/** 要確認の一覧をCSVで（Excelで開ける） */
+function tckCsv(list) {
+  const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const lines = [["利用日時", "旅行会社", "団体名", "店舗", "人数", "ステータス", "更新日時", "更新から（日）", "確認済み", "Travel Dine ID"].map(q).join(",")]
+    .concat(list.map((r) => [r.dt, r.agency, r.group, r.store, r.people, r.status, r.updated, tckDaysAgo(r.updated) ?? "", TCK.checks[r.id] ? "済" : "", r.id].map(q).join(",")));
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv" }));
+  a.download = `催行確認_${TCK.range ? TCK.range.from + "_" + TCK.range.to : mcToday()}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+function viewTourChk() {
+  tckLoadChecks();
+  const d = tckDate(), W = (n) => `width:${n}px`, today = mcToday();
+  const num = (val, on, w = 64) => h("input", { type: "number", min: 0, value: val, style: W(w), onchange: (e) => on(Number(e.target.value) || 0) });
+  const setDate = (v) => { TCK.date = v; render(); };
+  const ctl = h("div", { class: "panel stack", style: "gap:8px" },
+    h("div", { class: "row", style: "gap:8px;align-items:center;flex-wrap:wrap" },
+      h("span", { text: "利用日" }), h("button", { type: "button", class: "btn sm", text: "◀ 前日", onclick: () => setDate(mcAdd(d, -1)) }),
+      h("input", { type: "date", value: d, style: W(150), onchange: (e) => e.target.value && setDate(e.target.value) }),
+      h("button", { type: "button", class: "btn sm", text: "翌日 ▶", onclick: () => setDate(mcAdd(d, 1)) }),
+      h("b", { text: mcFmt(d) }), TCK.date ? h("button", { type: "button", class: "btn sm", text: `今日から${TCK.days}日後に戻す`, onclick: () => setDate("") }) : null),
+    h("div", { class: "row small", style: "gap:8px;align-items:center;flex-wrap:wrap" },
+      h("span", { text: "ふだんの利用日：今日から" }), num(TCK.days, (v) => { TCK.days = v; TCK.date = ""; tckSave(); render(); }, 56), h("span", { text: "日後　／　更新日時が" }),
+      num(TCK.stale, (v) => { TCK.stale = Math.max(1, v); tckSave(); render(); }, 56), h("span", { text: "日以上前の予約を「要確認」にする" })),
+    h("div", { class: "row", style: "gap:8px;align-items:center;flex-wrap:wrap" },
+      h("button", { type: "button", class: "btn primary", text: `この日を読み込む（${mcFmt(d)}）`, disabled: !!TCK.busy, onclick: () => tckLoad(d, d) }),
+      h("button", { type: "button", class: "btn", text: `今日〜${mcFmt(d)}をまとめて`, disabled: !!TCK.busy, onclick: () => tckLoad(today, d) }),
+      h("button", { type: "button", class: "btn", text: "登録されている予約をすべて（今日以降）", disabled: !!TCK.busy, onclick: () => tckLoad(today, mcAdd(today, 400)) }),
+      h("span", { class: "small muted", text: "Travel Dineの予約一覧（更新日時）を読むだけです。Travel Dineには何も書き込みません。すべて読むときは数分かかります。" })),
+    TCK.busy ? h("div", { style: "font-weight:700", text: TCK.busy }) : null);
+  const out = [h("div", { class: "row" }, h("h2", { text: "催行確認チェック" })), tdcBar(), ctl];
+  if (TCK.rows) {
+    const R = TCK.range, multi = R.from !== R.to, live = TCK.rows.filter((r) => !/キャンセル|辞退|取消/.test(r.status)), ago = (r) => tckDaysAgo(r.updated);
+    const stale = live.filter((r) => ago(r) == null || ago(r) >= TCK.stale).sort((a, b) => multi ? (a.dt < b.dt ? -1 : a.dt > b.dt ? 1 : 0) : (ago(b) ?? 9999) - (ago(a) ?? 9999)), fresh = live.filter((r) => !stale.includes(r));
+    const done = stale.filter((r) => TCK.checks[r.id]).length;
+    const tbl = (list, mark) => h("table", { class: "small", style: "width:100%;border-collapse:collapse" },
+      h("tr", { style: "text-align:left;color:var(--muted)" }, ...[mark ? "確認済み" : "", "予約日時", "旅行会社", "団体名", "店舗", "人数", "ステータス", "更新日時", ""].map((t) => h("th", { style: "padding:4px 6px;border-bottom:1px solid var(--line)", text: t }))),
+      ...list.map((r) => { const a = ago(r), ok = !!TCK.checks[r.id];
+        return h("tr", { style: "border-bottom:1px solid var(--line)" + (mark && ok ? ";opacity:.5" : "") },
+          h("td", { style: "padding:4px 6px" }, mark ? h("input", { type: "checkbox", checked: ok, style: "width:auto", onchange: (e) => tckMark(r, e.target.checked) }) : null),
+          ...[r.dt, r.agency, r.group, r.store, r.people + "名", r.status].map((t) => h("td", { style: "padding:4px 6px", text: t || "" })),
+          h("td", { style: "padding:4px 6px;white-space:nowrap" + (mark ? ";color:var(--bad);font-weight:700" : "") }, h("div", { text: r.updated || "（なし）" }), a != null ? h("div", { class: "small", text: `${a}日前${r.updater ? "・" + r.updater : ""}` }) : null),
+          h("td", { style: "padding:4px 6px" }, h("a", { class: "btn sm", href: `${MC_TD_ORIGIN}/admin/reservations/detail/${r.id}`, target: "_blank", rel: "noopener", text: "Travel Dineで開く" }))); }));
+    const span = `${mcFmt(R.from)}${multi ? "〜" + mcFmt(R.to) : ""}`;
+    out.push(h("div", { class: "panel stack", style: "gap:8px" },
+      h("div", { class: "row", style: "gap:10px;align-items:center;flex-wrap:wrap" }, h("b", { style: "font-size:16px", text: `要確認 ${stale.length}件` }),
+        h("span", { class: "small muted", text: `${span}の予約 ${live.length}件のうち、更新日時が${TCK.stale}日以上前のもの（${multi ? "利用日順" : "古い順"}）。旅行会社に催行の確認をしたら、チェックを入れてください（確認済み ${done}/${stale.length}件）。` }),
+        stale.length ? h("button", { type: "button", class: "btn sm", text: "CSVで保存", onclick: () => tckCsv(stale) }) : null),
+      stale.length ? tbl(stale, true) : h("div", { class: "muted", text: "要確認の予約はありません。" }),
+      h("details", {}, h("summary", { style: "cursor:pointer", text: `最近更新されている予約 ${fresh.length}件（キャンセル ${TCK.rows.length - live.length}件は除く）` }), fresh.length ? tbl(fresh, false) : h("div", { class: "muted small", text: "ありません。" })),
+      h("div", { class: "small muted", text: `読み込み：${new Date(TCK.at).toLocaleString("ja-JP")}` })));
+  } else if (!TCK.busy) out.push(h("div", { class: "muted", text: tdcAlive() ? "「この日を読み込む」を押すと、この日の予約を確認します。" : "Travel Dineとつないでから読み込んでください。" }));
+  return out;
 }
 /* ---------- 手配チェック ----------
    tour@・inbound@ に届いた予約メールを、サーバー（mail-check）が15分おきに読み、予約の内容を mailchk/d_日付 に保存する。
@@ -3966,6 +4058,7 @@ function render() {
   else if (view.name === "tdimp") app.replaceChildren(...top, ...viewTdImp());
   else if (view.name === "mailtd") app.replaceChildren(...top, ...viewMailTd());
   else if (view.name === "mailchk") app.replaceChildren(...top, ...viewMailChk());
+  else if (view.name === "tourchk") app.replaceChildren(...top, ...viewTourChk());
   else if (view.name === "morning") app.replaceChildren(...top, ...viewMorning());
   else if (view.name === "requests") app.replaceChildren(...top, ...viewRequests());
   else if (view.name === "case") app.replaceChildren(...top, ...viewCase());
@@ -10227,7 +10320,7 @@ window.addEventListener("drop", (e) => e.preventDefault());
 (function init() {
   const hsh = (location.hash || "").slice(1);
   if (hsh.startsWith("case-")) view = { name: "case", id: hsh.slice(5) };
-  else if (["stores", "courses", "spec", "layouts", "pj", "pjsales", "tdstats", "tdseries", "tourrep", "tdimp", "mailtd", "mailchk", "morning"].includes(hsh)) view = { name: hsh };
+  else if (["stores", "courses", "spec", "layouts", "pj", "pjsales", "tdstats", "tdseries", "tourrep", "tdimp", "mailtd", "mailchk", "tourchk", "morning"].includes(hsh)) view = { name: hsh };
   boot();
 })();
 </script>
