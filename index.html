@@ -796,7 +796,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 279</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 280</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1718,14 +1718,17 @@ const TDI_OWN_TEL = ["0666318814", "0666318846"]; // 自社（HASSIN）の電話
 const tdi = { acc: null, accBusy: false, showAcc: false, rules: null, rulesLoaded: false, rulesDirty: false, rows: [], src: "", busy: false, msg: "", showRules: false, master: null, learn: {}, showMaster: false };
 const tdiNorm = (s) => String(s == null ? "" : s).normalize("NFKC").replace(/[\s　]/g, "");
 /** 会社名・店舗名の比較用：表記の揺れ（株式会社・㈱・記号・空白）をそろえる */
-const tdiKey = (s) => tdiNorm(s).toLowerCase().replace(/株式会社|有限会社|\(株\)|\(有\)|㈱|㈲|npo法人|一般社団法人|公益社団法人|御中|様$/g, "").replace(/[・･.,、。「」『』()（）【】\[\]〔〕\-‐－—~〜]/g, "");
+const tdiKey0 = (s) => tdiNorm(s).toLowerCase().replace(/株式会社|有限会社|\(株\)|\(有\)|㈱|㈲|npo法人|一般社団法人|公益社団法人|御中|様$/g, "").replace(/[・･.,、。「」『』()（）【】\[\]〔〕\-‐－—~〜]/g, "");
+const tdiKeyMemo = new Map(); // 同じ文字列を何度もそろえ直さない（Mail-TD取込が遅くならないように）
+const tdiKey = (s) => { const k = s == null ? "" : String(s); let v = tdiKeyMemo.get(k); if (v === undefined) { if (tdiKeyMemo.size > 50000) tdiKeyMemo.clear(); v = tdiKey0(k); tdiKeyMemo.set(k, v); } return v; };
 const tdiDigits = (s) => String(s || "").normalize("NFKC").replace(/\D/g, "");
 /** 2文字ずつのまとまりの重なりで、名前の近さを0〜1で出す */
+const tdiBgMemo = new Map();
+function tdiBgOf(s) { let m = tdiBgMemo.get(s); if (m) return m; m = new Map(); for (let i = 0; i < s.length - 1; i++) { const k = s.slice(i, i + 2); m.set(k, (m.get(k) || 0) + 1); } if (tdiBgMemo.size > 50000) tdiBgMemo.clear(); tdiBgMemo.set(s, m); return m; }
 function tdiSim(a, b) {
   a = tdiKey(a); b = tdiKey(b); if (!a || !b) return 0; if (a === b) return 1;
   if (a.length >= 2 && b.includes(a)) return 0.9; if (b.length >= 2 && a.includes(b)) return 0.85;
-  const bg = (s) => { const m = new Map(); for (let i = 0; i < s.length - 1; i++) { const k = s.slice(i, i + 2); m.set(k, (m.get(k) || 0) + 1); } return m; };
-  const x = bg(a), y = bg(b); let n = 0; for (const [k, c] of x) n += Math.min(c, y.get(k) || 0);
+  const x = tdiBgOf(a), y = tdiBgOf(b); let n = 0; for (const [k, c] of x) n += Math.min(c, y.get(k) || 0);
   return (2 * n) / Math.max(1, a.length - 1 + b.length - 1);
 }
 async function tdiLoadRules() {
@@ -1749,8 +1752,9 @@ async function tdiSaveRules() {
 }
 let tdiLearnTm = null;
 /** スタッフが選んだ対応を覚える（少し待ってまとめて保存） */
+let tdiLearnVer = 0;
 function tdiRemember(key, val) {
-  if (!key) return; tdi.learn[key] = val;
+  if (!key) return; tdi.learn[key] = val; tdiLearnVer++;
   clearTimeout(tdiLearnTm); tdiLearnTm = setTimeout(() => { if (db && !localOnly && !readOnly) db.doc("tdimport/learn").set(clone(tdi.learn)).catch(() => {}); }, 800);
 }
 /** TDマスタ（一括登録ブックマークの「マスタ取得」でコピーしたもの）を取り込む */
@@ -1782,7 +1786,15 @@ function tdiAutoManager(r) {
   r.manager = pick; r.mgHow = how;
 }
 /** 旅行会社を当てはめる：①覚えた対応 ②電話・FAX番号 ③会社名＋支店名。1社に決まらなければ候補を返す */
+/** 旅行会社の当てはめは、同じ書き方なら結果を使い回す（TDマスタ・覚えた対応が変わったら作り直す） */
+let tdiAgMemo = { m: null, l: null, v: -1, map: new Map() };
 function tdiMatchAgency(t) {
+  if (tdiAgMemo.m !== tdi.master || tdiAgMemo.l !== tdi.learn || tdiAgMemo.v !== tdiLearnVer) tdiAgMemo = { m: tdi.master, l: tdi.learn, v: tdiLearnVer, map: new Map() };
+  const k = JSON.stringify([t.name || "", t.branch || "", t.tel || "", t.fax || "", t.faxHeader || ""]);
+  let v = tdiAgMemo.map.get(k); if (!v) { v = tdiMatchAgency0(t); tdiAgMemo.map.set(k, v); }
+  return { ...v, cands: [...(v.cands || [])] };
+}
+function tdiMatchAgency0(t) {
   const M = tdi.master; if (!M) return { id: "", cands: [], how: "" };
   const nums = [t.tel, t.fax, t.faxHeader].map(tdiDigits).filter((d) => d.length >= 9 && !TDI_OWN_TEL.includes(d));
   const nk = "ag:" + tdiKey(t.name) + "|" + tdiKey(t.branch);
@@ -3743,7 +3755,14 @@ function mcDocs() {
   return { days, state: all.get("state") || {}, rules: all.get("rules") || {}, review: all.get("review") || {}, req: all.get("requests") || {}, snap: all.get("tdsnap") || null, job: all.get("tdjob") || {} };
 }
 /** メールから取り出した予約を1件ずつの行にし、後のメールで上書きされたものに印を付ける */
+let mcItemsMemo = null, mcCmpMemo = null;
+/** メールの予約の一覧（データ・TDマスタ・覚えた対応が変わらない間は、作った一覧を使い回す） */
 function mcItems() {
+  const M = mcItemsMemo;
+  if (M && M.mc === S.mc && M.m === tdi.master && M.l === tdi.learn && M.v === tdiLearnVer) return M.items;
+  const items = mcItems0(); mcItemsMemo = { mc: S.mc, m: tdi.master, l: tdi.learn, v: tdiLearnVer, items }; return items;
+}
+function mcItems0() {
   const { days } = mcDocs(), items = [];
   for (const [, d] of days) for (const m of d.mails || []) if (m.stage === "booking" && !m.dupOf) (m.bookings || []).forEach((b, i) => { // dupOf：tour@・inbound@ の両方に届いた同じメールの片方（1件にまとめる）
     const date = mcDate(b.useDate), ag = tdi.master ? tdiMatchAgency({ name: b.agency?.name, branch: b.agency?.branch, tel: b.agency?.tel, fax: b.agency?.fax }) : { id: "" };
@@ -3767,6 +3786,11 @@ const mcSameGroup = (it, r) => { const g = mcGroupKey(r.group); return !!it.gk &
 const mcActive = (r) => !/キャンセル/.test(r.status || "");
 /** メールの予約とTravel Dineの登録を突き合わせる。シリーズ（同じ団体で日付が複数）は、日付が一致するものから組み、残りを「日付違い」として組む */
 function mcCompare(items) {
+  const snap = mcDocs().snap;
+  if (mcCmpMemo && mcCmpMemo.items === items && mcCmpMemo.snap === snap) return mcCmpMemo.res;
+  const res = mcCompare0(items); mcCmpMemo = { items, snap, res }; return res;
+}
+function mcCompare0(items) {
   const { snap } = mcDocs(), rows = (snap && snap.rows) || [], res = new Map(), tdOnly = [];
   const live = items.filter((it) => !it.superseded && it.date);
   const groups = new Map();
