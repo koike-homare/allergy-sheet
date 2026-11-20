@@ -796,7 +796,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 281</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 284</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -1891,7 +1891,10 @@ function tdiMatch(product) {
 }
 /** 取込ルール（tabiwa）の店舗名・コース名を、マスタのIDに直す（マスタがなければ名前のまま。一括登録が名前で探す） */
 function tdiTabiwaIds(r) {
-  const st = tdi.master ? tdi.master.stores.find((s) => tdiSim(s.name, r.store) >= 0.85) : null;
+  // 名前が完全に同じ店舗を優先し、なければいちばん近い店舗（同じくらいなら名前の短いほう）。
+  // 「味の大丸」と「味の大丸 別館」のように片方がもう片方を含むと、近さが同じ0.9になるため、マスタの並び順で別館を選んでしまっていた
+  const st = !tdi.master ? null : tdi.master.stores.find((s) => tdiKey(s.name) === tdiKey(r.store)) ||
+    tdi.master.stores.map((s) => [s, tdiSim(s.name, r.store)]).filter((x) => x[1] >= 0.85).sort((x, y) => y[1] - x[1] || tdiKey(x[0].name).length - tdiKey(y[0].name).length).map((x) => x[0])[0] || null;
   r.storeId = st ? st.id : ""; r.courseId = "";
   if (st) { const c = (st.main || []).find((m) => tdiNorm(m[1]).startsWith(tdiNorm(r.course))) || (st.main || []).find((m) => tdiSim(m[1], r.course) >= 0.8); r.courseId = c ? c[0] : ""; }
 }
@@ -6628,14 +6631,32 @@ async function pjWorkbook(c) {
   return wb.xlsx.writeBuffer();
 }
 /** Google ドライブ：操作している人が Google にログインし、その人の権限で、決まった親フォルダの下にフォルダとスプレッドシートを作る。
-    クライアントID と親フォルダは共通設定に登録する。アクセス権は、この画面を開いている間だけ覚えておく。 */
+    ログインは別ウィンドウで行い、Google から同じサイトの oauth.html に戻ってきた許可を受け取る（ブラウザがウィンドウ同士のつながりを切っても受け取れる）。
+    許可は、この画面を開いている間だけ覚えておく。 */
+const G_REDIRECT = "https://koike-homare.github.io/allergy-sheet/oauth.html";
 let gTok = null;
 async function gToken() {
   if (gTok && gTok.exp > Date.now() + 60000) return gTok.t;
   const cid = String(S.settings.gClientId || "").trim(); if (!cid) throw new Error("共通設定の「Googleドライブ連携」に、クライアントIDが登録されていません。");
-  try { await loadScript("https://accounts.google.com/gsi/client"); } catch (_) { throw new Error("この表示環境では Google にログインできません（公開ページから操作してください）。"); }
-  const r = await new Promise((ok, ng) => { const tc = google.accounts.oauth2.initTokenClient({ client_id: cid, scope: "https://www.googleapis.com/auth/drive", callback: ok, error_callback: (e) => ng(new Error(e && e.type === "popup_closed" ? "Google のログインが閉じられました。" : "Google にログインできませんでした。ポップアップが止められていないか確かめてください。")) }); tc.requestAccessToken(); });
-  if (!r || !r.access_token) throw new Error("Google の許可が得られませんでした。" + (r && r.error ? "（" + r.error + "）" : ""));
+  if (location.origin !== new URL(G_REDIRECT).origin) throw new Error("この表示環境では Google にログインできません（公開ページ " + new URL(G_REDIRECT).origin + "/allergy-sheet/ から操作してください）。");
+  const state = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
+  const url = "https://accounts.google.com/o/oauth2/v2/auth?" + new URLSearchParams({ client_id: cid, redirect_uri: G_REDIRECT, response_type: "token", scope: "https://www.googleapis.com/auth/drive", include_granted_scopes: "true", state });
+  const w = window.open(url, "tcore-glogin", "width=520,height=680");
+  if (!w) throw new Error("Google のログイン画面を開けませんでした。ブラウザでポップアップが止められていないか確かめてください。");
+  // ログイン画面（別ウィンドウ）を待つ間は、案内と「中止」を出す。3分で打ち切る
+  const tip = h("div", { id: "g-login-tip", class: "banner warn small", style: "margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap" },
+    h("span", { text: "Google のログイン画面（別ウィンドウ）が開いています。アカウントを選んで「許可」まで進めてください。ウィンドウが見当たらないときは、タスクバーや他のウィンドウの後ろを確認してください。" }));
+  const r = await new Promise((ok0, ng0) => {
+    let tm = 0, bc = null;
+    const onStore = (e) => { if (e.key === "tcore.gauth" && e.newValue) { try { got(JSON.parse(e.newValue)); } catch (_) {} } };
+    const end = () => { clearTimeout(tm); tip.remove(); try { bc && bc.close(); } catch (_) {} window.removeEventListener("storage", onStore); }, ok = (x) => { end(); ok0(x); }, ng = (e) => { end(); ng0(e); };
+    const got = (m) => { if (!m || m.type !== "tcore-gauth" || m.state !== state) return; if (m.error || !m.access_token) ng(new Error(m.error === "access_denied" ? "Google の許可が得られませんでした（「許可」が押されませんでした）。" : "Google の許可が得られませんでした。" + (m.error ? "（" + m.error + "）" : ""))); else ok(m); };
+    try { bc = new BroadcastChannel("tcore-gauth"); bc.onmessage = (e) => got(e.data); } catch (_) {}
+    window.addEventListener("storage", onStore);
+    tip.append(h("button", { type: "button", class: "btn sm", id: "g-login-cancel", text: "中止", onclick: () => ng(new Error("Google のログインを中止しました。もう一度操作すると、ログイン画面が開き直します。")) }));
+    const host = $("#dlg") && $("#dlg").open ? $("#dlg").querySelector(".dlg") || $("#dlg") : document.body; if (host === document.body) Object.assign(tip.style, { position: "fixed", right: "16px", bottom: "16px", zIndex: 9999, maxWidth: "420px" }); host.append(tip);
+    tm = setTimeout(() => ng(new Error("Google のログインが3分たっても完了しませんでした。ログイン画面を閉じて、もう一度操作してください。")), 180000);
+  });
   gTok = { t: r.access_token, exp: Date.now() + (+r.expires_in || 3000) * 1000 }; return gTok.t;
 }
 async function pjDrive(c, say) {
