@@ -819,7 +819,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 293</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 294</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -3671,13 +3671,22 @@ function choreiTabs(cur) {
    毎朝サーバー（diet-check）が、利用日が今日〜○日先の予約をTravel Dineから読み、メモ欄にアレルギー・食事制限の記載があるのに
    「アレンジコース」が登録されていない予約を洗い出す（dietchk/latest）。読むだけで、Travel Dineは書き換えない。
    保存されるのは記載の種類（アレルギー・ハラールなど）と件数だけで、メモの文章は保存しない。内容はTravel Dineで確かめる */
-const DCK = { latest: null, job: null, set: null, at: 0, poll: null, tab: "ng", days: null };
+const DCK = { latest: null, job: null, set: null, known: [], at: 0, poll: null, tab: "ng", days: null };
 async function dckLoad(force) {
   if (!db || localOnly || (!force && Date.now() - DCK.at < 60e3)) return; DCK.at = Date.now();
-  try { const [a, b, c] = await Promise.all([db.doc("dietchk/latest").get(), db.doc("dietchk/job").get(), db.doc("dietchk/settings").get()]); DCK.latest = (a.exists && a.data()) || null; DCK.job = (b.exists && b.data()) || null; DCK.set = (c.exists && c.data()) || {}; } catch (_) {}
+  try { const [a, b, c, d] = await Promise.all([db.doc("dietchk/latest").get(), db.doc("dietchk/job").get(), db.doc("dietchk/settings").get(), db.doc("dietchk/corps").get()]); DCK.latest = (a.exists && a.data()) || null; DCK.job = (b.exists && b.data()) || null; DCK.set = (c.exists && c.data()) || {}; DCK.known = (d.exists && Array.isArray(d.data().list) && d.data().list) || []; } catch (_) {}
+  dckKeepCorps();
   const busy = DCK.job && (DCK.job.running || (DCK.job.day === mcToday() && !DCK.job.done));
   if (busy && !DCK.poll) DCK.poll = setInterval(() => { dckLoad(true); const j = DCK.job; if (!(j && (j.running || (j.day === mcToday() && !j.done)))) { clearInterval(DCK.poll); DCK.poll = null; } }, 15000);
   if (view.name === "dietchk") render();
+}
+/** これまでに読み込んだ法人を、dietchk/corps にためていく（読み込みの範囲が狭い日でも、前に出てきた法人を選べるように） */
+function dckKeepCorps() {
+  const L = DCK.latest || {}, JL = DCK.job && Array.isArray(DCK.job.list) ? DCK.job.list : [];
+  const add = [...(L.corps || []), ...(L.rows || []).map((r) => r.corp), ...JL.map((r) => r.corp), ...dckCorps()].map((x) => String(x || "").trim()).filter(Boolean);
+  const all = [...new Set([...DCK.known, ...add])].sort((a, b) => a.localeCompare(b, "ja"));
+  if (all.length === DCK.known.length) return; DCK.known = all;
+  if (db && !localOnly && !readOnly) db.doc("dietchk/corps").set({ list: all, at: new Date().toISOString() }).catch(() => {});
 }
 async function dckRebuild() {
   const host = window.claude && window.claude.host;
@@ -3709,11 +3718,11 @@ async function dckSaveCorps(list) {
 function dckCorpDialog() {
   const L = DCK.latest || {}, cur = new Set(dckCorps());
   const JL = (DCK.job && Array.isArray(DCK.job.list) ? DCK.job.list : []); // 読み込みの途中でも、読み終えた予約一覧の法人から選べるようにする
-  const all = [...new Set([...(L.corps || []), ...((L.rows || []).map((r) => r.corp).filter(Boolean)), ...JL.map((r) => r.corp).filter(Boolean), ...cur])].sort((a, b) => (cur.has(b) - cur.has(a)) || a.localeCompare(b, "ja"));
+  const all = [...new Set([...DCK.known, ...(L.corps || []), ...((L.rows || []).map((r) => r.corp).filter(Boolean)), ...JL.map((r) => r.corp).filter(Boolean), ...cur])].sort((a, b) => (cur.has(b) - cur.has(a)) || a.localeCompare(b, "ja"));
   const pick = new Set(cur), dlg = $("#dlg"), box = h("div", { class: "stack", id: "dck-corp-list", style: "gap:2px;max-height:50vh;overflow-y:auto;border:1px solid var(--line);border-radius:var(--r);padding:6px" });
   const cnt = h("span", { class: "small muted" }), upd = () => { cnt.textContent = pick.size ? `${pick.size}社を選択中` : "未選択（すべての飲食店）"; };
   const draw = (q) => { q = String(q || "").trim(); box.replaceChildren(...(all.length ? all.filter((c) => !q || c.includes(q)).map((c) => h("label", { class: "row small", style: "gap:8px;align-items:center;padding:3px 4px;cursor:pointer" },
-    h("input", { type: "checkbox", style: "width:auto", checked: pick.has(c) || undefined, onchange: (e) => { if (e.target.checked) pick.add(c); else pick.delete(c); upd(); } }), h("span", { text: c }))) : [h("div", { class: "small muted", text: "法人の一覧がまだありません。次の読み込み（毎朝・または「今すぐ読み直す」）のあとで選べるようになります。" })])); };
+    h("input", { type: "checkbox", style: "width:auto", checked: pick.has(c) || undefined, onchange: (e) => { if (e.target.checked) pick.add(c); else pick.delete(c); upd(); } }), h("span", { text: c }))) : [h("div", { class: "small muted", text: "法人の一覧がまだありません。読み込み（毎朝・または「今すぐ読み直す」）で予約一覧を読むと、出てきた法人が選べるようになります（一度出てきた法人は保存され、次回以降も選べます）。" })])); };
   dlg.replaceChildren(h("div", { class: "dlg", style: "min-width:min(520px,92vw)" }, h("h3", { text: "日々確認する飲食店の法人" }),
     h("div", { class: "small muted", text: "選んだ法人の予約だけを一覧に出します。何も選ばないときは、すべての飲食店の予約を出します。選んだ内容は保存され、次回以降も使われます。" }),
     h("input", { type: "search", id: "dck-corp-q", placeholder: "法人名で絞り込む", oninput: (e) => draw(e.target.value) }), box,
