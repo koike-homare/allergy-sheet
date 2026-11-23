@@ -278,6 +278,14 @@ h1.logo svg{flex:none} .lg-m{fill:#16335a} .lg-t{fill:#fff}
 nav{display:flex;gap:4px;flex-wrap:wrap}
 nav button{background:none;border:0;border-radius:var(--r);padding:6px 12px;font:inherit;color:var(--muted);cursor:pointer}
 nav button[aria-current="page"]{background:var(--accent-soft);color:var(--accent);font-weight:700}
+/* 展開式のメニュー（朝礼確認）：見出しを押すと中の項目が開く */
+.nav-group{display:flex;flex-direction:column;gap:2px}
+nav .nav-gh{display:flex;align-items:center;gap:8px;border:1px solid var(--line)}
+nav .nav-gh .nav-caret{margin-left:auto;font-size:10px}
+nav .nav-gh.on{font-weight:700}
+.nav-sub{display:flex;flex-direction:column;gap:2px}
+.nav-sub[hidden]{display:none}
+nav .nav-sub button{padding-left:26px;font-size:.95em}
 /* 広い画面ではメニューを左の濃色サイドバーに置く（ログイン前と狭い画面は上のまま） */
 @media (min-width:900px){
   .wrap:has(#nav:not([hidden])){max-width:none;padding-inline:0 24px;display:grid;grid-template-columns:212px minmax(0,1fr);gap:0 28px;align-items:start}
@@ -294,6 +302,8 @@ nav button[aria-current="page"]{background:var(--accent-soft);color:var(--accent
   .wrap:has(#nav:not([hidden])) nav button{text-align:left;padding:9px 12px;width:100%;color:#c9d6e8}
   .wrap:has(#nav:not([hidden])) nav button:hover{background:rgba(255,255,255,.08);color:#fff}
   .wrap:has(#nav:not([hidden])) nav button[aria-current="page"]{background:rgba(255,255,255,.16);color:#fff}
+  .wrap:has(#nav:not([hidden])) nav .nav-gh{border-color:rgba(255,255,255,.55);color:#fff}
+  .wrap:has(#nav:not([hidden])) nav .nav-sub button{padding-left:26px}
   .wrap:has(#nav:not([hidden])) nav button:focus-visible,.wrap:has(#nav:not([hidden])) #logout:focus-visible{outline:2px solid #fff;outline-offset:1px}
   .wrap:has(#nav:not([hidden])) #save{margin:-18px 0 12px;padding-left:56px;font-size:11px;line-height:1.3;color:#7ee2a0;min-height:14px}
   .wrap:has(#nav:not([hidden])) #save.err{color:#ffb4b4}
@@ -797,12 +807,20 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
       <button type="button" data-v="tourrep">ツアー報告書</button>
       <button type="button" data-v="tdimp">FAX-TD取込</button>
       <button type="button" data-v="mailtd">Mail-TD取込（開発中）</button>
-      <button type="button" data-v="chorei">朝礼確認</button>
+      <div class="nav-group" id="nav-chorei">
+        <button type="button" class="nav-gh" data-g="chorei" aria-expanded="false"><span>朝礼確認</span><span class="nav-caret" aria-hidden="true">▶</span></button>
+        <div class="nav-sub" hidden>
+          <button type="button" data-v="mailchk">手配チェック</button>
+          <button type="button" data-v="tourchk">催行確認チェック</button>
+          <button type="button" data-v="dietchk">食事制限チェック</button>
+          <button type="button" data-v="morning">朝礼シート</button>
+        </div>
+      </div>
     </nav>
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 288</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 289</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -4204,7 +4222,15 @@ async function go(v) {
   try { location.hash = v.name === "case" ? "case-" + v.id : v.name; } catch (_) {}
   render(); window.scrollTo(0, 0);
 }
-$("#nav").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { if (b.dataset.v === "tourrep") trView.page = "list"; go({ name: b.dataset.v === "chorei" ? choreiLast : b.dataset.v }); } });
+$("#nav").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.g) { navGroupOpen(b.dataset.g, b.getAttribute("aria-expanded") !== "true"); return; } if (b.dataset.v === "tourrep") trView.page = "list"; go({ name: b.dataset.v }); });
+/** 展開式のメニューを開く・閉じる（開いた状態はこのブラウザに覚えておく） */
+function navGroupOpen(g, open, keep) {
+  const box = document.getElementById("nav-" + g); if (!box) return;
+  const gh = box.querySelector(".nav-gh"), sub = box.querySelector(".nav-sub");
+  sub.hidden = !open; gh.setAttribute("aria-expanded", open ? "true" : "false"); gh.querySelector(".nav-caret").textContent = open ? "▼" : "▶";
+  if (!keep) try { localStorage.setItem("tcore-nav-" + g, open ? "1" : "0"); } catch (_) {}
+}
+try { if (localStorage.getItem("tcore-nav-chorei") === "1") navGroupOpen("chorei", true, true); } catch (_) {}
 /* 共通設定は上長承認のパスワードを入れた人だけが開ける（パスワードが未設定の間と、共有データに未接続のときは誰でも開ける）。 */
 $("#open-req").addEventListener("click", () => { if (authState === "open" && view.name !== "requests") go({ name: "requests" }); });
 $("#open-settings").addEventListener("click", async () => {
@@ -4216,8 +4242,9 @@ $("#open-settings").addEventListener("click", async () => {
 function render() {
   // 「レイアウト作成」で作ったもの（kind:"layout"）は、案件と同じ仕組みで保存するが、メニューは別にする
   const curKind = view.name === "case" || view.name === "clayout" ? ((draft && draft.id === view.id ? draft : S.cases.get(view.id)) || {}).kind : "";
-  const cur = view.name === "case" || view.name === "clayout" ? (curKind === "layout" ? "layouts" : curKind === "pj" ? "pj" : "list") : view.name === "layout" ? "stores" : isChorei(view.name) ? "chorei" : view.name;
-  for (const b of $("#nav").children) { if (b.dataset.v === cur) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); }
+  const cur = view.name === "case" || view.name === "clayout" ? (curKind === "layout" ? "layouts" : curKind === "pj" ? "pj" : "list") : view.name === "layout" ? "stores" : view.name;
+  for (const b of $("#nav").querySelectorAll("button[data-v]")) { if (b.dataset.v === cur) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); }
+  { const gh = document.querySelector("#nav-chorei .nav-gh"); if (gh) { gh.classList.toggle("on", isChorei(cur)); if (isChorei(cur) && gh.getAttribute("aria-expanded") !== "true") navGroupOpen("chorei", true); } } // 中の画面を開いているときは、メニューを開いておく
   const app = $("#app");
   $("#nav").hidden = authState !== "open"; $("#logout").hidden = authState !== "open" || !dataKey;
   drawBell();
@@ -4236,10 +4263,10 @@ function render() {
   else if (view.name === "tourrep") app.replaceChildren(...top, ...viewTourRep());
   else if (view.name === "tdimp") app.replaceChildren(...top, ...viewTdImp());
   else if (view.name === "mailtd") app.replaceChildren(...top, ...viewMailTd());
-  else if (view.name === "mailchk") app.replaceChildren(...top, choreiTabs("mailchk"), ...viewMailChk());
-  else if (view.name === "tourchk") app.replaceChildren(...top, choreiTabs("tourchk"), ...viewTourChk());
-  else if (view.name === "dietchk") app.replaceChildren(...top, choreiTabs("dietchk"), ...viewDietChk());
-  else if (view.name === "morning") app.replaceChildren(...top, choreiTabs("morning"), ...viewMorning());
+  else if (view.name === "mailchk") app.replaceChildren(...top, ...viewMailChk());
+  else if (view.name === "tourchk") app.replaceChildren(...top, ...viewTourChk());
+  else if (view.name === "dietchk") app.replaceChildren(...top, ...viewDietChk());
+  else if (view.name === "morning") app.replaceChildren(...top, ...viewMorning());
   else if (view.name === "requests") app.replaceChildren(...top, ...viewRequests());
   else if (view.name === "case") app.replaceChildren(...top, ...viewCase());
   else if (view.name === "stores") app.replaceChildren(...top, ...viewStores());
