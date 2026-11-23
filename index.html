@@ -846,7 +846,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 311</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 312</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -3855,7 +3855,7 @@ const lnBi = (x) => { const s = lnNorm(x), r = new Set(); for (let i = 0; i < s.
 function lnSim(a, b) { const A = lnBi(a), B = lnBi(b); if (!A.size || !B.size) return 0; let n = 0; for (const x of A) if (B.has(x)) n++; return n / Math.min(A.size, B.size); }
 /** 検索できる店舗の選択欄。グループ名から似ている店舗を上に「候補」として出す */
 function lnPicker(g, cur, known, map, gName, onPick) {
-  const gn = g.name || "", scored = known.map((s) => ({ s, sc: lnSim(gn, s) })), sugg = scored.filter((x) => x.sc >= 0.34).sort((a, b) => b.sc - a.sc).slice(0, 5).map((x) => x.s);
+  const gn = g.name || "", gk = gn.replace(/広報関係|広報部?|連絡用|連絡|管理職|グループ|スタッフ|社員|店舗|通知|LINE|ライン|[_＿\-－]/gi, " "), scored = known.map((s) => ({ s, sc: lnSim(gk, s) })), sugg = scored.filter((x) => x.sc >= 0.34).sort((a, b) => b.sc - a.sc).slice(0, 5).map((x) => x.s);
   const wrap = h("div", { class: "ln-pick", "data-group": g.id, style: "position:relative;min-width:300px;flex:1" });
   const inp = h("input", { type: "search", class: "ln-pick-q", value: cur, placeholder: sugg.length ? `検索（候補：${sugg[0]}）` : "店舗名で検索", disabled: readOnly || undefined, autocomplete: "off", style: "width:100%" + (cur ? "" : ";border-color:var(--bad)") });
   const box = h("div", { class: "ln-pick-list", hidden: true, style: "position:fixed;z-index:1000;max-height:300px;overflow-y:auto;background:var(--panel,#fff);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.12);margin-top:2px" });
@@ -3868,7 +3868,9 @@ function lnPicker(g, cur, known, map, gName, onPick) {
     const rest = hit || known.filter((s) => !sugg.includes(s));
     if (cur && !q) box.append(h("div", { class: "ln-pick-item", style: "padding:7px 10px;cursor:pointer;color:var(--bad)", onmousedown: (e) => { e.preventDefault(); box.hidden = true; inp.value = ""; onPick(""); }, text: "紐づけを外す" }));
     box.append(...rest.map((s) => item(s, hit && sugg.includes(s) ? "候補" : "")));
-    if (!rest.length) box.append(h("div", { class: "small muted", style: "padding:8px 10px", text: "見つかりません" }));
+    const typed = String(inp.value || "").trim();
+    if (q && typed && !known.some((x) => lnNorm(x) === lnNorm(typed))) box.append(h("div", { class: "ln-pick-item ln-pick-free", style: "padding:7px 10px;cursor:pointer;border-top:1px solid var(--line);color:var(--accent)", onmousedown: (e) => { e.preventDefault(); box.hidden = true; onPick(typed); }, text: `「${typed}」で紐づける（一覧にない店舗名。Travel Dineの店舗名と同じ表記にしてください）` }));
+    else if (!rest.length) box.append(h("div", { class: "small muted", style: "padding:8px 10px", text: "見つかりません" }));
   };
   // 一覧は表の外に重ねて出す（表の枠で切れないように、画面に対して位置を決める。下が狭いときは上に開く）
   const place = () => { if (box.hidden) return; const r = inp.getBoundingClientRect(), below = window.innerHeight - r.bottom - 8, above = r.top - 8, up = below < 220 && above > below, mh = Math.max(160, Math.min(340, up ? above : below));
@@ -3906,6 +3908,7 @@ async function lnLoad(force) {
   const d = lnDate();
   try { const [a, b, c] = await Promise.all([db.doc("linechk/settings").get(), db.doc("linechk/groups").get(), db.doc("linechk/log_" + d).get()]); LNT.set = (a.exists && a.data()) || {}; LNT.groups = (b.exists && b.data()) || { groups: {} }; LNT.log = (c.exists && c.data()) || null; LNT.logDate = d; } catch (_) {}
   await Promise.all([tckLoadSrv(false), dckLoad(false)]); // 予約（催行確認チェック）と食事制限（食事制限チェック）の読み込みを使う
+  if (!LNT.tdStores) { try { const m = tdi.master || ((await db.doc("tdimport/master").get()).data() || null); LNT.tdStores = ((m && m.stores) || []).map((x) => x.name).filter(Boolean); } catch (_) { LNT.tdStores = []; } } // Travel Dineの店舗一覧（TDマスタ）。まだ予約のない店舗も選べるように
   const host = window.claude && window.claude.host;
   if (host && host.lineStatus && (force || Date.now() - LNT.statusAt > 300e3)) { LNT.statusAt = Date.now(); LNT.status = await host.lineStatus(); }
   if (view.name === "linechk") render();
@@ -3957,7 +3960,7 @@ function viewLineChk() {
         h("li", { text: "店舗のグループLINEに公式アカウントを招待します。下の「グループLINE」に自動で入ります。" }))) : null));
   // グループLINEとTravel Dine店舗の紐づけ（公式アカウントが参加したグループごとに、Travel Dineの店舗を1つ選ぶ。保存は map[店舗名]=グループID）
   const storeOf = (gid) => Object.keys(map).filter((k) => map[k] === gid);
-  const known = [...new Set([...((tour && tour.rows) || []).map((r) => r.store), ...((diet && diet.rows) || []).map((r) => r.store), ...Object.keys(map), ...(S0.stores || [])].filter(Boolean))].sort((x, y) => x.localeCompare(y, "ja"));
+  const known = [...new Set([...(LNT.tdStores || []), ...((tour && tour.rows) || []).map((r) => r.store), ...((diet && diet.rows) || []).map((r) => r.store), ...Object.keys(map), ...(S0.stores || []), ...((Array.isArray(S0.multi) ? S0.multi : []).map((r) => r.store))].filter(Boolean))].sort((x, y) => x.localeCompare(y, "ja"));
   const link = (gid, store) => { const m = {}; for (const [k, v] of Object.entries(map)) if (v !== gid) m[k] = v; if (store) m[store] = gid; const was = map[store]; lnSave({ map: m }, store ? `「${gName(gid)}」を「${store}」に紐づけました` + (was && was !== gid ? `（「${gName(was)}」からは外しました）` : "") : `「${gName(gid)}」の紐づけを外しました`); };
   const lc = (g) => g.status === "left";
   out.push(h("div", { class: "panel stack", id: "ln-map", style: "gap:8px" },
