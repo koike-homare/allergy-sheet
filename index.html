@@ -846,7 +846,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 298</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 300</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -3816,7 +3816,7 @@ function viewDietChk() {
    予約は催行確認チェックの読み込み（tourchk/latest）、食事制限は食事制限チェック（dietchk/latest）を使う。
    設定・紐づけ・文面は linechk/settings、参加しているグループは linechk/groups（LINEのWebhookが書く）、送った記録は linechk/log_日付 */
 const LNT = { set: null, groups: null, log: null, logDate: "", status: null, at: 0, date: "", busy: "", tpl: null, statusAt: 0 };
-const LN_TPL0 = { head: "明日{日付}のツアー予約をお知らせします。", store: "【{店舗名}】{件数}件・{人数}名", item: "{時間}　{団体名}　{人数}名{食事制限}", diet: "\n　⚠食事制限あり（{種類}）{未登録}", foot: "食事制限・アレルギーのある団体は、Travel Dineで内容を確かめてください。" };
+const LN_TPL0 = { head: "明日{日付}のツアー予約をお知らせします。", store: "【{店舗名}】\n総件数：{件数}件　総人数：{人数}人", item: "{時間} {団体名} {人数}名", dietHead: "【食事制限/アレルギー】", dietItem: "{団体名}に食事制限・アレルギー情報があります。", foot: "食事制限・アレルギー情報はTravel Dineから最新情報を確認してください。\nご不明なことがあれば観光事業部までご連絡ください。\n\n※システムからの自動通知です。" };
 const LN_WD = ["日", "月", "火", "水", "木", "金", "土"], lnMd = (ymd) => `${Number(ymd.slice(5, 7))}月${Number(ymd.slice(8, 10))}日（${LN_WD[new Date(ymd + "T00:00:00Z").getUTCDay()]}）`;
 const lnFill = (t, v) => String(t || "").replace(/\{([^{}]+)\}/g, (m, k) => (k in v ? v[k] : m));
 /** サーバーと同じ作り方で、店舗ごとにまとめる・文面を作る（画面のプレビュー用） */
@@ -3825,14 +3825,14 @@ function lnStores(tour, diet, date) {
   const by = new Map(); for (const r of rows) { const k = r.store || "（店舗不明）"; if (!by.has(k)) by.set(k, []); by.get(k).push({ ...r, diet: dmap.get(String(r.id)) || null }); }
   return [...by.entries()].map(([store, list]) => ({ store, list: list.sort((a, b) => (a.dt < b.dt ? -1 : 1)), people: list.reduce((a, r) => a + (Number(r.people) || 0), 0) })).sort((a, b) => a.store.localeCompare(b.store, "ja"));
 }
-function lnText(stores, date, tpl, dietOk) {
-  const T = { ...LN_TPL0, ...(tpl || {}) }, parts = [lnFill(T.head, { 日付: lnMd(date) })];
-  for (const s of stores) { const lines = [lnFill(T.store, { 店舗名: s.store, 件数: String(s.list.length), 人数: String(s.people) })];
-    for (const r of s.list) { const d = r.diet, dl = d ? lnFill(T.diet, { 種類: (d.cats || []).join("・") || "記載あり", 未登録: d.arrange === "有り" ? "" : "※アレンジコース未登録" }) : "";
-      lines.push(lnFill(T.item, { 時間: String(r.dt || "").slice(11, 16), 団体名: r.group || "", 旅行会社: r.agency || "", 人数: String(r.people || 0), 食事制限: dl })); }
-    parts.push(lines.join("\n")); }
-  if (!dietOk) parts.push("※食事制限チェックの結果がまだないため、食事制限の情報は入っていません。");
-  parts.push(lnFill(T.foot, { 件数: String(stores.reduce((a, s) => a + s.list.length, 0)) }));
+/** 1店舗分の文面（サーバーと同じ。店舗ごとに1通送る） */
+function lnText(st, date, tpl, dietOk) {
+  const T = { ...LN_TPL0, ...(tpl || {}) }, v = (r) => ({ 時間: String(r.dt || "").slice(11, 16), 団体名: r.group || "", 旅行会社: r.agency || "", 人数: String(r.people || 0), 種類: r.diet ? (r.diet.cats || []).join("・") : "", 未登録: r.diet && r.diet.arrange !== "有り" ? "※アレンジコース未登録" : "" });
+  const parts = [lnFill(T.head, { 日付: lnMd(date) }), lnFill(T.store, { 店舗名: st.store, 件数: String(st.list.length), 人数: String(st.people) }) + "\n\n" + st.list.map((r) => lnFill(T.item, v(r))).join("\n")];
+  const dl = st.list.filter((r) => r.diet);
+  if (dl.length) parts.push([T.dietHead, ...dl.map((r) => lnFill(T.dietItem, v(r)))].filter((x) => String(x).trim()).join("\n"));
+  if (!dietOk) parts.push("※食事制限チェックの結果がまだないため、食事制限・アレルギーの情報は入っていません。");
+  parts.push(lnFill(T.foot, { 件数: String(st.list.length) }));
   return parts.filter((x) => String(x).trim()).join("\n\n").slice(0, 4900);
 }
 const lnDate = () => LNT.date || mcAdd(mcToday(), 1);
@@ -3878,6 +3878,24 @@ function viewLineChk() {
         h("li", {}, "「Messaging API設定」の Webhook URL に ", h("code", { text: "https://mxsxelrnvftradifjojd.supabase.co/functions/v1/line-notify" }), " を入れ、「Webhookの利用」をオンにします。「グループトーク・複数人トークへの参加を許可する」もオンにします。"),
         h("li", { text: "チャネルシークレットと、チャネルアクセストークン（長期）を、Supabase の Edge Functions の Secrets に LINE_CHANNEL_SECRET・LINE_CHANNEL_ACCESS_TOKEN という名前で入れます（ご自身で入力してください。T-COREの画面には入れません）。" }),
         h("li", { text: "店舗のグループLINEに公式アカウントを招待します。下の「グループLINE」に自動で入ります。" }))) : null));
+  // 店舗とグループLINEの紐づけ（店舗名ごとに送り先のグループを決める。予約とは関係なく、一度決めれば毎日使われる）
+  const regd = [...new Set([...(S0.stores || []), ...Object.keys(map)])].sort((x, y) => x.localeCompare(y, "ja"));
+  const seen = [...new Set(((tour && tour.rows) || []).map((r) => r.store).filter(Boolean))].sort((x, y) => x.localeCompare(y, "ja")), notYet = seen.filter((x) => !regd.includes(x));
+  const addStores = (names) => { const add = names.map((x) => String(x || "").trim()).filter((x) => x && !regd.includes(x)); if (!add.length) return toast("追加する店舗がありません（登録済みです）"); lnSave({ stores: [...regd, ...add] }, `${add.length}店舗を追加しました`); };
+  out.push(h("div", { class: "panel stack", id: "ln-map", style: "gap:8px" },
+    h("div", { class: "row", style: "gap:8px;align-items:center;flex-wrap:wrap" }, h("strong", { text: "店舗とグループLINEの紐づけ" }), h("span", { class: "small muted", text: `${regd.length}店舗（送り先あり ${regd.filter((x) => map[x]).length}）` })),
+    h("div", { class: "small muted", text: "店舗名ごとに、通知を送るグループLINEを1つ選びます。翌日にその店舗の予約があれば、そのグループへその店舗の分だけを送ります。店舗名はTravel Dineの店舗名と同じにしてください。" }),
+    regd.length ? h("div", { style: "overflow-x:auto" }, h("table", { class: "list small", id: "ln-map-table" }, h("thead", {}, h("tr", {}, ...["店舗名", "送り先のグループLINE", ""].map((t) => h("th", { text: t })))),
+      h("tbody", {}, ...regd.map((name) => h("tr", {},
+        h("td", { style: "font-weight:700", text: name }),
+        h("td", {}, h("select", { "data-store": name, style: "min-width:240px" + (map[name] ? "" : ";border-color:var(--bad)"), disabled: readOnly || undefined, onchange: (e) => lnSave({ map: { ...map, [name]: e.target.value } }, e.target.value ? `「${name}」の送り先を「${gName(e.target.value)}」にしました` : `「${name}」の送り先を外しました`) }, ...gOpts(map[name] || "", "（未設定）")),
+          map[name] && G[map[name]] && G[map[name]].status === "left" ? h("span", { class: "small", style: "color:var(--bad);margin-left:6px", text: "このグループからは退出済みです" }) : null),
+        h("td", { style: "text-align:right" }, confirmBtn("外す", `「${name}」を一覧から外す`, () => { const m = { ...map }; delete m[name]; lnSave({ stores: regd.filter((x) => x !== name), map: m }, `「${name}」を外しました`); }, "btn sm"))))))) : h("div", { class: "small muted", text: "まだ店舗がありません。下から追加してください。" }),
+    h("div", { class: "row", style: "gap:8px;align-items:flex-end;flex-wrap:wrap" },
+      field("店舗を追加", h("input", { id: "ln-add", list: "ln-add-list", placeholder: "店舗名（候補から選べます）", style: "width:280px" })),
+      h("datalist", { id: "ln-add-list" }, ...notYet.map((x) => h("option", { value: x }))),
+      h("button", { type: "button", class: "btn", disabled: readOnly || undefined, text: "追加する", onclick: () => addStores([$("#ln-add").value]) }),
+      notYet.length ? h("button", { type: "button", class: "btn", id: "ln-add-all", disabled: readOnly || undefined, text: `予約に出てくる店舗をまとめて追加（${notYet.length}店舗）`, onclick: () => addStores(notYet) }) : null)));
   // 送信の設定
   out.push(h("div", { class: "panel stack", style: "gap:8px" },
     h("div", { class: "row", style: "gap:8px;align-items:center" }, h("strong", { text: "送信の設定" }), h("span", { class: "pill", style: "font-weight:700;" + (S0.auto ? "background:#e3f4e8;color:#1d6b35" : "background:#eef0f3;color:#555"), text: S0.auto ? "自動で送る：オン" : "自動で送る：オフ" })),
@@ -3888,26 +3906,27 @@ function viewLineChk() {
       h("button", { type: "button", class: "btn primary", id: "ln-save", disabled: readOnly || undefined, text: "保存する", onclick: () => lnSave({ auto: $("#ln-auto").checked, hour: Number($("#ln-hour").value), fallback: $("#ln-fb").value }, "送信の設定を保存しました") })),
     h("div", { class: "small muted", text: "予約は催行確認チェックの読み込み（毎朝6時台）、食事制限は食事制限チェックの読み込み（毎朝6時台）の結果を使います。送る時刻を過ぎてから10分以内に送ります。同じ日の分を同じグループに二度は送りません。" + (S0.updatedAt ? `　最終更新：${mrAt(S0.updatedAt)}` : "") })));
   // 文面
-  const tf = (k, label, hint, rows) => field(label + (hint ? `　差し込み：${hint}` : ""), h("textarea", { id: "ln-t-" + k, rows, oninput: (e) => { LNT.tpl = { ...(LNT.tpl || {}), [k]: e.target.value }; const p = $("#ln-preview"); if (p) p.textContent = lnText(stores.slice(0, 2), d, { ...tpl, [k]: e.target.value }, dietOk); } }, tpl[k]));
-  const sample = stores.length ? stores.slice(0, 2) : [{ store: "（店舗名の例）", people: 32, list: [{ dt: d.replace(/-/g, "/") + " 12:00", group: "〇〇高校", people: 30, diet: { cats: ["アレルギー"], arrange: "無し" } }, { dt: d.replace(/-/g, "/") + " 18:00", group: "△△様", people: 2, diet: null }] }];
+  const sample = stores.find((x) => x.store === LNT.pv) || stores[0] || { store: "（店舗名の例）", people: 32, list: [{ dt: d.replace(/-/g, "/") + " 12:00", group: "〇〇高校", people: 30, diet: { cats: ["アレルギー"], arrange: "無し" } }, { dt: d.replace(/-/g, "/") + " 18:00", group: "△△様", people: 2, diet: null }] };
+  const tf = (k, label, hint, rows) => field(label + (hint ? `　差し込み：${hint}` : ""), h("textarea", { id: "ln-t-" + k, rows, oninput: (e) => { LNT.tpl = { ...(LNT.tpl || {}), [k]: e.target.value }; const p = $("#ln-preview"); if (p) p.textContent = lnText(sample, d, { ...tpl, [k]: e.target.value }, dietOk || !stores.length); } }, tpl[k]));
   out.push(h("div", { class: "panel" }, h("div", { class: "row", style: "gap:24px;align-items:flex-start;flex-wrap:wrap" },
     h("div", { class: "stack", style: "flex:1;min-width:320px;gap:8px" }, h("strong", { text: "送るメッセージのテンプレート" }),
-      tf("head", "冒頭の文", "{日付}", 2), tf("store", "店舗の見出し", "{店舗名} {件数} {人数}", 1), tf("item", "1件の書き方", "{時間} {団体名} {旅行会社} {人数} {食事制限}", 2),
-      tf("diet", "食事制限があるときに足す文（{食事制限}に入る）", "{種類} {未登録}", 2), tf("foot", "締めの文", "{件数}", 2),
+      tf("head", "冒頭の文", "{日付}", 2), tf("store", "店舗の見出し", "{店舗名} {件数} {人数}", 2), tf("item", "1件の書き方（予約の数だけ並ぶ）", "{時間} {団体名} {旅行会社} {人数}", 1),
+      tf("dietHead", "食事制限/アレルギーの見出し（該当する団体があるときだけ出る）", "", 1), tf("dietItem", "食事制限/アレルギーのある団体1件の書き方", "{団体名} {時間} {人数} {種類} {未登録}", 2), tf("foot", "締めの文", "{件数}", 4),
       h("div", { class: "row", style: "gap:8px" },
         h("button", { type: "button", class: "btn primary", id: "ln-tpl-save", disabled: readOnly || undefined, text: "テンプレートを保存する", onclick: () => { const t = {}; for (const k of Object.keys(LN_TPL0)) { const v = $("#ln-t-" + k).value; if (v.trim()) t[k] = v; } LNT.tpl = null; lnSave({ tpl: t }, "テンプレートを保存しました"); } }),
         h("button", { type: "button", class: "btn", text: "初めの文面に戻す", onclick: () => { LNT.tpl = null; lnSave({ tpl: {} }, "初めの文面に戻しました"); } })),
-      h("div", { class: "small muted", text: "空にした欄は、初めの文面になります。テンプレートは全部のグループに共通です。1つのグループに複数の店舗を紐づけたときは、店舗ごとの段落を並べて1通で送ります。" })),
+      h("div", { class: "small muted", text: "空にした欄は、初めの文面になります。テンプレートは全部の店舗に共通です。通知は店舗ごとに1通で、そのグループにはその店舗の予約だけを送ります（1つのグループに複数の店舗を紐づけたときは、店舗ごとに1通ずつ送ります）。" })),
     h("div", { class: "stack", style: "width:320px;gap:6px" }, h("span", { class: "small muted", text: "届く文面のプレビュー（スマホのLINEの見え方）" }),
+      stores.length > 1 ? h("select", { id: "ln-pv", onchange: (e) => { LNT.pv = e.target.value; render(); } }, ...stores.map((x) => h("option", { value: x.store, selected: x.store === sample.store || undefined, text: x.store + "のグループに届く文面" }))) : null,
       h("div", { style: "border:10px solid #1d2433;border-radius:28px;background:#8fabd6;padding:12px 10px;min-height:420px;max-height:560px;overflow-y:auto" },
         h("div", { style: "text-align:center;margin-bottom:8px" }, h("span", { style: "background:rgba(0,0,0,.18);color:#fff;border-radius:10px;padding:2px 10px;font-size:11px", text: "今日" })),
         h("div", { class: "row", style: "gap:6px;align-items:flex-start" }, h("div", { style: "width:30px;height:30px;border-radius:50%;background:#06c755;color:#fff;font-size:10px;display:grid;place-items:center;flex:none", text: "通知" }),
           h("div", { id: "ln-preview", style: "background:#fff;border-radius:14px;padding:8px 10px;font-size:12px;line-height:1.55;white-space:pre-wrap;max-width:240px", text: lnText(sample, d, tpl, dietOk || !stores.length) })))))));
   // 明日の来店（店舗ごと）
   const LG = (LNT.log && LNT.log.groups) || {};
-  const stateOf = (s) => { const g = map[s.store]; if (!g) return h("span", { class: "small", style: "color:var(--bad)", text: "送り先なし" }); const l = LG[g]; if (!l) return h("span", { class: "small muted", text: "まだ送っていません" }); return l.ok ? h("span", { class: "small", style: "color:var(--ok)", text: `送信済み（${mrAt(l.at)}）` }) : h("span", { class: "small", style: "color:var(--bad)", title: l.err || "", text: "送れませんでした" }); };
+  const stateOf = (s) => { const g = map[s.store]; if (!g) return h("span", { class: "small", style: "color:var(--bad)", text: "送り先なし" }); const l = LG[g + "|" + s.store]; if (!l) return h("span", { class: "small muted", text: "まだ送っていません" }); return l.ok ? h("span", { class: "small", style: "color:var(--ok)", text: `送信済み（${mrAt(l.at)}）` }) : h("span", { class: "small", style: "color:var(--bad)", title: l.err || "", text: "送れませんでした" }); };
   out.push(h("div", { class: "panel stack", style: "gap:8px" },
-    h("div", { class: "row", style: "gap:8px;align-items:center;flex-wrap:wrap" }, h("strong", { text: `${lnMd(d)}の来店${d === mcAdd(mcToday(), 1) ? "（明日）" : ""}` }), h("span", { class: "small muted", text: `${stores.length}店舗・${stores.reduce((a, s) => a + s.list.length, 0)}件` }),
+    h("div", { class: "row", style: "gap:8px;align-items:center;flex-wrap:wrap" }, h("strong", { text: `${lnMd(d)}${d === mcAdd(mcToday(), 1) ? "（明日）" : ""}の送信予定` }), h("span", { class: "small muted", text: `${stores.length}店舗・${stores.reduce((a, s) => a + s.list.length, 0)}件` }),
       h("span", { style: "margin-left:auto" }), h("button", { type: "button", class: "btn sm", text: "← 前の日", onclick: () => { LNT.date = mcAdd(d, -1); lnLoad(true); render(); } }), h("button", { type: "button", class: "btn sm", text: "次の日 →", onclick: () => { LNT.date = mcAdd(d, 1); lnLoad(true); render(); } }), LNT.date ? h("button", { type: "button", class: "btn sm", text: "明日に戻す", onclick: () => { LNT.date = ""; lnLoad(true); render(); } }) : null),
     h("div", { class: "small muted", text: (tour ? `予約の読み込み：${mrAt(tour.at)}（催行確認チェック・毎朝自動）` : "催行確認チェックの読み込みがまだありません") + "　／　" + (dietOk ? `食事制限の読み込み：${mrAt(diet.at)}` : "この日の食事制限チェックの結果はありません（食事制限の情報なしで送ります）") }),
     stores.length ? h("div", { style: "overflow-x:auto" }, h("table", { class: "list small", id: "ln-stores" }, h("thead", {}, h("tr", {}, ...["店舗", "来店", "食事制限のある団体", "送り先のグループLINE", "状態"].map((t) => h("th", { text: t })))),
@@ -3915,18 +3934,17 @@ function viewLineChk() {
         h("td", { style: "font-weight:700", text: s.store }),
         h("td", {}, h("div", { text: `${s.list.length}件・${s.people}名` }), ...s.list.map((r) => h("div", { class: "muted", text: `${String(r.dt).slice(11, 16)}　${r.group}　${r.people}名` }))),
         h("td", {}, ...(s.list.filter((r) => r.diet).length ? s.list.filter((r) => r.diet).map((r) => h("div", {}, h("span", { style: "font-weight:700", text: r.group }), h("span", { class: "muted", text: `（${(r.diet.cats || []).join("・")}${r.diet.arrange === "有り" ? "" : "・アレンジコース未登録"}）` }))) : [h("span", { class: "muted", text: "—" })])),
-        h("td", {}, h("select", { "data-store": s.store, style: "min-width:200px" + (map[s.store] ? "" : ";border-color:var(--bad)"), disabled: readOnly || undefined, onchange: (e) => lnSave({ map: { ...map, [s.store]: e.target.value } }, e.target.value ? `「${s.store}」の送り先を「${gName(e.target.value)}」にしました` : `「${s.store}」の送り先を外しました`) }, ...gOpts(map[s.store] || "", "（未設定）"))),
+        h("td", {}, map[s.store] ? h("span", { text: gName(map[s.store]) }) : h("span", { class: "small muted", text: "（紐づけなし：上の「店舗とグループLINEの紐づけ」で設定）" })),
         h("td", {}, stateOf(s))))))) : h("div", { class: "small muted", text: tour ? "この日の予約はありません。" : "予約の一覧がまだありません。" }),
     h("div", { class: "row", style: "gap:8px" },
       h("button", { type: "button", class: "btn primary", id: "ln-send", text: LNT.busy || "今すぐ送る", disabled: !!LNT.busy || !ok || !stores.some((s) => map[s.store]) || readOnly || undefined, title: "まだ送っていないグループにだけ送ります", onclick: () => lnSend(false) }),
       confirmBtn("送信済みにも送り直す", "同じ内容をもう一度送ります。送る", () => lnSend(true), "btn"),
-      h("span", { class: "small muted", text: "店舗の送り先は一度選べば保存され、次の日からも使われます。" }))));
+      h("span", { class: "small muted", text: "送り先は「店舗とグループLINEの紐づけ」の設定を使います。" }))));
   // グループLINE
-  const cnt = (id) => Object.values(map).filter((x) => x === id).length;
   out.push(h("div", { class: "panel stack", style: "gap:6px" }, h("strong", { text: "グループLINE" }),
     h("div", { class: "small muted", text: "公式アカウントをグループに招待すると、ここに自動で入ります。入っていないときは、そのグループで何か一言送ってください。" }),
     gs.length ? h("table", { class: "list small", id: "ln-groups" }, h("thead", {}, h("tr", {}, ...["グループ名", "紐づいた店舗", "招待された日", "状態"].map((t) => h("th", { text: t })))),
-      h("tbody", {}, ...gs.map((g) => h("tr", {}, h("td", { text: g.name || g.id }), h("td", { text: `${cnt(g.id)}店舗` }), h("td", { text: g.joinedAt ? mrAt(g.joinedAt) : "" }),
+      h("tbody", {}, ...gs.map((g) => h("tr", {}, h("td", { text: g.name || g.id }), h("td", { text: Object.keys(map).filter((k) => map[k] === g.id).join("、") || "—" }), h("td", { text: g.joinedAt ? mrAt(g.joinedAt) : "" }),
         h("td", {}, h("span", { class: "pill", style: "font-weight:700;" + (g.status === "left" ? "background:#eef0f3;color:#555" : "background:#e3f4e8;color:#1d6b35"), text: g.status === "left" ? "退出済み" : "参加中" })))))) : h("div", { class: "small muted", text: "まだグループがありません。" })));
   return out;
 }
