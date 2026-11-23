@@ -819,7 +819,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 292</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 293</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -3708,7 +3708,8 @@ async function dckSaveCorps(list) {
 /** 確認する法人を選ぶ画面。選択肢は、Travel Dineの法人の一覧（読み込みのときに一緒に読む）と、予約に出てきた法人 */
 function dckCorpDialog() {
   const L = DCK.latest || {}, cur = new Set(dckCorps());
-  const all = [...new Set([...(L.corps || []), ...((L.rows || []).map((r) => r.corp).filter(Boolean)), ...cur])].sort((a, b) => (cur.has(b) - cur.has(a)) || a.localeCompare(b, "ja"));
+  const JL = (DCK.job && Array.isArray(DCK.job.list) ? DCK.job.list : []); // 読み込みの途中でも、読み終えた予約一覧の法人から選べるようにする
+  const all = [...new Set([...(L.corps || []), ...((L.rows || []).map((r) => r.corp).filter(Boolean)), ...JL.map((r) => r.corp).filter(Boolean), ...cur])].sort((a, b) => (cur.has(b) - cur.has(a)) || a.localeCompare(b, "ja"));
   const pick = new Set(cur), dlg = $("#dlg"), box = h("div", { class: "stack", id: "dck-corp-list", style: "gap:2px;max-height:50vh;overflow-y:auto;border:1px solid var(--line);border-radius:var(--r);padding:6px" });
   const cnt = h("span", { class: "small muted" }), upd = () => { cnt.textContent = pick.size ? `${pick.size}社を選択中` : "未選択（すべての飲食店）"; };
   const draw = (q) => { q = String(q || "").trim(); box.replaceChildren(...(all.length ? all.filter((c) => !q || c.includes(q)).map((c) => h("label", { class: "row small", style: "gap:8px;align-items:center;padding:3px 4px;cursor:pointer" },
