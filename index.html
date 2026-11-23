@@ -218,6 +218,14 @@ window.APP_CONFIG = {
           return r.ok;
         } catch (_) { return false; }
       },
+/** 食事制限チェックを今すぐ読み直す（結果は dietchk/latest に書かれる） */
+      buildDietchk: async () => {
+        try {
+          const { data: se } = await sb.auth.getSession(); if (!se || !se.session) return false;
+          const r = await fetch(CFG.url + "/functions/v1/diet-check", { method: "POST", headers: { "Content-Type": "application/json", apikey: CFG.key, Authorization: "Bearer " + se.session.access_token }, body: JSON.stringify({ mode: "run" }) });
+          return r.ok;
+        } catch (_) { return false; }
+      },
 /** 朝礼シートを今すぐ作り直す（結果は mailchk/morning に書かれ、画面に届く） */
       buildMorning: async () => {
         try {
@@ -789,14 +797,12 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
       <button type="button" data-v="tourrep">ツアー報告書</button>
       <button type="button" data-v="tdimp">FAX-TD取込</button>
       <button type="button" data-v="mailtd">Mail-TD取込（開発中）</button>
-      <button type="button" data-v="mailchk">手配チェック</button>
-      <button type="button" data-v="tourchk">催行確認チェック</button>
-      <button type="button" data-v="morning">朝礼シート</button>
+      <button type="button" data-v="chorei">朝礼確認</button>
     </nav>
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 287</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 288</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -3634,6 +3640,86 @@ function diniiBookmarkletPanel() {
       h("div", { class: "row" }, a, h("button", { type: "button", class: "btn sm", text: "ドラッグできないとき：中身をコピー", onclick: () => tdiCopy(DINII_BM, "ダイニー登録の中身") })),
       h("div", { class: "small muted", text: "処理中はダイニーの画面を操作しないでください。同じ日に同じお客様名の予約がすでにあるものは、登録せずに「登録済み」と表示します。変更・取消は、元の予約（利用日とお客様名）を探して書き換え・取消をします（取消理由：お客様都合）。ダイニーの予約一覧の店舗が味の大丸になっていないときは、自動で味の大丸に切り替えます。" })));
 }
+/* ---------- 朝礼確認（手配チェック・催行確認チェック・食事制限チェック・朝礼シートを1つのタブにまとめる） ---------- */
+const CHOREI = [["mailchk", "手配チェック"], ["tourchk", "催行確認チェック"], ["dietchk", "食事制限チェック"], ["morning", "朝礼シート"]];
+const isChorei = (n) => CHOREI.some((x) => x[0] === n);
+let choreiLast = "mailchk"; try { const v = localStorage.getItem("tcore-chorei"); if (isChorei(v)) choreiLast = v; } catch (_) {}
+function choreiTabs(cur) {
+  if (cur !== choreiLast) { choreiLast = cur; try { localStorage.setItem("tcore-chorei", cur); } catch (_) {} }
+  return h("div", { class: "row", id: "chorei-tabs", style: "gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:8px;margin-bottom:4px" },
+    h("strong", { style: "margin-right:8px", text: "朝礼確認" }),
+    ...CHOREI.map(([k, t]) => h("button", { type: "button", class: "btn sm" + (k === cur ? " primary" : ""), "data-tab": k, "aria-current": k === cur ? "page" : null, text: t, onclick: () => { if (k !== view.name) go({ name: k }); } })));
+}
+/* ---------- 食事制限チェック ----------
+   毎朝サーバー（diet-check）が、利用日が今日〜○日先の予約をTravel Dineから読み、メモ欄にアレルギー・食事制限の記載があるのに
+   「アレンジコース」が登録されていない予約を洗い出す（dietchk/latest）。読むだけで、Travel Dineは書き換えない。
+   保存されるのは記載の種類（アレルギー・ハラールなど）と件数だけで、メモの文章は保存しない。内容はTravel Dineで確かめる */
+const DCK = { latest: null, job: null, set: null, at: 0, poll: null, tab: "ng", days: null };
+async function dckLoad(force) {
+  if (!db || localOnly || (!force && Date.now() - DCK.at < 60e3)) return; DCK.at = Date.now();
+  try { const [a, b, c] = await Promise.all([db.doc("dietchk/latest").get(), db.doc("dietchk/job").get(), db.doc("dietchk/settings").get()]); DCK.latest = (a.exists && a.data()) || null; DCK.job = (b.exists && b.data()) || null; DCK.set = (c.exists && c.data()) || {}; } catch (_) {}
+  const busy = DCK.job && (DCK.job.running || (DCK.job.day === mcToday() && !DCK.job.done));
+  if (busy && !DCK.poll) DCK.poll = setInterval(() => { dckLoad(true); const j = DCK.job; if (!(j && (j.running || (j.day === mcToday() && !j.done)))) { clearInterval(DCK.poll); DCK.poll = null; } }, 15000);
+  if (view.name === "dietchk") render();
+}
+async function dckRebuild() {
+  const host = window.claude && window.claude.host;
+  if (!host || !host.buildDietchk) return toast("この表示環境では使えません（公開ページから操作してください）");
+  DCK.job = { ...(DCK.job || {}), running: true }; render();
+  const ok = await host.buildDietchk(); toast(ok ? "読み直しを始めました。予約の数が多いときは、数回に分けて続きを読みます（数分〜30分ほど）" : "読み直しを始められませんでした");
+  setTimeout(() => dckLoad(true), 4000);
+}
+async function dckSaveDays(n) {
+  n = Math.max(0, Math.min(60, Math.round(Number(n) || 0)));
+  if (!db || localOnly || readOnly) return toast("保存できません（閲覧専用、または共有データに未接続）");
+  try { await db.doc("dietchk/settings").set({ ...(DCK.set || {}), days: n }); DCK.set = { ...(DCK.set || {}), days: n }; DCK.days = null; toast(`「今日から${n}日先まで」にしました。次の読み込み（毎朝・または「今すぐ読み直す」）から使います`); render(); }
+  catch (_) { toast("保存できませんでした"); }
+}
+function dckCsv(list) {
+  const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const lines = [["利用日時", "旅行会社", "団体名", "店舗", "人数", "記載の種類", "アレンジコース", "Travel Dine ID"].map(q).join(",")].concat(list.map((r) => [r.dt, r.agency, r.group, r.store, r.people, (r.cats || []).join("・"), r.arrange === "有り" ? "登録済み" : "未登録", r.id].map(q).join(",")));
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv" })); a.download = `食事制限チェック_${mcToday()}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+function viewDietChk() {
+  dckLoad(false);
+  const L = DCK.latest, J = DCK.job, days = DCK.days != null ? DCK.days : Number((DCK.set && DCK.set.days) ?? 7);
+  const running = J && (J.running || (J.day === mcToday() && !J.done && J.progress));
+  const rows = (L && L.rows) || [], ng = rows.filter((r) => r.arrange !== "有り"), ok = rows.filter((r) => r.arrange === "有り");
+  const list = DCK.tab === "ok" ? ok : DCK.tab === "all" ? rows : ng;
+  const seg = (k, t) => h("button", { type: "button", class: "btn sm" + (DCK.tab === k ? " primary" : ""), "data-dck": k, text: t, onclick: () => { DCK.tab = k; render(); } });
+  const pill = (t, st) => h("span", { class: "pill", style: "font-weight:700;white-space:nowrap;" + st, text: t });
+  const ctl = h("div", { class: "panel stack", style: "gap:8px" },
+    h("div", { class: "small muted", text: "Travel Dineの予約のメモ欄（社内向けメモ・注意事項メモ・予約表印字用 備考欄・リクエスト時の要望コメント）に、アレルギーや食事制限の記載があるのに「アレンジコース」が「無し」の予約を洗い出します。アレルギー・食事制限は、メモではなくアレンジコースに登録するのが正しい運用です。毎朝6時台に自動で読みます（読むだけで、Travel Dineは書き換えません）。" }),
+    h("div", { class: "row small", style: "gap:8px;align-items:center;flex-wrap:wrap" },
+      h("span", { text: "調べる範囲：利用日が今日から" }),
+      h("input", { type: "number", id: "dck-days", min: 0, max: 60, value: days, style: "width:64px", oninput: (e) => { DCK.days = e.target.value; } }),
+      h("span", { text: "日先まで" }),
+      h("button", { type: "button", class: "btn sm", id: "dck-days-save", text: "保存", disabled: readOnly || undefined, onclick: () => dckSaveDays($("#dck-days").value) }),
+      L ? h("span", { class: "muted", text: `（前回の読み込み：${mcFmt(L.from)}〜${mcFmt(L.to)}・予約${L.total}件）` }) : null),
+    h("div", { class: "row", style: "gap:8px;align-items:center;flex-wrap:wrap" },
+      h("span", { class: "small", style: "font-weight:700", text: running ? `Travel Dineを読んでいます…${J.progress ? "（" + J.progress + "件）" : ""}　数回に分けて読むので、数分〜30分ほどかかります` : L ? `最終の読み込み：${mrAt(L.at)}` : "まだ読み込みがありません（毎朝6時台に読みます。今すぐ読むときは右のボタン）" }),
+      h("button", { type: "button", class: "btn sm", id: "dck-rebuild", text: "今すぐ読み直す", disabled: !!running, onclick: dckRebuild }),
+      J && J.error ? h("span", { class: "small", style: "color:var(--bad)", text: J.error }) : null));
+  const out = [h("div", { class: "row" }, h("h2", { text: "食事制限チェック" })), ctl];
+  if (!L) return out;
+  out.push(h("div", { class: "row", style: "gap:6px;align-items:center;flex-wrap:wrap" },
+    seg("ng", `要修正（アレンジコース未登録） ${ng.length}件`), seg("ok", `登録済み ${ok.length}件`), seg("all", `記載のある予約すべて ${rows.length}件`),
+    h("span", { style: "margin-left:auto" }), list.length ? h("button", { type: "button", class: "btn sm", text: "CSVで保存", onclick: () => dckCsv(list) }) : null));
+  if (!list.length) { out.push(h("div", { class: "panel small muted", id: "dck-empty", text: DCK.tab === "ng" ? "要修正の予約はありません。" : "該当する予約はありません。" })); return out; }
+  const sorted = list.slice().sort((a, b) => (a.dt < b.dt ? -1 : a.dt > b.dt ? 1 : 0));
+  out.push(h("div", { class: "panel", style: "overflow-x:auto" }, h("table", { class: "list small", id: "dck-table" },
+    h("thead", {}, h("tr", {}, ...["利用日時", "旅行会社", "団体名", "店舗", "人数", "メモ欄の記載", "アレンジコース", ""].map((t) => h("th", { text: t })))),
+    h("tbody", {}, ...sorted.map((r) => h("tr", {},
+      h("td", { style: "white-space:nowrap;font-weight:700", text: r.dt }),
+      h("td", { text: r.agency }), h("td", { style: "font-weight:700", text: r.group }), h("td", { text: r.store }), h("td", { style: "white-space:nowrap", text: r.people ? r.people + "名" : "" }),
+      h("td", {}, h("div", { class: "row", style: "gap:4px;flex-wrap:wrap" }, ...(r.cats || []).map((c) => pill(c, "background:#fdf3d6;color:#8f5a00"))), h("div", { class: "muted", text: `${r.n}か所` })),
+      h("td", {}, r.arrange === "有り" ? pill(`✓ 登録済み${r.arrCount ? "（" + r.arrCount + "件）" : ""}`, "background:#e3f4e8;color:#1d6b35") : pill("✕ 未登録", "background:#fbe3e1;color:#b0261f")),
+      h("td", { style: "white-space:nowrap" },
+        h("a", { class: "btn sm", href: MC_TD_ORIGIN + "/admin/reservations/detail/" + encodeURIComponent(r.id), target: "_blank", rel: "noopener", text: "予約を開く" }), " ",
+        h("a", { class: "btn sm", href: MC_TD_ORIGIN + "/admin/reservations/" + encodeURIComponent(r.id) + "/edit", target: "_blank", rel: "noopener", title: "予約編集の画面（アレンジコースの登録）", text: "編集画面" }))))))));
+  out.push(h("div", { class: "small muted", text: "「メモ欄の記載」は、アレルギー・食事制限らしい言葉を機械的に探した結果です（「アレルギーなし」などは数えません）。内容はTravel Dineの予約画面で確かめてください。直したあとは、翌朝の読み込み（または「今すぐ読み直す」）で一覧から消えます。" }));
+  return out;
+}
 /* ---------- 催行確認チェック ----------
    毎日、利用日が「今日から○日後」（初期値14日後）の予約をTravel Dineの予約一覧から読み、
    更新日時が○日（初期値30日）以上前のもの（しばらく誰も触っていない予約）を、旅行会社への催行確認の対象として出す。
@@ -4118,7 +4204,7 @@ async function go(v) {
   try { location.hash = v.name === "case" ? "case-" + v.id : v.name; } catch (_) {}
   render(); window.scrollTo(0, 0);
 }
-$("#nav").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { if (b.dataset.v === "tourrep") trView.page = "list"; go({ name: b.dataset.v }); } });
+$("#nav").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) { if (b.dataset.v === "tourrep") trView.page = "list"; go({ name: b.dataset.v === "chorei" ? choreiLast : b.dataset.v }); } });
 /* 共通設定は上長承認のパスワードを入れた人だけが開ける（パスワードが未設定の間と、共有データに未接続のときは誰でも開ける）。 */
 $("#open-req").addEventListener("click", () => { if (authState === "open" && view.name !== "requests") go({ name: "requests" }); });
 $("#open-settings").addEventListener("click", async () => {
@@ -4130,7 +4216,7 @@ $("#open-settings").addEventListener("click", async () => {
 function render() {
   // 「レイアウト作成」で作ったもの（kind:"layout"）は、案件と同じ仕組みで保存するが、メニューは別にする
   const curKind = view.name === "case" || view.name === "clayout" ? ((draft && draft.id === view.id ? draft : S.cases.get(view.id)) || {}).kind : "";
-  const cur = view.name === "case" || view.name === "clayout" ? (curKind === "layout" ? "layouts" : curKind === "pj" ? "pj" : "list") : view.name === "layout" ? "stores" : view.name;
+  const cur = view.name === "case" || view.name === "clayout" ? (curKind === "layout" ? "layouts" : curKind === "pj" ? "pj" : "list") : view.name === "layout" ? "stores" : isChorei(view.name) ? "chorei" : view.name;
   for (const b of $("#nav").children) { if (b.dataset.v === cur) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); }
   const app = $("#app");
   $("#nav").hidden = authState !== "open"; $("#logout").hidden = authState !== "open" || !dataKey;
@@ -4150,9 +4236,10 @@ function render() {
   else if (view.name === "tourrep") app.replaceChildren(...top, ...viewTourRep());
   else if (view.name === "tdimp") app.replaceChildren(...top, ...viewTdImp());
   else if (view.name === "mailtd") app.replaceChildren(...top, ...viewMailTd());
-  else if (view.name === "mailchk") app.replaceChildren(...top, ...viewMailChk());
-  else if (view.name === "tourchk") app.replaceChildren(...top, ...viewTourChk());
-  else if (view.name === "morning") app.replaceChildren(...top, ...viewMorning());
+  else if (view.name === "mailchk") app.replaceChildren(...top, choreiTabs("mailchk"), ...viewMailChk());
+  else if (view.name === "tourchk") app.replaceChildren(...top, choreiTabs("tourchk"), ...viewTourChk());
+  else if (view.name === "dietchk") app.replaceChildren(...top, choreiTabs("dietchk"), ...viewDietChk());
+  else if (view.name === "morning") app.replaceChildren(...top, choreiTabs("morning"), ...viewMorning());
   else if (view.name === "requests") app.replaceChildren(...top, ...viewRequests());
   else if (view.name === "case") app.replaceChildren(...top, ...viewCase());
   else if (view.name === "stores") app.replaceChildren(...top, ...viewStores());
@@ -10514,7 +10601,7 @@ window.addEventListener("drop", (e) => e.preventDefault());
 (function init() {
   const hsh = (location.hash || "").slice(1);
   if (hsh.startsWith("case-")) view = { name: "case", id: hsh.slice(5) };
-  else if (["stores", "courses", "spec", "layouts", "pj", "pjsales", "tdstats", "tdseries", "tourrep", "tdimp", "mailtd", "mailchk", "tourchk", "morning"].includes(hsh)) view = { name: hsh };
+  else if (["stores", "courses", "spec", "layouts", "pj", "pjsales", "tdstats", "tdseries", "tourrep", "tdimp", "mailtd", "mailchk", "tourchk", "dietchk", "morning"].includes(hsh)) view = { name: hsh };
   boot();
 })();
 </script>
