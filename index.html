@@ -846,7 +846,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 303</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 304</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -3828,7 +3828,7 @@ function lnPicker(g, cur, known, map, gName, onPick) {
   const gn = g.name || "", scored = known.map((s) => ({ s, sc: lnSim(gn, s) })), sugg = scored.filter((x) => x.sc >= 0.34).sort((a, b) => b.sc - a.sc).slice(0, 5).map((x) => x.s);
   const wrap = h("div", { class: "ln-pick", "data-group": g.id, style: "position:relative;min-width:300px;flex:1" });
   const inp = h("input", { type: "search", class: "ln-pick-q", value: cur, placeholder: sugg.length ? `検索（候補：${sugg[0]}）` : "店舗名で検索", disabled: readOnly || undefined, autocomplete: "off", style: "width:100%" + (cur ? "" : ";border-color:var(--bad)") });
-  const box = h("div", { class: "ln-pick-list", hidden: true, style: "position:absolute;left:0;right:0;top:100%;z-index:30;max-height:300px;overflow-y:auto;background:var(--panel,#fff);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.12);margin-top:2px" });
+  const box = h("div", { class: "ln-pick-list", hidden: true, style: "position:fixed;z-index:1000;max-height:300px;overflow-y:auto;background:var(--panel,#fff);border:1px solid var(--line);border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.12);margin-top:2px" });
   const item = (s, tag) => { const o = map[s]; return h("div", { class: "ln-pick-item", "data-store": s, style: "padding:7px 10px;cursor:pointer;display:flex;gap:6px;align-items:center" + (s === cur ? ";background:#e8f0fe;font-weight:700" : ""), onmousedown: (e) => { e.preventDefault(); box.hidden = true; inp.value = s; if (s !== cur) onPick(s); }, onmouseenter: (e) => (e.currentTarget.style.background = "#f1f4f8"), onmouseleave: (e) => (e.currentTarget.style.background = s === cur ? "#e8f0fe" : "") },
     tag ? h("span", { class: "pill", style: "font-size:10px;background:#e3f4e8;color:#1d6b35;font-weight:700", text: tag }) : null, h("span", { text: s }), o && o !== g.id ? h("span", { class: "small muted", text: `※${gName(o)}に紐づけ済み` }) : null); };
   const draw = () => {
@@ -3840,9 +3840,14 @@ function lnPicker(g, cur, known, map, gName, onPick) {
     box.append(...rest.map((s) => item(s, hit && sugg.includes(s) ? "候補" : "")));
     if (!rest.length) box.append(h("div", { class: "small muted", style: "padding:8px 10px", text: "見つかりません" }));
   };
-  inp.addEventListener("focus", () => { inp.select(); draw(); box.hidden = false; });
-  inp.addEventListener("input", () => { draw(); box.hidden = false; });
-  inp.addEventListener("blur", () => setTimeout(() => { box.hidden = true; inp.value = cur; }, 150));
+  // 一覧は表の外に重ねて出す（表の枠で切れないように、画面に対して位置を決める。下が狭いときは上に開く）
+  const place = () => { if (box.hidden) return; const r = inp.getBoundingClientRect(), below = window.innerHeight - r.bottom - 8, above = r.top - 8, up = below < 220 && above > below, mh = Math.max(160, Math.min(340, up ? above : below));
+    box.style.left = r.left + "px"; box.style.width = Math.max(r.width, 320) + "px"; box.style.maxHeight = mh + "px"; box.style.top = up ? "" : r.bottom + 2 + "px"; box.style.bottom = up ? window.innerHeight - r.top + 2 + "px" : ""; };
+  const onMove = () => { if (!document.body.contains(inp)) return off(); place(); }, off = () => { window.removeEventListener("scroll", onMove, true); window.removeEventListener("resize", onMove); };
+  const show = () => { draw(); box.hidden = false; place(); window.addEventListener("scroll", onMove, true); window.addEventListener("resize", onMove); };
+  inp.addEventListener("focus", () => { inp.select(); show(); });
+  inp.addEventListener("input", () => { draw(); box.hidden = false; place(); });
+  inp.addEventListener("blur", () => setTimeout(() => { box.hidden = true; off(); inp.value = cur; }, 150));
   inp.addEventListener("keydown", (e) => { if (e.key === "Escape") inp.blur(); if (e.key === "Enter") { e.preventDefault(); const f = box.querySelector(".ln-pick-item[data-store]"); if (f) f.dispatchEvent(new MouseEvent("mousedown")); } });
   wrap.append(inp, box);
   if (!cur && sugg.length && !readOnly) wrap.append(h("div", { class: "small", style: "margin-top:3px" }, h("span", { class: "muted", text: "候補：" }), h("a", { href: "#", class: "ln-pick-sugg", text: sugg[0], onclick: (e) => { e.preventDefault(); onPick(sugg[0]); } }), h("span", { class: "muted", text: "（押すと紐づけます）" })));
