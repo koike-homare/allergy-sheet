@@ -819,6 +819,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
       <button type="button" data-v="stores">店舗マスタ</button>
       <button type="button" data-v="courses">コース成分表</button>
       <button type="button" data-v="spec">特定原材料</button>
+      <button type="button" data-v="coursemgr">コース管理</button>
       <hr class="nav-sep">
       <button type="button" data-v="pj">PJ管理</button>
       <button type="button" data-v="pjsales">PJ売上管理</button>
@@ -853,7 +854,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 318</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 319</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -4600,6 +4601,11 @@ $("#open-settings").addEventListener("click", async () => {
   if (!a || !a.hash) return go({ name: "settings" });
   approvalDialog("共通設定を開く", "共通設定の閲覧・変更には、上長承認のパスワードが必要です。", () => go({ name: "settings" }));
 });
+/* ---------- コース管理（準備中） ---------- */
+function viewCourseMgr() {
+  return [h("div", { class: "row" }, h("h2", { text: "コース管理" })),
+    h("div", { class: "panel", id: "cm-empty" }, h("div", { class: "muted", text: "この画面は準備中です。" }))];
+}
 function render() {
   // 「レイアウト作成」で作ったもの（kind:"layout"）は、案件と同じ仕組みで保存するが、メニューは別にする
   const curKind = view.name === "case" || view.name === "clayout" ? ((draft && draft.id === view.id ? draft : S.cases.get(view.id)) || {}).kind : "";
@@ -4635,6 +4641,7 @@ function render() {
   else if (view.name === "stores") app.replaceChildren(...top, ...viewStores());
   else if (view.name === "courses") app.replaceChildren(...top, ...viewCourses());
   else if (view.name === "spec") app.replaceChildren(...top, ...viewSpec());
+  else if (view.name === "coursemgr") app.replaceChildren(...top, ...viewCourseMgr());
   else if (view.name === "clayout") { if (!($("#lay") && $("#seat-panel") && draft && draft.id === view.id)) app.replaceChildren(...top, ...viewCaseLayout()); }
   else if (view.name === "layout") { if (!($("#lay") && layDraft && layDraft.storeId === view.id)) app.replaceChildren(...top, ...viewLayout()); } // 編集中は描き直さない（選択や取り消しの履歴を保つ）
   else app.replaceChildren(...top, ...viewSettings());
@@ -10991,7 +10998,7 @@ window.addEventListener("drop", (e) => e.preventDefault());
 (function init() {
   const hsh = (location.hash || "").slice(1);
   if (hsh.startsWith("case-")) view = { name: "case", id: hsh.slice(5) };
-  else if (["stores", "courses", "spec", "layouts", "pj", "pjsales", "tdstats", "tdseries", "tourrep", "tdimp", "mailtd", "mailchk", "tourchk", "dietchk", "morning", "linechk"].includes(hsh)) view = { name: hsh };
+  else if (["stores", "courses", "spec", "coursemgr", "layouts", "pj", "pjsales", "tdstats", "tdseries", "tourrep", "tdimp", "mailtd", "mailchk", "tourchk", "dietchk", "morning", "linechk"].includes(hsh)) view = { name: hsh };
   boot();
 })();
 </script>
