@@ -785,6 +785,11 @@ tr.rq-done td{color:var(--muted)}
 .advice{border:1px solid #e5b84a;background:#fff8e6;border-radius:8px;padding:8px 12px;font-size:13px}.advice>summary{cursor:pointer;font-weight:700;color:#7a4b00}.advice ul,.advice ol{margin:2px 0 4px;padding-left:22px}.advice li{margin:2px 0}
 .rq-chip{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);border-radius:99px;padding:2px 10px;font-size:12px;background:var(--surface);color:var(--ink);max-width:280px}
 .rq-chip>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rq-open{cursor:pointer;font:inherit;font-size:12px}.rq-open:hover{border-color:var(--accent);color:var(--accent)}
+.wrap:has(#nav:not([hidden])) #open-admin{background:none;border:0;border-radius:var(--r);text-align:left;padding:9px 12px;margin-top:2px;font:inherit;color:#c9d6e8;cursor:pointer}
+.wrap:has(#nav:not([hidden])) #open-admin:hover{background:rgba(255,255,255,.08);color:#fff}
+.wrap:has(#nav:not([hidden])) #open-admin[aria-current="page"]{background:rgba(255,255,255,.16);color:#fff;font-weight:700}
+.wrap:has(#nav:not([hidden])) #open-admin:focus-visible{outline:2px solid #fff;outline-offset:1px}
+#open-admin[aria-current="page"]{border-color:var(--accent);color:var(--accent);font-weight:700}
 #open-req{display:flex;align-items:center;gap:8px}#req-bell{display:inline-flex;align-items:center;gap:4px;color:#f2a900}#req-bell[hidden]{display:none}
 #req-n{background:#c62828;color:#fff;border-radius:999px;min-width:18px;padding:0 5px;font-size:12px;line-height:18px;text-align:center;font-weight:700}
 .btn.lgb{border-color:var(--accent);color:var(--accent);background:var(--accent-soft);font-weight:700}
@@ -853,8 +858,9 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     </nav>
     <button type="button" class="btn sm" id="open-req" hidden><span>改善要望</span><span id="req-bell" hidden title="未対応の改善要望があります"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><b id="req-n"></b></span></button>
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
+    <button type="button" class="btn sm" id="open-admin" hidden>管理者専用</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 320</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 321</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -4602,6 +4608,16 @@ $("#open-settings").addEventListener("click", async () => {
   if (!a || !a.hash) return go({ name: "settings" });
   approvalDialog("共通設定を開く", "共通設定の閲覧・変更には、上長承認のパスワードが必要です。", () => go({ name: "settings" }));
 });
+$("#open-admin").addEventListener("click", async () => { // 管理者専用：共通設定と同じく、上長承認のパスワードで開く
+  if (authState !== "open" || view.name === "admin") return;
+  const a = localOnly || !db ? null : await getApproval();
+  if (!a || !a.hash) return go({ name: "admin" });
+  approvalDialog("管理者専用を開く", "管理者専用の画面を開くには、上長承認のパスワードが必要です。", () => go({ name: "admin" }));
+});
+function viewAdmin() {
+  return [h("div", { class: "row" }, h("h2", { text: "管理者専用" })),
+    h("div", { class: "panel", id: "admin-empty" }, h("div", { class: "muted", text: "この画面は準備中です。" }))];
+}
 /* ---------- コース管理（準備中） ---------- */
 function viewCourseMgr() {
   return [h("div", { class: "row" }, h("h2", { text: "コース管理" })),
@@ -4618,6 +4634,7 @@ function render() {
   drawBell();
   const rq = $("#open-req"); rq.hidden = authState !== "open"; if (cur === "requests") rq.setAttribute("aria-current", "page"); else rq.removeAttribute("aria-current");
   const os = $("#open-settings"); os.hidden = authState !== "open"; if (cur === "settings") os.setAttribute("aria-current", "page"); else os.removeAttribute("aria-current");
+  const oa = $("#open-admin"); oa.hidden = authState !== "open"; if (cur === "admin") oa.setAttribute("aria-current", "page"); else oa.removeAttribute("aria-current");
   if (authState !== "open") { app.replaceChildren(...viewAuth()); return; }
   if (!S.got.cases || !S.got.stores || !S.got.settings || !S.got.courses) { app.replaceChildren(h("div", { class: "empty", text: "読み込み中…" })); return; }
   const top = localOnly ? [h("div", { class: "banner warn", text: "共有データに接続できていません。この画面で入力した内容は、閉じると消えます。" })]
@@ -4643,6 +4660,7 @@ function render() {
   else if (view.name === "courses") app.replaceChildren(...top, ...viewCourses());
   else if (view.name === "spec") app.replaceChildren(...top, ...viewSpec());
   else if (view.name === "coursemgr") app.replaceChildren(...top, ...viewCourseMgr());
+  else if (view.name === "admin") app.replaceChildren(...top, ...viewAdmin());
   else if (view.name === "clayout") { if (!($("#lay") && $("#seat-panel") && draft && draft.id === view.id)) app.replaceChildren(...top, ...viewCaseLayout()); }
   else if (view.name === "layout") { if (!($("#lay") && layDraft && layDraft.storeId === view.id)) app.replaceChildren(...top, ...viewLayout()); } // 編集中は描き直さない（選択や取り消しの履歴を保つ）
   else app.replaceChildren(...top, ...viewSettings());
