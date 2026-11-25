@@ -860,7 +860,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="open-admin" hidden>管理者専用</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 329</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 330</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -4686,38 +4686,48 @@ function gaDay(r, today) {
   const miss = [];
   if (i == null && o != null) miss.push("出社なし");
   if (i != null && o == null && ymd < today) miss.push("退社なし");
-  if (i != null && o != null && o === i) { miss.push("退社が出社と同時刻"); o = null; } // 出社と同時に退社を押したもの（実働は数えない）
+  if (i != null && o != null && o === i) { miss.push("退社が出社と同時刻"); o = null; } // 出社と同時に退社を押したもの
+  // 打刻がないときは、備考の「18:00退社」「9時出社」などの時刻で計算する（打刻漏れの表示は残す）
+  const noteT = (w) => { const m = new RegExp("(\\d{1,2})\\s*(?:[:：]\\s*(\\d{2})|時\\s*(\\d{1,2})?\\s*分?)\\s*(?:に)?\\s*" + w).exec(String(r.note || "")); return m ? Number(m[1]) * 60 + Number(m[2] || m[3] || 0) : null; };
+  let byNote = false;
+  if (o == null && i != null) { const t = noteT("退社"); if (t != null) { o = t < i ? t + 1440 : t; byNote = true; } }
+  let i2 = i; if (i2 == null && o != null) { const t = noteT("出社"); if (t != null) { i2 = t; byNote = true; } }
   outs.forEach(([a, b]) => { if (a != null && b == null && (ymd < today || o != null)) miss.push("復帰なし"); if (a == null && b != null) miss.push("外出なし"); });
   let span = null, brk = null, work = null;
-  if (i != null && o != null) {
-    span = o - i; let rec = 0; for (let [a, b] of outs) { if (a != null && b != null) { if (b < a) b += 1440; rec += b - a; } }
+  if (i2 != null && o != null) {
+    span = o - i2; let rec = 0; for (let [a, b] of outs) { if (a != null && b != null) { if (b < a) b += 1440; rec += b - a; } }
     const need = span - rec > 480 ? 60 : span - rec > 360 ? 45 : 0; brk = Math.max(rec, need); work = Math.max(0, span - brk);
   }
-  return { ymd, in: r.in || "", out: r.out || "", outs: (r.outs || []).filter(([a, b]) => a || b), span, brk, work, miss, note: r.note || "" };
+  return { ymd, in: r.in || "", out: r.out || "", outs: (r.outs || []).filter(([a, b]) => a || b), span, brk, work, miss, byNote, note: r.note || "" };
+}
+/** 会社規則：31日の月は240時間、30日以下の月は230時間の拘束で満額。超えた分が残業。今月は月の途中なので「あと○時間」と出す */
+function gaRule(m, s) {
+  const [y, mm] = m.split("-").map(Number), days = new Date(y, mm, 0).getDate(), base = (days >= 31 ? 240 : 230) * 60, span = s.span || 0;
+  return { days, base, over: Math.max(0, span - base), short: Math.max(0, base - span), running: m >= mcToday().slice(0, 7) };
 }
 function gaStaff(rows, users) {
   const today = mcToday(), by = new Map(), nameOf = new Map((users || []).map((u) => [u.name.replace(/\s|　/g, ""), u.name]));
   for (const r of rows) { const k = r.login || r.name; if (!by.has(k)) by.set(k, { login: r.login, name: r.name, days: [] }); by.get(k).days.push(gaDay(r, today)); }
-  return [...by.values()].map((s) => { s.days.sort((a, b) => (a.ymd < b.ymd ? -1 : 1)); s.worked = s.days.filter((d) => d.in || d.out).length; s.work = s.days.reduce((a, d) => a + (d.work || 0), 0); s.miss = s.days.reduce((a, d) => a + d.miss.length, 0); return s; })
+  return [...by.values()].map((s) => { s.days.sort((a, b) => (a.ymd < b.ymd ? -1 : 1)); s.worked = s.days.filter((d) => d.in || d.out).length; s.work = s.days.reduce((a, d) => a + (d.work || 0), 0); s.span = s.days.reduce((a, d) => a + (d.span || 0), 0); s.byNote = s.days.filter((d) => d.byNote).length; s.miss = s.days.reduce((a, d) => a + d.miss.length, 0); return s; })
     .sort((a, b) => b.miss - a.miss || String(a.name).localeCompare(String(b.name), "ja"));
 }
 /** スタッフ名を押すと開くタイムカード（ガルーンのタイムカードと同じ並び：1か月の全日、出社・退社・外出/復帰×3・備考。土曜は青、日曜は赤）。休憩・実働・打刻漏れはT-COREの計算 */
 function gaCardDialog(s, m) {
   const dlg = $("#dlg"), [y, mm] = m.split("-").map(Number), last = new Date(y, mm, 0).getDate(), WD = ["日", "月", "火", "水", "木", "金", "土"], by = new Map(s.days.map((d) => [d.ymd, d]));
-  const head = ["日付", "出社", "退社", "外出", "復帰", "休憩", "実働", "打刻漏れ", "備考"]; // 外出・復帰は1列ずつ（2回以上あるときは同じ欄に並べる）
+  const head = ["日付", "出社", "退社", "外出", "復帰", "拘束", "休憩", "実働", "打刻漏れ", "備考"]; // 外出・復帰は1列ずつ（2回以上あるときは同じ欄に並べる）
   const rows = Array.from({ length: last }, (_, i) => {
     const ymd = `${m}-${String(i + 1).padStart(2, "0")}`, wd = new Date(y, mm - 1, i + 1).getDay(), d = by.get(ymd);
     const outs = d ? d.outs : [];
     const bg = d && d.miss.length ? "#fff1ef" : wd === 0 ? "#fde9ec" : wd === 6 ? "#e3f1fd" : "";
     return h("tr", { style: bg ? `background:${bg}` : "" }, h("td", { style: "white-space:nowrap;font-weight:" + (i === 0 ? "700" : "400"), text: `${i === 0 ? mm + "/" : ""}${String(i + 1).padStart(2, "0")}（${WD[wd]}）` }),
       h("td", { text: d ? d.in : "" }), h("td", { text: d ? d.out : "" }), h("td", { style: "white-space:pre-line", text: outs.map(([a]) => a || "—").join("\n") }), h("td", { style: "white-space:pre-line", text: outs.map(([, b]) => b || "—").join("\n") }),
-      h("td", { class: "muted", text: d ? gaHm(d.brk) : "" }), h("td", { text: d ? gaHm(d.work) : "" }), h("td", { style: "color:var(--bad);font-weight:700", text: d ? d.miss.join("・") : "" }), h("td", { class: "muted small", text: d ? d.note : "" }));
+      h("td", { style: "font-weight:700", text: d ? gaHm(d.span) : "" }), h("td", { class: "muted", text: d ? gaHm(d.brk) : "" }), h("td", { text: d ? gaHm(d.work) : "" }), h("td", { style: "color:var(--bad);font-weight:700", text: d ? d.miss.join("・") + (d.byNote ? "（備考の時刻で計算）" : "") : "" }), h("td", { class: "muted small", text: d ? d.note : "" }));
   });
   dlg.replaceChildren(h("div", { class: "dlg", id: "ga-card", style: "min-width:min(980px,94vw)" },
     h("div", { class: "row", style: "gap:8px;align-items:baseline;flex-wrap:wrap" }, h("h3", { style: "margin:0", text: `${s.name || s.login} さんのタイムカード` }), h("strong", { text: `${y}年${mm}月度` }),
-      h("span", { class: "small muted", text: `出勤 ${s.worked}日・実働合計 ${gaHm(s.work)}・打刻漏れ ${s.miss}件` }), h("span", { style: "margin-left:auto" }), h("button", { type: "button", class: "btn", text: "閉じる", onclick: () => dlg.close() })),
+      h("span", { class: "small muted", text: (() => { const R = gaRule(m, s); return `出勤 ${s.worked}日・拘束 ${gaHm(s.span)}（基準 ${R.base / 60}時間）・${R.over > 0 ? "残業 " + gaHm(R.over) : R.short > 0 ? (R.running ? "基準まであと " : "不足 ") + gaHm(R.short) : "基準ちょうど"}・実働 ${gaHm(s.work)}・打刻漏れ ${s.miss}件`; })() }), h("span", { style: "margin-left:auto" }), h("button", { type: "button", class: "btn", text: "閉じる", onclick: () => dlg.close() })),
     h("div", { style: "overflow:auto;max-height:72vh;margin-top:8px" }, h("table", { class: "list small ga-card-t", style: "border:1px solid var(--line)" }, h("thead", {}, h("tr", {}, ...head.map((t) => h("th", { style: "background:#eef1f5;position:sticky;top:0", text: t })))), h("tbody", {}, ...rows))),
-    h("div", { class: "small muted", style: "margin-top:6px", text: "ガルーンのタイムカードを毎朝6時に読み取った内容です（修正はガルーンで行ってください）。休憩は法律どおり、実働は退社−出社−休憩。" })));
+    h("div", { class: "small muted", style: "margin-top:6px", text: "ガルーンのタイムカードを毎朝6時に読み取った内容です（修正はガルーンで行ってください）。拘束は退社−出社（休憩を含む）、休憩は法律どおり、実働は拘束−休憩。打刻がない日は、備考に「18:00退社」などの時刻があればその時刻で計算します。" })));
   if (!dlg.open) dlg.showModal();
 }
 function viewAdmin() {
@@ -4760,12 +4770,15 @@ function viewAdmin() {
     h("button", { type: "button", class: "btn sm", text: "読み直す", onclick: async () => { delete GA.att[m]; await gaLoadMonth(m); render(); } }));
   const body = !GA.agKey ? [h("div", { class: "small muted", text: "取得用アカウントを保存し、社内PCを準備すると、ここに勤怠が出ます。" })]
     : !D ? [h("div", { class: "small muted", text: "読み込み中…" })] : D.error ? [h("div", { class: "small", style: "color:var(--bad)", text: D.error })] : D.none ? [h("div", { class: "small muted", text: "この月の勤怠はまだ取得されていません。" })]
-    : (() => { const st = gaStaff(D.rows, A.users), tm = st.reduce((a, s) => a + s.miss, 0);
-      return [h("div", { class: "small muted", text: `取得：${mrAt(D.at)}（${D.from || ""}〜${D.to || ""}）　${st.length}名・打刻漏れ ${tm}件　休憩は法律どおり（記録した外出と、6時間超45分・8時間超60分の長いほう）　残業：数え方の設定後に表示` }),
-        h("div", { style: "overflow-x:auto" }, h("table", { class: "list small", id: "ga-staff" }, h("thead", {}, h("tr", {}, ...["スタッフ", "出勤日数", "実働合計", "打刻漏れ", "残業", ""].map((t) => h("th", { text: t })))),
+    : (() => { const st = gaStaff(D.rows, A.users), tm = st.reduce((a, s) => a + s.miss, 0), R0 = gaRule(m, { span: 0 });
+      return [h("div", { class: "small muted", text: `取得：${mrAt(D.at)}（${D.from || ""}〜${D.to || ""}）　${st.length}名・打刻漏れ ${tm}件　拘束時間の基準：この月は${R0.days}日なので${R0.base / 60}時間（31日の月240時間・30日以下の月230時間）。超えた分が残業、届かなければ満額の条件に不足${R0.running ? "（今月は月の途中です）" : ""}` }),
+        h("div", { style: "overflow-x:auto" }, h("table", { class: "list small", id: "ga-staff" }, h("thead", {}, h("tr", {}, ...["スタッフ", "出勤日数", "拘束時間", "基準との差", "残業", "打刻漏れ", ""].map((t) => h("th", { text: t })))),
           h("tbody", {}, ...st.flatMap((s) => { const k = s.login || s.name, op = false;
-            const head = h("tr", { "data-staff": k }, h("td", {}, h("button", { type: "button", class: "linkbtn ga-name", style: "font-weight:700", title: "タイムカードを開く", text: s.name || s.login, onclick: () => gaCardDialog(s, m) })), h("td", { text: `${s.worked}日` }), h("td", { text: gaHm(s.work) }),
-              h("td", {}, s.miss ? h("span", { class: "pill", style: "font-weight:700;background:#fbe3e1;color:#b0261f", text: `${s.miss}件` }) : h("span", { class: "muted", text: "なし" })), h("td", { class: "muted", text: "—" }),
+            const head = h("tr", { "data-staff": k }, h("td", {}, h("button", { type: "button", class: "linkbtn ga-name", style: "font-weight:700", title: "タイムカードを開く", text: s.name || s.login, onclick: () => gaCardDialog(s, m) })), h("td", { text: `${s.worked}日` }), h("td", { style: "font-weight:700", text: gaHm(s.span) + (s.byNote ? "＊" : ""), title: s.byNote ? `${s.byNote}日は備考の時刻で計算` : "" }),
+              ...(() => { const R = gaRule(m, s); return [
+                h("td", {}, R.over > 0 ? h("span", { class: "pill", style: "font-weight:700;background:#e3f4e8;color:#1d6b35", text: `満額（+${gaHm(R.over)}）` }) : R.short > 0 ? h("span", { class: "pill", style: "font-weight:700;" + (R.running ? "background:#eef0f3;color:#555" : "background:#fdf3d6;color:#8f5a00"), text: R.running ? `あと${gaHm(R.short)}` : `不足 ${gaHm(R.short)}` }) : h("span", { class: "pill", style: "font-weight:700;background:#e3f4e8;color:#1d6b35", text: "満額（ちょうど）" })),
+                h("td", { style: R.over > 0 ? "font-weight:700;color:#b0261f" : "", text: R.over > 0 ? gaHm(R.over) : "—" })]; })(),
+              h("td", {}, s.miss ? h("span", { class: "pill", style: "font-weight:700;background:#fbe3e1;color:#b0261f", text: `${s.miss}件` }) : h("span", { class: "muted", text: "なし" })),
               h("td", {}, h("button", { type: "button", class: "btn sm", text: "タイムカード", onclick: () => gaCardDialog(s, m) })));
             if (!op) return [head];
             return [head, h("tr", {}, h("td", { colspan: 6, style: "background:#f8fafc" }, h("table", { class: "list small ga-days" }, h("thead", {}, h("tr", {}, ...["日付", "出社", "退社", "外出〜復帰", "休憩", "実働", "打刻漏れ", "備考"].map((t) => h("th", { text: t })))),
