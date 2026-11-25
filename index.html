@@ -860,7 +860,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="open-admin" hidden>管理者専用</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 323</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 324</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -4587,7 +4587,7 @@ async function go(v) {
   if (authState !== "open") return;
   await Promise.all([caseSaver.flush(), storeSaver.flush(), setSaver.flush(), courseSaver.flush(), laySaver.flush()]);
   if (view.name === "spec") await syncAllCourses(); // 入力途中の名前を行にしないよう、画面を離れるときにまとめて反映する
-  if (view.name === "admin" && v.name !== "admin") { if (GV.dirty && !confirm("ガルーンのログイン情報に保存していない変更があります。破棄して移動しますか？")) return; gvLock(); } // 管理者専用を離れたら保管庫に鍵をかける
+  if (view.name === "admin" && v.name !== "admin") { if (GA.dirty && !confirm("ガルーン勤怠の設定に保存していない変更があります。破棄して移動しますか？")) return; gaLock(); } // 管理者専用を離れたら保管庫に鍵をかける
   view = v; draft = null; storeDraft = null; setDraft = null; courseDraft = null; layDraft = null;
   try { location.hash = v.name === "case" ? "case-" + v.id : v.name; } catch (_) {}
   render(); window.scrollTo(0, 0);
@@ -4615,50 +4615,144 @@ $("#open-admin").addEventListener("click", async () => { // 管理者専用：�
   if (!a || !a.hash) return go({ name: "admin" });
   approvalDialog("管理者専用を開く", "管理者専用の画面を開くには、上長承認のパスワードが必要です。", () => go({ name: "admin" }));
 });
-/* 管理者専用：ガルーンのスタッフ別ログイン情報。
-   開くときに上長承認のパスワードを求める。一覧は、案件と同じデータ鍵（T-COREのログインのパスワードから作る鍵）で暗号化して admin/garoon に置く
-   （データベースを見られる人にも中身は読めない）。 */
-const GV = { rows: null, doc: null, dirty: false, busy: false, show: {}, loaded: false, err: "" };
-const gvLock = () => { GV.rows = null; GV.dirty = false; GV.show = {}; GV.loaded = false; GV.err = ""; };
-async function gvLoad() {
-  GV.err = "";
-  try { const d = await db.doc("admin/garoon").get(); GV.doc = d.exists ? d.data() : null; } catch (_) { GV.doc = null; GV.err = "読み込めませんでした"; }
-  const D = GV.doc; GV.rows = [];
-  if (D && D.ct && !D.auth && dataKey) { try { GV.rows = JSON.parse(td.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(D.iv) }, dataKey, unb64(D.ct)))).rows || []; } catch (_) { GV.err = "保存されている内容を開けませんでした"; } }
+/** 社内PCで動かすプログラム（ガルーンの「タイムカードの書き出し」を読み、暗号化してT-COREへ送る）。「プログラムをダウンロード」で保存する */
+const GAROON_PS1 = "# T-CORE ガルーン勤怠の取得（社内PCで毎朝6時に動かす）\n# ・同じフォルダの tcore-garoon.json（T-COREの「管理者専用」で作る設定ファイル）を読む。\n# ・T-COREから取得用の管理者アカウントと対象スタッフを受け取り（社内PCの鍵で暗号化されたもの）、\n#   ガルーンにログインして、管理者の「タイムカードの書き出し」で対象スタッフのタイムカードをCSVで取得する。\n# ・T-COREへ送るのは、ログイン名・氏名・日付・出社/退社/外出/復帰の時刻・備考だけ（IPアドレスは送らない）。送る前に社内PCの鍵で暗号化する。\n# ・ガルーンには読み取りだけ。打刻や修正はしない。\nparam([switch]$Test)\n$ErrorActionPreference = \"Stop\"\n$Ver = \"1.0\"\n[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12\n$here = Split-Path -Parent $MyInvocation.MyCommand.Path\n$cfg = Get-Content -Raw -Encoding UTF8 (Join-Path $here \"tcore-garoon.json\") | ConvertFrom-Json\n$logFile = Join-Path $here \"tcore-garoon.log\"\nfunction Log($m) { $line = \"{0}  {1}\" -f (Get-Date -Format \"yyyy-MM-dd HH:mm:ss\"), $m; Add-Content -Path $logFile -Value $line -Encoding UTF8; Write-Host $line }\n\n$key = [Convert]::FromBase64String($cfg.key)\n$encKey = $key[0..31]; $macKey = $key[32..63]\nfunction Hmac([byte[]]$data) { $h = New-Object System.Security.Cryptography.HMACSHA256 (,[byte[]]$macKey); return $h.ComputeHash($data) }\nfunction Seal([string]$text) {\n  $aes = [System.Security.Cryptography.Aes]::Create(); $aes.Mode = \"CBC\"; $aes.Padding = \"PKCS7\"; $aes.Key = [byte[]]$encKey; $aes.GenerateIV()\n  $plain = [Text.Encoding]::UTF8.GetBytes($text); $ct = $aes.CreateEncryptor().TransformFinalBlock($plain, 0, $plain.Length)\n  $mac = Hmac ([byte[]]($aes.IV + $ct))\n  return @{ iv = [Convert]::ToBase64String($aes.IV); ct = [Convert]::ToBase64String($ct); mac = [Convert]::ToBase64String($mac) }\n}\nfunction Open($b) {\n  $iv = [Convert]::FromBase64String($b.iv); $ct = [Convert]::FromBase64String($b.ct); $mac = [Convert]::FromBase64String($b.mac)\n  $want = Hmac ([byte[]]($iv + $ct)); if ([Convert]::ToBase64String($want) -ne [Convert]::ToBase64String($mac)) { throw \"T-COREから受け取った内容を確かめられません（鍵が違います。設定ファイルを作り直してください）\" }\n  $aes = [System.Security.Cryptography.Aes]::Create(); $aes.Mode = \"CBC\"; $aes.Padding = \"PKCS7\"; $aes.Key = [byte[]]$encKey; $aes.IV = $iv\n  return [Text.Encoding]::UTF8.GetString($aes.CreateDecryptor().TransformFinalBlock($ct, 0, $ct.Length))\n}\nfunction Api($body) {\n  $j = $body | ConvertTo-Json -Depth 6 -Compress\n  return Invoke-RestMethod -Method Post -Uri $cfg.endpoint -Headers @{ \"x-agent-token\" = $cfg.token } -ContentType \"application/json; charset=utf-8\" -Body ([Text.Encoding]::UTF8.GetBytes($j))\n}\nfunction Enc([string]$s) { return [Uri]::EscapeDataString($s) }\nfunction Form($pairs) { return ($pairs | ForEach-Object { (Enc $_[0]) + \"=\" + (Enc ([string]$_[1])) }) -join \"&\" }\n$G = $cfg.garoon.TrimEnd(\"/\") + \"/scripts/cbgrn/grn.exe\"\nfunction Csrf($html) { $m = [regex]::Match($html, 'name=\"csrf_ticket\"\\s+value=\"([^\"]+)\"'); if (-not $m.Success) { $m = [regex]::Match($html, 'value=\"([^\"]+)\"\\s+name=\"csrf_ticket\"') }; if (-not $m.Success) { throw \"ガルーンの画面を読めませんでした（ログインできていない可能性があります）\" }; return $m.Groups[1].Value }\nfunction Page($url) { return (Invoke-WebRequest -Uri $url -WebSession $script:S -UseBasicParsing).Content }\nfunction Post($url, $pairs) { return Invoke-WebRequest -Uri $url -Method Post -WebSession $script:S -UseBasicParsing -ContentType \"application/x-www-form-urlencoded\" -Body (Form $pairs) }\n\nfunction Month($acct, $users, [datetime]$from, [datetime]$to) {\n  # 1) 書き出すユーザーを選ぶ\n  $h = Page \"$G/timecard/system/export_cards1?\"; $c = Csrf $h\n  $poid = [regex]::Match($h, 'name=\"poid\"\\s+value=\"([^\"]*)\"').Groups[1].Value\n  $pairs = @(@(\"csrf_ticket\", $c), @(\"poid\", $poid), @(\"ss\", \"1\"), @(\"sf\", \"1\"), @(\"oid\", \"\"))\n  foreach ($u in $users) { $pairs += ,@(\"aid[]\", $u.uid) }\n  $pairs += ,@(\"add\", \"↓追加\")\n  $h = (Post \"$G/timecard/system/export_cards1?\" $pairs).Content\n  $sel = [regex]::Matches($h, '<select[^>]*name=\"rid\\[\\]\"[\\s\\S]*?<\/select>'); $nSel = if ($sel.Count) { ([regex]::Matches($sel[0].Value, '<option')).Count } else { 0 }\n  if ($nSel -lt 1) { throw \"ガルーンで書き出すユーザーを選べませんでした（対象スタッフの番号を確かめてください）\" }\n  # 2) 次へ\n  $null = Post \"$G/timecard/system/command_export_cards1?\" @(@(\"csrf_ticket\", (Csrf $h)), @(\"oid\", \"\"))\n  # 3) 期間を指定して書き出す\n  $h = Page \"$G/timecard/system/export_cards2?oid=\"; $c = Csrf $h\n  $r = Post \"$G/timecard/system/command_export_cards2/-/timecards.csv?&.csv\" @(@(\"csrf_ticket\", $c), @(\"oid\", \"\"),\n    @(\"start_year\", $from.Year), @(\"start_month\", $from.Month), @(\"start_day\", $from.Day), @(\"end_year\", $to.Year), @(\"end_month\", $to.Month), @(\"end_day\", $to.Day),\n    @(\"charset\", \"UTF-8\"), @(\"item_name\", \"1\"), @(\"date\", (Get-Date -Format \"yyyy-MM-dd\")))\n  $ms = New-Object IO.MemoryStream; $r.RawContentStream.CopyTo($ms); $text = [Text.Encoding]::UTF8.GetString($ms.ToArray())\n  if ($text -match '<html') { throw \"ガルーンからCSVを受け取れませんでした\" }\n  return $text\n}\nfunction Rows($csvText) {\n  $lines = $csvText -split \"`r?`n\" | Where-Object { $_ -ne \"\" }\n  if ($lines.Count -le 1) { return @() }\n  $hdr = \"login\",\"name\",\"date\",\"in\",\"inip\",\"out\",\"outip\",\"o1\",\"o1ip\",\"r1\",\"r1ip\",\"o2\",\"o2ip\",\"r2\",\"r2ip\",\"o3\",\"o3ip\",\"r3\",\"r3ip\",\"note\"\n  $data = $lines[1..($lines.Count - 1)] | ConvertFrom-Csv -Header $hdr\n  return @($data | ForEach-Object { [ordered]@{ login = $_.login; name = $_.name; date = $_.date; in = $_.in; out = $_.out; outs = @(@($_.o1, $_.r1), @($_.o2, $_.r2), @($_.o3, $_.r3)); note = $_.note } })\n}\n\n$months = @()\ntry {\n  Log \"開始（ver $Ver）\"\n  $cr = Api @{ mode = \"creds\" }; if (-not $cr.agent) { throw \"T-COREに取得用アカウントが登録されていません（管理者専用で登録してください）\" }\n  $acct = Open $cr.agent | ConvertFrom-Json\n  if (-not $acct.account -or -not $acct.password) { throw \"取得用アカウントのIDかパスワードが空です\" }\n  $users = @($acct.users | Where-Object { $_.uid -match '^\\d+$' }); if ($users.Count -lt 1) { throw \"対象スタッフが登録されていません\" }\n  $script:S = New-Object Microsoft.PowerShell.Commands.WebRequestSession\n  $null = Page \"$G/index\"\n  $lr = Post \"$G/index\" @(@(\"_system\", \"1\"), @(\"_account\", $acct.account), @(\"_password\", $acct.password), @(\"use_cookie\", \"1\"))\n  if ($lr.Content -match 'name=\"_password\"') { throw \"ガルーンにログインできませんでした（取得用アカウントのIDとパスワードを確かめてください）\" }\n  $today = (Get-Date).Date\n  $spans = @(@{ from = (Get-Date -Year $today.Year -Month $today.Month -Day 1).Date; to = $today })\n  if ($today.Day -le 5) { $p = $spans[0].from.AddMonths(-1); $spans = @(@{ from = $p; to = $spans[0].from.AddDays(-1) }) + $spans } # 月初の数日は、前の月の分も取り直す（月末の打刻の直しを拾う）\n  foreach ($sp in $spans) {\n    $csv = Month $acct $users $sp.from $sp.to; $rows = Rows $csv\n    $m = $sp.from.ToString(\"yyyy-MM\")\n    $blob = Seal (@{ month = $m; rows = $rows; at = (Get-Date).ToString(\"o\") } | ConvertTo-Json -Depth 6 -Compress)\n    if (-not $Test) { $null = Api @{ mode = \"ingest\"; month = $m; blob = $blob; n = $rows.Count; from = $sp.from.ToString(\"yyyy-MM-dd\"); to = $sp.to.ToString(\"yyyy-MM-dd\") } }\n    $months += $m; Log (\"{0}：{1}行を取得{2}\" -f $m, $rows.Count, $(if ($Test) { \"（テストのため送信なし）\" } else { \"・T-COREへ送信\" }))\n  }\n  try { $h = Page \"$G/portal/index\"; $null = Post \"$G/command_logout?\" @(,@(\"csrf_ticket\", (Csrf $h))) } catch { }\n  if (-not $Test) { $null = Api @{ mode = \"status\"; ok = $true; message = \"取得しました\"; months = $months; pc = $env:COMPUTERNAME; ver = $Ver } }\n  Log \"終了\"\n} catch {\n  $msg = $_.Exception.Message; Log \"失敗：$msg\"\n  try { $null = Api @{ mode = \"status\"; ok = $false; message = $msg; months = $months; pc = $env:COMPUTERNAME; ver = $Ver } } catch { }\n  exit 1\n}\n";
+/* 管理者専用：ガルーン勤怠。
+   ・取得用の管理者アカウント（ID・パスワード）と対象スタッフ（ガルーンのユーザー番号）を、admin/garoonagent に暗号化して置く。
+     acct：T-COREのデータ鍵（ログインから作る鍵）で暗号化／agent：社内PCの鍵で暗号化（社内PCのプログラムが読む）。社内PCの鍵もデータ鍵で包んで置く。
+   ・社内PCのプログラム（tcore-garoon.ps1）が毎朝6時にガルーンの「タイムカードの書き出し」を読み、社内PCの鍵で暗号化して attendance/YYYY-MM に送る。
+   ・この画面で社内PCの鍵を使って開き、打刻漏れ・勤務時間を出す。ガルーンには読み取りだけで、打刻や修正はしない。 */
+const GA = { doc: null, acct: null, agKey: null, token: "", loaded: false, busy: false, err: "", show: false, month: "", att: {}, status: null, open: {}, dirty: false };
+const gaLock = () => { GA.acct = null; GA.agKey = null; GA.token = ""; GA.loaded = false; GA.att = {}; GA.status = null; GA.dirty = false; GA.show = false; GA.open = {}; };
+const gaGcmOpen = async (b) => JSON.parse(td.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(b.iv) }, dataKey, unb64(b.ct))));
+const gaGcmSeal = async (obj) => { const iv = crypto.getRandomValues(new Uint8Array(12)); return { iv: b64(iv), ct: b64(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, dataKey, te.encode(JSON.stringify(obj)))) }; };
+const gaKeys = async (raw) => ({ e: await crypto.subtle.importKey("raw", raw.slice(0, 32), "AES-CBC", false, ["encrypt", "decrypt"]), m: await crypto.subtle.importKey("raw", raw.slice(32, 64), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]) });
+async function gaSealAgent(obj) {
+  const k = await gaKeys(GA.agKey), iv = crypto.getRandomValues(new Uint8Array(16)), ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-CBC", iv }, k.e, te.encode(JSON.stringify(obj))));
+  const all = new Uint8Array(iv.length + ct.length); all.set(iv); all.set(ct, iv.length);
+  return { iv: b64(iv), ct: b64(ct), mac: b64(await crypto.subtle.sign("HMAC", k.m, all)) };
 }
-async function gvSave() {
+async function gaOpenAgent(b) {
+  const k = await gaKeys(GA.agKey), iv = unb64(b.iv), ct = unb64(b.ct), all = new Uint8Array(iv.length + ct.length); all.set(iv); all.set(ct, iv.length);
+  if (!(await crypto.subtle.verify("HMAC", k.m, unb64(b.mac), all))) throw new Error("mac");
+  return JSON.parse(td.decode(await crypto.subtle.decrypt({ name: "AES-CBC", iv }, k.e, ct)));
+}
+const gaHex = async (s) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", te.encode(s)))].map((x) => x.toString(16).padStart(2, "0")).join("");
+const gaMonthOf = (d) => d.toISOString().slice(0, 7), gaThisMonth = () => mcToday().slice(0, 7);
+const gaPrevMonth = (m) => { const [y, mm] = m.split("-").map(Number); return mm === 1 ? `${y - 1}-12` : `${y}-${String(mm - 1).padStart(2, "0")}`; };
+const gaNextMonth = (m) => { const [y, mm] = m.split("-").map(Number); return mm === 12 ? `${y + 1}-01` : `${y}-${String(mm + 1).padStart(2, "0")}`; };
+async function gaLoad() {
+  GA.err = "";
+  try {
+    const [a, s] = await Promise.all([db.doc("admin/garoonagent").get(), db.doc("attendance/status").get()]);
+    GA.doc = a.exists ? a.data() : null; GA.status = s.exists ? s.data() : null;
+    if (GA.doc && GA.doc.acct && dataKey) { const o = await gaGcmOpen(GA.doc.acct); GA.acct = { account: o.account || "", password: o.password || "", users: o.users || [] }; GA.token = o.token || ""; GA.agKey = o.agKey ? unb64(o.agKey) : null; }
+    if (!GA.acct) GA.acct = { account: "", password: "", users: [] };
+  } catch (_) { GA.err = "保存されている内容を開けませんでした"; GA.acct = GA.acct || { account: "", password: "", users: [] }; }
+  if (!GA.month) GA.month = gaThisMonth();
+  await gaLoadMonth(GA.month);
+}
+async function gaLoadMonth(m) {
+  if (!GA.agKey) return;
+  try { const d = await db.doc("attendance/" + m).get(); if (!d.exists) { GA.att[m] = { none: true }; return; } const D = d.data(), o = await gaOpenAgent(D); GA.att[m] = { rows: o.rows || [], at: D.at || o.at, from: D.from, to: D.to }; }
+  catch (_) { GA.att[m] = { error: "この月の勤怠を開けませんでした（社内PCの鍵が変わった可能性があります）" }; }
+}
+/** 対象スタッフの書き方：1行に「ユーザー番号 氏名」（例：476 竹坂 美奈）。番号はガルーンの「タイムカードの書き出し」で使う番号 */
+const gaParseUsers = (t) => String(t || "").split(/\r?\n/).map((l) => /^\s*(\d+)[\s,，、\t]+(.+?)\s*$/.exec(l) || /^\s*(\d+)\s*$/.exec(l)).filter(Boolean).map((m) => ({ uid: m[1], name: (m[2] || "").trim() }));
+async function gaSave(newKey) {
   if (!db || localOnly || readOnly) return toast("保存できません（閲覧専用、または共有データに未接続）");
   if (!dataKey) return toast("暗号化の鍵がないため保存できません（T-COREにログインし直してください）");
-  GV.busy = true; render();
+  GA.busy = true; render();
   try {
-    const rows = (GV.rows || []).map((r) => ({ id: r.id, staff: String(r.staff || "").trim(), login: String(r.login || "").trim(), pw: String(r.pw || "") })).filter((r) => r.staff || r.login || r.pw);
-    const iv = crypto.getRandomValues(new Uint8Array(12)), ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, dataKey, te.encode(JSON.stringify({ rows })));
-    const next = { v: 2, iv: b64(iv), ct: b64(ct), n: rows.length, updatedAt: new Date().toISOString() };
-    await db.doc("admin/garoon").set(next); GV.doc = next; GV.rows = rows; GV.dirty = false; toast(`保存しました（${rows.length}名）`);
+    if (newKey || !GA.agKey || !GA.token) { GA.agKey = crypto.getRandomValues(new Uint8Array(64)); GA.token = [...crypto.getRandomValues(new Uint8Array(32))].map((x) => x.toString(16).padStart(2, "0")).join(""); }
+    const a = GA.acct, users = (a.users || []).filter((u) => /^\d+$/.test(u.uid));
+    const next = { v: 1, acct: await gaGcmSeal({ account: a.account.trim(), password: a.password, users, token: GA.token, agKey: b64(GA.agKey) }),
+      agent: await gaSealAgent({ account: a.account.trim(), password: a.password, users }), agentHash: await gaHex(GA.token), n: users.length, updatedAt: new Date().toISOString() };
+    await db.doc("admin/garoonagent").set(next); GA.doc = next; GA.dirty = false;
+    toast(newKey ? "社内PCの鍵を作り直しました。設定ファイルをダウンロードして、社内PCの設定ファイルを入れ替えてください" : "保存しました");
   } catch (_) { toast("保存できませんでした"); }
-  GV.busy = false; render();
+  GA.busy = false; render();
+}
+function gaDownload(name, text, bom) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([(bom ? "\ufeff" : "") + text], { type: "application/octet-stream" })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000); }
+const gaConfig = () => JSON.stringify({ endpoint: ((window.APP_CONFIG && window.APP_CONFIG.url) || "https://mxsxelrnvftradifjojd.supabase.co") + "/functions/v1/garoon-sync", token: GA.token, key: b64(GA.agKey), garoon: "http://grsv" }, null, 2);
+/* 勤怠の計算。時刻は「9:58」「09:58:00」など。退社が出社より前なら日をまたいだものとして24時間足す。
+   休憩は法律どおり：記録した外出〜復帰の時間と、労働時間に応じた最低の休憩（6時間を超えたら45分、8時間を超えたら60分）の長いほう。 */
+const gaMin = (t) => { const m = /^(\d{1,2}):(\d{2})/.exec(String(t || "").trim()); return m ? Number(m[1]) * 60 + Number(m[2]) : null; };
+const gaHm = (n) => (n == null ? "" : `${Math.floor(n / 60)}:${String(n % 60).padStart(2, "0")}`);
+function gaDay(r, today) {
+  const ymd = String(r.date || "").replace(/\//g, "-").replace(/-(\d)(?!\d)/g, "-0$1"), i = gaMin(r.in);
+  let o = gaMin(r.out); if (i != null && o != null && o < i) o += 1440;
+  const outs = (r.outs || []).map(([a, b]) => [gaMin(a), gaMin(b)]).filter(([a, b]) => a != null || b != null);
+  const miss = [];
+  if (i == null && o != null) miss.push("出社なし");
+  if (i != null && o == null && ymd < today) miss.push("退社なし");
+  outs.forEach(([a, b]) => { if (a != null && b == null && (ymd < today || o != null)) miss.push("復帰なし"); if (a == null && b != null) miss.push("外出なし"); });
+  let span = null, brk = null, work = null;
+  if (i != null && o != null) {
+    span = o - i; let rec = 0; for (let [a, b] of outs) { if (a != null && b != null) { if (b < a) b += 1440; rec += b - a; } }
+    const need = span - rec > 480 ? 60 : span - rec > 360 ? 45 : 0; brk = Math.max(rec, need); work = Math.max(0, span - brk);
+  }
+  return { ymd, in: r.in || "", out: r.out || "", outs: (r.outs || []).filter(([a, b]) => a || b), span, brk, work, miss, note: r.note || "" };
+}
+function gaStaff(rows, users) {
+  const today = mcToday(), by = new Map(), nameOf = new Map((users || []).map((u) => [u.name.replace(/\s|　/g, ""), u.name]));
+  for (const r of rows) { const k = r.login || r.name; if (!by.has(k)) by.set(k, { login: r.login, name: r.name, days: [] }); by.get(k).days.push(gaDay(r, today)); }
+  return [...by.values()].map((s) => { s.days.sort((a, b) => (a.ymd < b.ymd ? -1 : 1)); s.worked = s.days.filter((d) => d.in || d.out).length; s.work = s.days.reduce((a, d) => a + (d.work || 0), 0); s.miss = s.days.reduce((a, d) => a + d.miss.length, 0); return s; })
+    .sort((a, b) => b.miss - a.miss || String(a.name).localeCompare(String(b.name), "ja"));
 }
 function viewAdmin() {
   const out = [h("div", { class: "row" }, h("h2", { text: "管理者専用" }))];
-  if (!GV.loaded) { GV.loaded = true; if (db && !localOnly) gvLoad().then(() => { if (view.name === "admin") render(); }); else GV.rows = []; }
-  if (!GV.rows) { out.push(h("div", { class: "empty", text: "読み込み中…" })); return out; }
-  const rows = GV.rows, mark = () => { GV.dirty = true; const b = $("#gv-save"); if (b) b.disabled = false; const m = $("#gv-meta"); if (m) m.textContent = meta(); };
-  const meta = () => `${rows.length}名` + (GV.doc && GV.doc.updatedAt ? `・最終保存 ${mrAt(GV.doc.updatedAt)}` : "") + (GV.dirty ? "・未保存の変更あり" : "");
-  const inp = (r, k, ph, type) => h("input", { type: type || "text", value: r[k] || "", placeholder: ph, autocomplete: type === "password" ? "new-password" : "off", "aria-label": ph, oninput: (e) => { r[k] = e.target.value; mark(); } });
-  out.push(h("div", { class: "panel stack", id: "gv-panel", style: "gap:8px" },
-    h("div", { class: "row", style: "gap:8px;align-items:center" }, h("strong", { text: "ガルーンのログイン情報（スタッフ別）" }), h("span", { class: "pill", style: "font-weight:700;background:#e8eefb;color:#2a4a8f", text: "暗号化して保存" })),
-    GV.err ? h("div", { class: "small", style: "color:var(--bad)", text: GV.err }) : null,
-    h("div", { style: "overflow-x:auto" }, h("table", { class: "list small", id: "gv-table" },
-      h("thead", {}, h("tr", {}, ...["スタッフ名", "ID", "パスワード", ""].map((t) => h("th", { text: t })))),
-      h("tbody", {}, ...rows.map((r, i) => { r.id = r.id || uid("gv"); const show = !!GV.show[r.id];
-        return h("tr", { "data-id": r.id }, h("td", {}, inp(r, "staff", "スタッフ名")), h("td", {}, inp(r, "login", "ID")),
-          h("td", {}, h("div", { class: "row", style: "gap:4px;flex-wrap:nowrap" }, inp(r, "pw", "パスワード", show ? "text" : "password"), h("button", { type: "button", class: "btn sm", text: show ? "隠す" : "表示", onclick: () => { GV.show[r.id] = !show; render(); } }))),
-          h("td", {}, h("button", { type: "button", class: "btn sm", text: "削除", onclick: () => { if (!confirm(`${r.staff || "この行"}を削除しますか？（保存すると元に戻せません）`)) return; rows.splice(i, 1); GV.dirty = true; render(); } }))); })))),
-    rows.length ? null : h("div", { class: "small muted", text: "まだ登録がありません。「＋ スタッフを追加」から登録してください。" }),
+  if (!GA.loaded) { GA.loaded = true; if (db && !localOnly) gaLoad().then(() => { if (view.name === "admin") render(); }); else GA.acct = { account: "", password: "", users: [] }; }
+  if (!GA.acct) { out.push(h("div", { class: "empty", text: "読み込み中…" })); return out; }
+  const A = GA.acct, mark = () => { GA.dirty = true; const b = $("#ga-save"); if (b) b.disabled = false; };
+  const pill = (t, ok) => h("span", { class: "pill", style: "font-weight:700;" + (ok ? "background:#e3f4e8;color:#1d6b35" : "background:#fdf3d6;color:#8f5a00"), text: t });
+  // 1. 取得用の管理者アカウントと対象スタッフ
+  const ta = h("textarea", { id: "ga-users", rows: 6, placeholder: "476 竹坂 美奈\n522 楊 雯君", oninput: (e) => { A.users = gaParseUsers(e.target.value); mark(); const n = $("#ga-users-n"); if (n) n.textContent = `${A.users.length}名`; } }, (A.users || []).map((u) => `${u.uid} ${u.name}`).join("\n"));
+  out.push(h("div", { class: "panel stack", id: "ga-acct", style: "gap:8px" },
+    h("div", { class: "row", style: "gap:8px;align-items:center" }, h("strong", { text: "ガルーン勤怠：取得用の管理者アカウント" }), h("span", { class: "pill", style: "font-weight:700;background:#e8eefb;color:#2a4a8f", text: "暗号化して保存" })),
+    GA.err ? h("div", { class: "small", style: "color:var(--bad)", text: GA.err }) : null,
+    h("div", { class: "row", style: "gap:12px;flex-wrap:wrap;align-items:flex-end" },
+      field("ガルーンのログイン名", h("input", { id: "ga-id", value: A.account, autocomplete: "off", style: "width:220px", oninput: (e) => { A.account = e.target.value; mark(); } })),
+      field("パスワード", h("div", { class: "row", style: "gap:4px;flex-wrap:nowrap" }, h("input", { id: "ga-pw", type: GA.show ? "text" : "password", value: A.password, autocomplete: "new-password", style: "width:220px", oninput: (e) => { A.password = e.target.value; mark(); } }),
+        h("button", { type: "button", class: "btn sm", text: GA.show ? "隠す" : "表示", onclick: () => { GA.show = !GA.show; render(); } })))),
+    field("対象スタッフ（1行に「ユーザー番号 氏名」。番号はガルーンの「タイムカードの書き出し」で使う番号）", ta),
     h("div", { class: "row", style: "gap:8px" },
-      h("button", { type: "button", class: "btn", id: "gv-add", disabled: readOnly || undefined, text: "＋ スタッフを追加", onclick: () => { rows.push({ id: uid("gv") }); GV.dirty = true; render(); const t = $("#gv-table tbody tr:last-child input"); if (t) t.focus(); } }),
-      h("button", { type: "button", class: "btn primary", id: "gv-save", disabled: GV.busy || !GV.dirty || readOnly || undefined, text: GV.busy ? "保存しています…" : "保存する", onclick: gvSave }),
-      h("span", { class: "small muted", id: "gv-meta", text: meta() }))));
+      h("button", { type: "button", class: "btn primary", id: "ga-save", disabled: GA.busy || !GA.dirty || readOnly || undefined, text: GA.busy ? "保存しています…" : "保存する", onclick: () => gaSave(false) }),
+      h("span", { class: "small muted", id: "ga-users-n", text: `${(A.users || []).length}名` }), GA.doc && GA.doc.updatedAt ? h("span", { class: "small muted", text: `最終保存 ${mrAt(GA.doc.updatedAt)}` }) : null)));
+  // 2. 社内PC
+  const S = GA.status, ready = !!(GA.doc && GA.agKey && GA.token);
+  out.push(h("div", { class: "panel stack", id: "ga-pc", style: "gap:8px" },
+    h("div", { class: "row", style: "gap:8px;align-items:center;flex-wrap:wrap" }, h("strong", { text: "社内PC（毎朝6時に自動で取得）" }),
+      !S ? pill("まだ一度も動いていません", false) : S.ok ? pill(`取得済み：${mrAt(S.at)}${S.pc ? "（" + S.pc + "）" : ""}`, true) : pill(`失敗：${mrAt(S.at)}`, false)),
+    S && !S.ok ? h("div", { class: "small", style: "color:var(--bad)", text: S.message || "" }) : null,
+    h("div", { class: "row", style: "gap:8px;flex-wrap:wrap" },
+      h("button", { type: "button", class: "btn", id: "ga-dl-cfg", disabled: !ready || undefined, text: "設定ファイルをダウンロード", onclick: () => gaDownload("tcore-garoon.json", gaConfig()) }),
+      h("button", { type: "button", class: "btn", id: "ga-dl-ps", text: "プログラムをダウンロード", onclick: () => gaDownload("tcore-garoon.ps1", GAROON_PS1, true) }),
+      confirmBtn("社内PCの鍵を作り直す", "今の設定ファイルは使えなくなり、これまでの勤怠も開けなくなります（社内PCが次に取得したときに作り直されます）。作り直す", () => gaSave(true), "btn sm")),
+    h("div", { class: "small muted", style: "white-space:pre-line", text: ready ? "社内PCの準備（最初の1回だけ）\n1. 「設定ファイルをダウンロード」と「プログラムをダウンロード」で2つのファイルを保存し、社内PCの同じフォルダ（例：C:\\tcore）に置く\n2. そのフォルダでPowerShellを開き、次を実行して動作を確かめる（送信はしません）：powershell -ExecutionPolicy Bypass -File .\\tcore-garoon.ps1 -Test\n3. 毎朝6時に動くよう登録する：schtasks /Create /TN \"T-CORE ガルーン勤怠\" /SC DAILY /ST 06:00 /TR \"powershell -NoProfile -ExecutionPolicy Bypass -File C:\\tcore\\tcore-garoon.ps1\"\n※社内PCは6時に電源が入っている必要があります。設定ファイルには鍵が入っているので、ほかの人が開けない場所に置いてください。" : "先に上の取得用アカウントを保存してください。" })));
+  // 3. 勤怠
+  const m = GA.month || gaThisMonth(), D = GA.att[m];
+  const nav = h("div", { class: "row", style: "gap:6px;align-items:center" },
+    h("button", { type: "button", class: "btn sm", text: "← 前の月", onclick: async () => { GA.month = gaPrevMonth(m); if (!GA.att[GA.month]) await gaLoadMonth(GA.month); render(); } }),
+    h("strong", { text: `${Number(m.slice(0, 4))}年${Number(m.slice(5))}月` }),
+    h("button", { type: "button", class: "btn sm", text: "次の月 →", disabled: m >= gaThisMonth() || undefined, onclick: async () => { GA.month = gaNextMonth(m); if (!GA.att[GA.month]) await gaLoadMonth(GA.month); render(); } }),
+    h("button", { type: "button", class: "btn sm", text: "読み直す", onclick: async () => { delete GA.att[m]; await gaLoadMonth(m); render(); } }));
+  const body = !GA.agKey ? [h("div", { class: "small muted", text: "取得用アカウントを保存し、社内PCを準備すると、ここに勤怠が出ます。" })]
+    : !D ? [h("div", { class: "small muted", text: "読み込み中…" })] : D.error ? [h("div", { class: "small", style: "color:var(--bad)", text: D.error })] : D.none ? [h("div", { class: "small muted", text: "この月の勤怠はまだ取得されていません。" })]
+    : (() => { const st = gaStaff(D.rows, A.users), tm = st.reduce((a, s) => a + s.miss, 0);
+      return [h("div", { class: "small muted", text: `取得：${mrAt(D.at)}（${D.from || ""}〜${D.to || ""}）　${st.length}名・打刻漏れ ${tm}件　休憩は法律どおり（記録した外出と、6時間超45分・8時間超60分の長いほう）　残業：数え方の設定後に表示` }),
+        h("div", { style: "overflow-x:auto" }, h("table", { class: "list small", id: "ga-staff" }, h("thead", {}, h("tr", {}, ...["スタッフ", "出勤日数", "実働合計", "打刻漏れ", "残業", ""].map((t) => h("th", { text: t })))),
+          h("tbody", {}, ...st.flatMap((s) => { const k = s.login || s.name, op = !!GA.open[k];
+            const head = h("tr", { "data-staff": k }, h("td", { style: "font-weight:700", text: s.name || s.login }), h("td", { text: `${s.worked}日` }), h("td", { text: gaHm(s.work) }),
+              h("td", {}, s.miss ? h("span", { class: "pill", style: "font-weight:700;background:#fbe3e1;color:#b0261f", text: `${s.miss}件` }) : h("span", { class: "muted", text: "なし" })), h("td", { class: "muted", text: "—" }),
+              h("td", {}, h("button", { type: "button", class: "btn sm", text: op ? "閉じる" : "日別", onclick: () => { GA.open[k] = !op; render(); } })));
+            if (!op) return [head];
+            return [head, h("tr", {}, h("td", { colspan: 6, style: "background:#f8fafc" }, h("table", { class: "list small ga-days" }, h("thead", {}, h("tr", {}, ...["日付", "出社", "退社", "外出〜復帰", "休憩", "実働", "打刻漏れ", "備考"].map((t) => h("th", { text: t })))),
+              h("tbody", {}, ...s.days.filter((d) => d.in || d.out || d.outs.length || d.miss.length).map((d) => h("tr", d.miss.length ? { style: "background:#fff4f2" } : {},
+                h("td", { text: d.ymd.slice(5).replace("-", "/") }), h("td", { text: d.in }), h("td", { text: d.out }), h("td", { text: d.outs.map(([a, b]) => `${a || "？"}〜${b || "？"}`).join("、") }),
+                h("td", { text: gaHm(d.brk) }), h("td", { text: gaHm(d.work) }), h("td", { style: "color:var(--bad);font-weight:700", text: d.miss.join("・") }), h("td", { class: "muted", text: d.note })))))))];
+          }))))]; })();
+  out.push(h("div", { class: "panel stack", id: "ga-att", style: "gap:8px" }, h("div", { class: "row", style: "gap:8px;align-items:center;flex-wrap:wrap" }, h("strong", { text: "勤怠（打刻漏れ・勤務時間）" }), h("span", { style: "margin-left:auto" }), nav), ...body));
   return out;
 }
 /* ---------- コース管理（準備中） ---------- */
