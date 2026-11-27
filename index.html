@@ -860,7 +860,7 @@ table.rv textarea{min-height:32px;box-sizing:border-box;padding:5px;display:bloc
     <button type="button" class="btn sm" id="open-settings" hidden>共通設定</button>
     <button type="button" class="btn sm" id="open-admin" hidden>管理者専用</button>
     <button type="button" class="btn sm" id="logout" hidden>ログアウト</button>
-    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 336</div>
+    <div id="app-ver" style="font-size:11px;opacity:.6;text-align:center;margin-top:6px;letter-spacing:.03em">T-CORE Version 337</div>
   </header>
   <main id="app" class="stack"><div class="empty">読み込み中…</div></main>
 </div>
@@ -7818,6 +7818,40 @@ async function pjInvUpload(c, blob, name) {
   if (!res.ok) { let t = ""; try { t = ((await res.json()).error || {}).message || ""; } catch (_) {} throw new Error(`Googleドライブに保存できませんでした（${res.status}）。${res.status === 404 ? "案件のフォルダが見つからないか、このアカウントに権限がありません。" : res.status === 403 ? "このアカウントに、案件のフォルダへ書き込む権限がありません。" : ""}${t ? "\n" + t : ""}`); }
   const j = await res.json(); return { id: j.id, url: j.webViewLink || "https://drive.google.com/file/d/" + j.id + "/view" };
 }
+/** 参考価格：ほかのPJ案件の請求書（c.inv.lines）から、同じ・似た品目の過去の数量・単価・金額を探す（新しい利用日から順） */
+const PJ_REF_STOP = new Set(["and", "with", "the", "for", "set", "of", "per", "pcs", "piece", "pieces", "box", "pack", "a", "in", "on"]);
+function pjRefFind(l, cur) {
+  const en = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length >= 3 && !PJ_REF_STOP.has(w));
+  const ja = (t) => norm(String(t || "")).replace(/[\s　()（）【】\[\]・、,.]/g, "");
+  const W = new Set(en(l.name)), J = ja(l.ja); if (!W.size && J.length < 2) return [];
+  const out = [];
+  for (const c of S.cases.values()) {
+    if (c.kind !== "pj" || c === cur || (cur && c.id === cur.id) || !c.inv || !Array.isArray(c.inv.lines)) continue;
+    for (const x of c.inv.lines) {
+      if (x.pj || x.fee || (pjNum(x.unit) == null && pjNum(x.amount) == null)) continue;
+      const xw = en(x.name), xj = ja(x.ja), hit = xw.filter((w) => W.has(w)).length;
+      const jhit = J.length >= 2 && xj.length >= 2 && (xj.includes(J) || J.includes(xj));
+      const exact = (x.name && l.name && x.name.trim().toLowerCase() === l.name.trim().toLowerCase()) || (J && xj === J);
+      if (!exact && !jhit && !(hit && hit >= Math.min(2, W.size))) continue;
+      out.push({ date: c.visitDate || "", label: c.flight || c.groupName || c.orderNo || "", name: x.name || "", ja: x.ja || "", qty: x.qty || "", unit: x.unit || "", amount: x.amount || "", tax: x.tax, score: (exact ? 100 : 0) + (jhit ? 10 : 0) + hit });
+    }
+  }
+  return out.sort((a, b) => b.score - a.score || (b.date || "").localeCompare(a.date || "")).slice(0, 30).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+}
+function pjRefPop(btn, l, cur, onUse) {
+  const old = document.getElementById("pj-ref-pop"); if (old) { const same = old.dataset.line === l.id; old.remove(); if (same) return; }
+  const rows = pjRefFind(l, cur), r = btn.getBoundingClientRect(), host = btn.closest("dialog") || document.body;
+  const pop = h("div", { id: "pj-ref-pop", "data-line": l.id, style: `position:fixed;z-index:50;top:${Math.min(r.bottom + 4, window.innerHeight - 320)}px;right:${Math.max(8, window.innerWidth - r.right)}px;width:min(620px,92vw);max-height:300px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:10px` },
+    h("div", { class: "row", style: "gap:8px;align-items:center;margin-bottom:6px" }, h("strong", { class: "small", text: `参考価格：「${l.ja || l.name || "（品目なし）"}」` }), h("span", { class: "muted small", text: rows.length ? `過去の請求書 ${rows.length}件` : "" }), h("span", { style: "margin-left:auto" }), h("button", { type: "button", class: "btn sm", text: "閉じる", onclick: () => pop.remove() })),
+    rows.length ? h("table", { class: "prev", id: "pj-ref-t", style: "font-size:12px" }, h("thead", {}, h("tr", {}, ...["利用日", "案件", "品目", "数量", "単価", "金額（税抜）", "税率", ""].map((t) => h("th", { text: t })))),
+      h("tbody", {}, ...rows.map((x) => h("tr", {}, h("td", { style: "white-space:nowrap", text: x.date ? x.date.replace(/-/g, "/") : "—" }), h("td", { text: x.label }), h("td", {}, h("div", { text: x.ja || x.name }), x.ja && x.name ? h("div", { class: "muted", text: x.name }) : null),
+        h("td", { style: "text-align:right", text: x.qty }), h("td", { style: "text-align:right;font-weight:700", text: pjNum(x.unit) != null ? pjYen(pjNum(x.unit)) : "—" }), h("td", { style: "text-align:right", text: pjNum(x.amount) != null ? pjYen(pjNum(x.amount)) : "—" }), h("td", { text: +x.tax === 10 ? "10%" : +x.tax === 8 ? "8%" : "対象外" }),
+        h("td", {}, pjNum(x.unit) != null && !l.pj ? h("button", { type: "button", class: "btn sm", text: "この単価を使う", onclick: () => { pop.remove(); onUse(x); } }) : null)))))
+      : h("div", { class: "muted small", text: l.name || l.ja ? "過去の請求書に、同じ・似た品目は見つかりませんでした。" : "品目（英語または日本語）を入れると探せます。" }));
+  host.append(pop);
+  const close = (e) => { if (!pop.isConnected) return document.removeEventListener("mousedown", close, true); if (!pop.contains(e.target) && e.target !== btn) { pop.remove(); document.removeEventListener("mousedown", close, true); } };
+  setTimeout(() => document.addEventListener("mousedown", close, true), 0);
+}
 async function pjInvoice(c, ch, after) {
   const dlg = $("#dlg"), msg = h("span", { class: "small", id: "pj-inv-msg", style: "white-space:pre-wrap" }), say = (t, bad) => { msg.textContent = t; msg.style.color = bad ? "var(--bad)" : "var(--ok)"; };
   const wait = (t) => { dlg.replaceChildren(h("div", { class: "dlg" }, h("h3", { text: "請求書作成" }), h("div", { text: t }))); if (!dlg.open) dlg.showModal(); };
@@ -7850,7 +7884,8 @@ async function pjInvoice(c, ch, after) {
       h("td", { style: "white-space:nowrap" }, h("input", { id: l.id + "-qty", value: l.qty || "", inputmode: "decimal", "aria-label": "数量", disabled: off, style: "width:64px;text-align:right", oninput: (e) => { l.qty = e.target.value; calc(); ch(); drawG(); drawSum(); } }), l.qu ? h("span", { class: "muted small", title: "注文表の数量の単位（請求書には載りません）", text: " " + l.qu }) : null),
       h("td", {}, h("input", { id: l.id + "-unit", value: l.unit || "", inputmode: "numeric", "aria-label": "単価", disabled: off, style: "width:96px;text-align:right", oninput: (e) => { l.unit = e.target.value; calc(); ch(); drawG(); drawSum(); } })),
       h("td", {}, amt),
-      h("td", {}, h("select", { id: l.id + "-tax", "aria-label": "税率", disabled: off, style: "width:auto", onchange: (e) => { l.tax = +e.target.value; ch(); draw(); } }, ...[[8, "8%（軽減）"], [10, "10%"], [0, "対象外"]].map(([v, t]) => h("option", { value: String(v), text: t, selected: (+l.tax === v) || undefined })))),
+      h("td", {}, h("select", { id: l.id + "-tax", "aria-label": "税率", disabled: off, style: "width:auto", onchange: (e) => { l.tax = +e.target.value; ch(); draw(); } }, ...[[8, "8%（軽減）"], [10, "10%"], [0, "対象外"]].map(([v, t]) => h("option", { value: String(v), text: t, selected: (+l.tax === v) || undefined }))),
+        h("div", {}, h("button", { type: "button", class: "linkbtn small pj-ref-btn", id: l.id + "-ref", title: "過去の請求書から、同じ・似た品目の利用日・価格を表示します", text: "参考価格", onclick: (e) => pjRefPop(e.currentTarget, l, c, (x) => { l.unit = String(pjNum(x.unit)); const q = pjNum(l.qty); if (q != null) l.amount = String(Math.round(q * pjNum(x.unit))); ch(); draw(); }) }))),
       h("td", {}, confirmBtn("×", "削除", () => { inv.lines.splice(inv.lines.indexOf(l), 1); draw(); ch(); }, "x")));
     return tr; };
   // 税率ごとに表を分ける（10% を上に）。税率を変えた行は、その税率の表へ移る
